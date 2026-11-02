@@ -13,7 +13,16 @@
       <h1>מידע שמור</h1>
       <p class="intro">צפייה ועריכה של מודעות ופרויקטים שנשמרו במכשיר הזה.</p>
     </div>
-    <button id="refreshButton" type="button">רענון תצוגה</button>
+    <div class="header-actions">
+      <div class="font-controls" role="group" aria-label="שינוי גודל הטקסט">
+        <button id="decreaseFont" type="button" aria-label="הקטנת הטקסט" title="הקטנת הטקסט">א−</button>
+        <span id="fontScaleValue" aria-live="polite">100%</span>
+        <button id="increaseFont" type="button" aria-label="הגדלת הטקסט" title="הגדלת הטקסט">א+</button>
+        <button id="resetFont" type="button" aria-label="איפוס גודל הטקסט" title="איפוס גודל הטקסט">איפוס</button>
+        <span id="fontScaleStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+      </div>
+      <button id="refreshButton" type="button">רענון תצוגה</button>
+    </div>
   </header>
 
   <main>
@@ -52,6 +61,48 @@
       </label>
       <span id="recordCount" class="record-count" aria-live="polite"></span>
     </section>
+
+    <details class="advanced-filters">
+      <summary>מסננים מתקדמים <span>אפשר לשלב כמה טווחים יחד, למשל מרחק מהרכבת ומחיר למ״ר</span></summary>
+      <div class="filter-grid">
+        <label class="range-filter">
+          <span>מחיר (₪)</span>
+          <span class="range-inputs">
+            <input data-range-min="price" type="number" min="0" step="any" placeholder="מ־" aria-label="מחיר מינימלי">
+            <input data-range-max="price" type="number" min="0" step="any" placeholder="עד" aria-label="מחיר מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מחיר למ״ר (₪)</span>
+          <span class="range-inputs">
+            <input data-range-min="pricePerSqm" type="number" min="0" step="any" placeholder="מ־" aria-label="מחיר למטר מינימלי">
+            <input data-range-max="pricePerSqm" type="number" min="0" step="any" placeholder="עד" aria-label="מחיר למטר מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מרחק מהרכבת (מ׳)</span>
+          <span class="range-inputs">
+            <input data-range-min="railMeters" type="number" min="0" step="any" placeholder="מ־" aria-label="מרחק מינימלי מהרכבת">
+            <input data-range-max="railMeters" type="number" min="0" step="any" placeholder="עד" aria-label="מרחק מקסימלי מהרכבת">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>שטח (מ״ר)</span>
+          <span class="range-inputs">
+            <input data-range-min="sqm" type="number" min="0" step="any" placeholder="מ־" aria-label="שטח מינימלי">
+            <input data-range-max="sqm" type="number" min="0" step="any" placeholder="עד" aria-label="שטח מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>חדרים</span>
+          <span class="range-inputs">
+            <input data-range-min="rooms" type="number" min="0" step="0.5" placeholder="מ־" aria-label="מספר חדרים מינימלי">
+            <input data-range-max="rooms" type="number" min="0" step="0.5" placeholder="עד" aria-label="מספר חדרים מקסימלי">
+          </span>
+        </label>
+        <button id="clearAdvancedFilters" type="button">ניקוי טווחים</button>
+      </div>
+    </details>
 
     <section class="refresh-toolbar" aria-label="רענון הדרגתי של מודעות">
       <div>

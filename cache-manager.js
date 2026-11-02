@@ -1,7 +1,11 @@
 const CACHE_KEY = "yad2AmenityCache_v1";
 const REFRESH_DELAY_KEY = "cacheRefreshDelaySec";
+const FONT_SCALE_KEY = "cacheManagerFontScale";
 const MIN_REFRESH_DELAY_SEC = 15;
 const MAX_REFRESH_DELAY_SEC = 600;
+const MIN_FONT_SCALE = 0.8;
+const MAX_FONT_SCALE = 1.5;
+const FONT_SCALE_STEP = 0.1;
 const REFRESH_LOAD_TIMEOUT_MS = 90000;
 const AMENITIES = [
   ["parking", "חניה"],
@@ -38,6 +42,7 @@ let refreshStarting = false;
 let currentPageLoaded = false;
 let refreshAttemptId = 0;
 let refreshSkippedCount = 0;
+let fontScale = 1;
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
@@ -326,6 +331,62 @@ function matchesBooleanFilter(record, filterKey, filterValue) {
   return actual === filterValue;
 }
 
+function numericRangeForRecord(record, key) {
+  if (key === "price") {
+    return {
+      min: record.price,
+      max: Number.isFinite(record.maxPrice) ? record.maxPrice : record.price,
+    };
+  }
+  if (key === "sqm") {
+    return {
+      min: record.sqm,
+      max: Number.isFinite(record.maxSqm) ? record.maxSqm : record.sqm,
+    };
+  }
+  if (key === "pricePerSqm") {
+    if (
+      Number.isFinite(record.price) &&
+      Number.isFinite(record.maxPrice) &&
+      Number.isFinite(record.sqm) &&
+      Number.isFinite(record.maxSqm) &&
+      record.sqm > 0 &&
+      record.maxSqm > 0
+    ) {
+      return {
+        min: Math.min(record.price, record.maxPrice) / Math.max(record.sqm, record.maxSqm),
+        max: Math.max(record.price, record.maxPrice) / Math.min(record.sqm, record.maxSqm),
+      };
+    }
+    return LRCacheData.pricePerSqm(record);
+  }
+  return record[key];
+}
+
+function activeNumericRanges() {
+  const ranges = new Map();
+  for (const input of document.querySelectorAll("[data-range-min], [data-range-max]")) {
+    const key = input.dataset.rangeMin || input.dataset.rangeMax;
+    const edge = input.dataset.rangeMin ? "min" : "max";
+    if (input.value.trim() === "") continue;
+    const value = Number(input.value);
+    if (!Number.isFinite(value)) continue;
+    const range = ranges.get(key) || {};
+    range[edge] = value;
+    ranges.set(key, range);
+  }
+  return ranges;
+}
+
+function matchesNumericFilters(record, ranges) {
+  for (const [key, range] of ranges) {
+    if (!LRCacheData.matchesNumericRange(numericRangeForRecord(record, key), range.min, range.max)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "title") return [record.title, record.address, record.city, record.neighborhood].filter(Boolean).join(" ");
   if (key === "type") return recordType(record) === "project" ? "פרויקט" : "מודעה";
@@ -368,6 +429,7 @@ function renderRows() {
   const columnFilters = [...document.querySelectorAll("[data-column-filter]")]
     .map((input) => [input.dataset.columnFilter, input.value.trim().toLocaleLowerCase("he")])
     .filter(([, value]) => value);
+  const ranges = activeNumericRanges();
   const priceRanks = allPriceRanks(Object.entries(cache));
   visibleRecords = Object.entries(cache)
     .filter(([key, record]) => {
@@ -375,6 +437,7 @@ function renderRows() {
       if (site && recordSite(key) !== site) return false;
       if (type && recordType(record) !== type) return false;
       if (!boolFilters.every(([field, value]) => matchesBooleanFilter(record, field, value))) return false;
+      if (!matchesNumericFilters(record, ranges)) return false;
       const haystack = `${key} ${JSON.stringify(record)}`.toLocaleLowerCase("he");
       if (query && !haystack.includes(query)) return false;
       return columnFilters.every(([field, value]) =>
@@ -773,6 +836,26 @@ function updateRefreshButtons() {
   $("pauseRefresh").textContent = refreshPaused ? "המשך" : "השהיה";
 }
 
+function applyFontScale(value) {
+  fontScale = Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, Math.round(value * 10) / 10));
+  document.body.style.zoom = String(fontScale);
+  $("fontScaleValue").textContent = `${Math.round(fontScale * 100)}%`;
+  $("decreaseFont").disabled = fontScale <= MIN_FONT_SCALE;
+  $("increaseFont").disabled = fontScale >= MAX_FONT_SCALE;
+}
+
+async function changeFontScale(delta) {
+  const status = $("fontScaleStatus");
+  status.textContent = "";
+  applyFontScale(fontScale + delta);
+  try {
+    await storageSet({ [FONT_SCALE_KEY]: fontScale });
+  } catch (error) {
+    console.error("[lightrail-ext] failed to save cache manager font scale", error);
+    status.textContent = `גודל הטקסט השתנה, אך לא נשמר: ${error.message}`;
+  }
+}
+
 function delayBetweenPages() {
   if (refreshPaused || !refreshQueue.length) return;
   clearTimeout(refreshTimer);
@@ -1008,6 +1091,18 @@ for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
   $(id).addEventListener("input", renderRows);
   $(id).addEventListener("change", renderRows);
 }
+document.querySelectorAll("[data-range-min], [data-range-max]").forEach((input) => {
+  input.addEventListener("input", renderRows);
+});
+$("clearAdvancedFilters").addEventListener("click", () => {
+  document.querySelectorAll("[data-range-min], [data-range-max]").forEach((input) => {
+    input.value = "";
+  });
+  renderRows();
+});
+$("decreaseFont").addEventListener("click", () => changeFontScale(-FONT_SCALE_STEP));
+$("increaseFont").addEventListener("click", () => changeFontScale(FONT_SCALE_STEP));
+$("resetFont").addEventListener("click", () => changeFontScale(1 - fontScale));
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;
@@ -1064,6 +1159,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
+  if (changes[FONT_SCALE_KEY]) {
+    const storedScale = Number(changes[FONT_SCALE_KEY].newValue);
+    if (Number.isFinite(storedScale)) applyFontScale(storedScale);
+  }
   if (changes[REFRESH_DELAY_KEY]) {
     const value = Number(changes[REFRESH_DELAY_KEY].newValue);
     if (Number.isFinite(value)) {
@@ -1081,8 +1180,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 renderHeader();
-Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY)])
-  .then(([storedCache, storedDelay]) => {
+Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_KEY)])
+  .then(([storedCache, storedDelay, storedFontScale]) => {
     cache = storedCache;
     if (Number.isFinite(storedDelay)) {
       refreshDelaySec = Math.max(
@@ -1091,6 +1190,7 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY)])
       );
       $("refreshDelay").value = String(refreshDelaySec);
     }
+    if (Number.isFinite(storedFontScale)) applyFontScale(storedFontScale);
     renderRows();
   })
   .catch((error) => {

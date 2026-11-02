@@ -97,3 +97,17 @@ test("price per square meter is derived and listing value score rewards value an
   assert.equal(CacheData.pricePerSqm({ price: 100, sqm: 0 }), null);
   assert.equal(CacheData.dealScore({ recordType: "project" }), null);
 });
+
+test("numeric filters support ranges and match overlapping project price or area ranges", () => {
+  assert.equal(CacheData.matchesNumericRange(2_500_000, 2_000_000, 3_000_000), true);
+  assert.equal(CacheData.matchesNumericRange(2_500_000, 2_600_000, null), false);
+  assert.equal(
+    CacheData.matchesNumericRange({ min: 2_000_000, max: 2_800_000 }, 2_500_000, 3_000_000),
+    true
+  );
+  assert.equal(
+    CacheData.matchesNumericRange({ min: 1_000_000, max: 2_200_000 }, 2_500_000, null),
+    false
+  );
+  assert.equal(CacheData.matchesNumericRange(null, null, 3_000_000), false);
+});

@@ -87,6 +87,21 @@ var LRCacheData = (() => {
           : null;
   }
 
+  function matchesNumericRange(value, min, max) {
+    const range =
+      typeof value === "number"
+        ? { min: value, max: value }
+        : value && typeof value === "object"
+          ? value
+          : null;
+    if (!range || !Number.isFinite(range.min)) return false;
+    const rangeMax = Number.isFinite(range.max) ? range.max : range.min;
+    return (
+      (!Number.isFinite(min) || rangeMax >= min) &&
+      (!Number.isFinite(max) || range.min <= max)
+    );
+  }
+
   function dealScore(record, ppsmRank = 0.5) {
     if (!record || record.recordType === "project") return null;
     const amenities = record.amenities && typeof record.amenities === "object"
@@ -106,6 +121,7 @@ var LRCacheData = (() => {
     hasUncertainInitialPriceBaseline,
     recordPriceObservation,
     pricePerSqm,
+    matchesNumericRange,
     dealScore,
   };
 })();
