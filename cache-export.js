@@ -36,6 +36,8 @@ var LRCacheExport = (() => {
     "sqm",
     "maxSqm",
     "pricePerSqm",
+    "observedPrice",
+    "priceHistory",
     "rooms",
     "railMeters",
     "railApprox",
@@ -64,6 +66,24 @@ var LRCacheExport = (() => {
       record.href ||
       record.link ||
       fallbackUrl(site, id)
+    );
+  }
+
+  function priceHistoryJson(record) {
+    const history = Array.isArray(record.priceHistory) ? record.priceHistory : [];
+    return JSON.stringify(
+      history
+        .filter(
+          (point) =>
+            point &&
+            Number.isFinite(point.price) &&
+            Number.isFinite(point.at) &&
+            Number.isFinite(new Date(point.at).getTime())
+        )
+        .map((point) => ({
+          price: point.price,
+          date: new Date(point.at).toISOString(),
+        }))
     );
   }
 
@@ -115,6 +135,8 @@ var LRCacheExport = (() => {
             "maxSqm",
             "pricePerSqm",
             "ppsm",
+            "observedPrice",
+            "priceHistory",
             "rooms",
             "railMeters",
             "railApprox",
@@ -167,6 +189,8 @@ var LRCacheExport = (() => {
         record.sqm,
         record.maxSqm,
         record.pricePerSqm ?? record.ppsm,
+        record.observedPrice,
+        priceHistoryJson(record),
         record.rooms,
         record.railMeters,
         record.railApprox,
@@ -233,6 +257,8 @@ var LRCacheExport = (() => {
     { key: "sqm", label: "שטח / החל מ׳ (מ״ר)", width: 18 },
     { key: "maxSqm", label: "שטח עד (מ״ר)", width: 16 },
     { key: "pricePerSqm", label: "מחיר למ״ר (₪)", width: 18 },
+    { key: "observedPrice", label: "מחיר שנמדד באתר (₪)", width: 21 },
+    { key: "priceHistory", label: "היסטוריית מחיר (JSON)", width: 42 },
     { key: "rooms", label: "חדרים", width: 12 },
     { key: "latitude", label: "קו רוחב", width: 14 },
     { key: "longitude", label: "קו אורך", width: 14 },
@@ -370,6 +396,8 @@ var LRCacheExport = (() => {
         sqm: record.sqm,
         maxSqm: record.maxSqm,
         pricePerSqm: record.pricePerSqm ?? record.ppsm,
+        observedPrice: record.observedPrice,
+        priceHistory: priceHistoryJson(record),
         rooms: record.rooms,
         latitude: coordinates.lat,
         longitude: coordinates.lon,

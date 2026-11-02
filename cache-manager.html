@@ -13,14 +13,14 @@
       <h1>מידע שמור</h1>
       <p class="intro">צפייה ועריכה של מודעות ופרויקטים שנשמרו במכשיר הזה.</p>
     </div>
-    <button id="refreshButton" type="button">רענון</button>
+    <button id="refreshButton" type="button">רענון תצוגה</button>
   </header>
 
   <main>
-    <section class="toolbar" aria-label="סינון מידע שמור">
+    <section class="toolbar" aria-label="חיפוש וסינון מידע שמור">
       <label class="search-field">
-        <span>חיפוש</span>
-        <input id="searchInput" type="search" placeholder="כותרת, כתובת או מזהה">
+        <span>חיפוש בכל העמודות</span>
+        <input id="searchInput" type="search" placeholder="כתובת, עיר, מחיר, תכונה, מזהה…">
       </label>
       <label>
         <span>אתר</span>
@@ -38,38 +38,62 @@
           <option value="project">פרויקטים</option>
         </select>
       </label>
+      <label>
+        <span>מיון מהיר</span>
+        <select id="sortSelect">
+          <option value="">מיון לפי כותרת הטבלה</option>
+          <option value="updatedAt">עודכנו לאחרונה</option>
+          <option value="dealScore">הכי שווה</option>
+          <option value="rooms">מספר חדרים</option>
+          <option value="price">מחיר: מהנמוך לגבוה</option>
+          <option value="pricePerSqm">מחיר למ״ר: מהנמוך לגבוה</option>
+          <option value="railMeters">קרבה לרכבת</option>
+        </select>
+      </label>
       <span id="recordCount" class="record-count" aria-live="polite"></span>
     </section>
 
-    <div class="workspace">
-      <section class="record-list" aria-label="רשומות שמורות">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">סוג</th>
-                <th scope="col">אתר</th>
-                <th scope="col">מודעה / פרויקט</th>
-                <th scope="col">חדרים</th>
-                <th scope="col">מחיר</th>
-                <th scope="col">נשמר</th>
-              </tr>
-            </thead>
-            <tbody id="recordRows"></tbody>
-          </table>
-          <p id="emptyState" class="empty-state" hidden>לא נמצאו רשומות מתאימות.</p>
-        </div>
-      </section>
+    <section class="refresh-toolbar" aria-label="רענון הדרגתי של מודעות">
+      <div>
+        <strong>רענון מודעות לפי התוצאות המסוננות</strong>
+        <p>נפתח דף מודעה אחד בכל פעם בכרטיסייה יחידה. יש לפעול לפי תנאי האתר; אין עקיפת חסימות.</p>
+      </div>
+      <label class="delay-field">
+        <span>המתנה אחרי טעינת דף (שניות, מינימום 15)</span>
+        <input id="refreshDelay" type="number" min="15" max="600" step="5" value="30">
+      </label>
+      <div class="refresh-actions">
+        <button id="startRefresh" class="primary" type="button">התחלת רענון</button>
+        <button id="pauseRefresh" type="button" disabled>השהיה</button>
+        <button id="stopRefresh" type="button" disabled>עצירה</button>
+      </div>
+      <span id="refreshStatus" role="status" aria-live="polite">רענון אוטומטי אינו פעיל.</span>
+    </section>
 
-      <section id="detailsPanel" class="details-panel" aria-label="פרטי הרשומה" hidden>
+    <section class="record-list" aria-label="טבלת מודעות ופרויקטים שמורים">
+      <div class="table-wrap">
+        <table id="recordsTable">
+          <thead id="gridHead"></thead>
+          <tbody id="recordRows"></tbody>
+        </table>
+        <p id="emptyState" class="empty-state" hidden>לא נמצאו רשומות מתאימות.</p>
+      </div>
+    </section>
+
+    <div id="detailsBackdrop" class="details-backdrop" hidden></div>
+    <aside id="detailsPanel" class="details-panel" aria-label="עריכת רשומה" role="dialog" aria-modal="true" hidden>
         <div class="details-heading">
           <div>
             <p class="eyebrow">פרטי רשומה</p>
             <h2 id="detailsTitle">בחירת רשומה</h2>
           </div>
-          <a id="openListingLink" class="open-link" target="_blank" rel="noopener noreferrer" hidden>פתיחת המקור ↗</a>
         </div>
-        <p id="editHint" class="edit-hint">שינויים שתשמור יסומנו כעריכה ידנית ולא יידרסו בביקור הבא בעמוד.</p>
+        <div class="details-actions">
+          <a id="openListingLink" class="open-link" target="_blank" rel="noopener noreferrer" hidden>פתיחת המקור ↗</a>
+          <button id="deleteRecord" class="danger" type="button">מחיקת רשומה</button>
+          <button id="closeDetails" type="button" aria-label="סגירת פרטי רשומה">סגירה</button>
+        </div>
+        <p id="editHint" class="edit-hint">שדות כמו מחיר למ״ר מחושבים ואינם ניתנים לעריכה. שינויים ידניים נשמרים בנפרד מנתונים שייקראו שוב מהאתר.</p>
         <form id="recordForm">
           <div class="form-grid">
             <label class="wide"><span>כותרת</span><input data-field="title" type="text"></label>
@@ -81,7 +105,7 @@
             <label><span>מחיר עד</span><input data-field="maxPrice" type="number" min="0" step="any"></label>
             <label><span>שטח (מ״ר)</span><input data-field="sqm" type="number" min="0" step="any"></label>
             <label><span>שטח עד (מ״ר)</span><input data-field="maxSqm" type="number" min="0" step="any"></label>
-            <label><span>מחיר למ״ר</span><input data-field="pricePerSqm" type="number" min="0" step="any"></label>
+            <label><span>מחיר למ״ר (מחושב)</span><input data-field="pricePerSqm" type="number" readonly></label>
             <label><span>חדרים</span><input data-field="rooms" type="number" min="0" step="0.5"></label>
             <label><span>תאריך יצירת מודעה</span><input data-field="listingCreatedAt" type="date"></label>
             <label><span>תאריך עדכון מודעה</span><input data-field="listingUpdatedAt" type="date"></label>
@@ -110,6 +134,11 @@
             <div id="amenityFields" class="amenity-grid"></div>
           </fieldset>
 
+          <section class="price-history" aria-labelledby="priceHistoryTitle">
+            <h3 id="priceHistoryTitle">היסטוריית מחירים</h3>
+            <div id="priceHistory"></div>
+          </section>
+
           <details class="raw-details">
             <summary>נתונים נוספים (לצפייה)</summary>
             <pre id="rawRecord"></pre>
@@ -120,9 +149,9 @@
             <span id="saveStatus" role="status" aria-live="polite"></span>
           </div>
         </form>
-      </section>
-    </div>
+    </aside>
   </main>
+  <script src="cache-data.js"></script>
   <script src="cache-manager.js"></script>
 </body>
 </html>

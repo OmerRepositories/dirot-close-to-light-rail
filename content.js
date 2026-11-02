@@ -1048,50 +1048,71 @@
       }
       pendingCacheSave = false;
       cacheWriteInProgress = true;
-      chrome.storage.local.getBytesInUse(null, (totalBytes) => {
-        if (chrome.runtime.lastError) {
-          cacheWriteInProgress = false;
-          console.warn(
-            "[lightrail-ext] could not measure local storage before saving listing cache",
-            chrome.runtime.lastError.message
-          );
-          if (pendingCacheSave) saveListingCache();
-          return;
-        }
-        chrome.storage.local.getBytesInUse(LISTING_CACHE_KEY, (cacheBytes) => {
-          if (chrome.runtime.lastError) {
-            cacheWriteInProgress = false;
-            console.warn(
-              "[lightrail-ext] could not measure existing listing cache",
-              chrome.runtime.lastError.message
+      const writeWithLimit = (maxBytes) => {
+        writeListingCache(
+          trimListingCache(listingCache, Date.now(), maxBytes),
+          0,
+          maxBytes
+        );
+      };
+      const writeWithoutMeasurement = (operation, error) => {
+        const detail = error && error.message ? error.message : String(error || "unknown error");
+        console.info(
+          `[lightrail-ext] ${operation}; saving with the conservative cache limit instead`,
+          detail
+        );
+        writeWithLimit(LISTING_CACHE_MAX_BYTES);
+      };
+      if (typeof chrome.storage.local.getBytesInUse !== "function") {
+        writeWithoutMeasurement("local storage usage is unavailable");
+        return;
+      }
+      try {
+        chrome.storage.local.getBytesInUse(null, (totalBytes) => {
+          const totalError = chrome.runtime.lastError;
+          if (totalError) {
+            writeWithoutMeasurement(
+              "could not measure local storage before saving listing cache",
+              totalError
             );
-            if (pendingCacheSave) saveListingCache();
             return;
           }
-          const otherBytes = Math.max(0, totalBytes - cacheBytes);
-          const availableBytes =
-            LOCAL_STORAGE_QUOTA_BYTES -
-            otherBytes -
-            LOCAL_STORAGE_RESERVE_BYTES;
-          if (availableBytes < 2 && Object.keys(listingCache).length) {
-            cacheWriteInProgress = false;
-            console.warn(
-              "[lightrail-ext] not enough local storage for listing cache; clear saved extension data or disable cache saving"
+          chrome.storage.local.getBytesInUse(LISTING_CACHE_KEY, (cacheBytes) => {
+            const cacheError = chrome.runtime.lastError;
+            if (cacheError) {
+              writeWithoutMeasurement("could not measure existing listing cache", cacheError);
+              return;
+            }
+            if (!Number.isFinite(totalBytes) || !Number.isFinite(cacheBytes)) {
+              writeWithoutMeasurement("local storage usage returned an invalid size");
+              return;
+            }
+            const otherBytes = Math.max(0, totalBytes - cacheBytes);
+            const availableBytes =
+              LOCAL_STORAGE_QUOTA_BYTES -
+              otherBytes -
+              LOCAL_STORAGE_RESERVE_BYTES;
+            if (availableBytes < 2 && Object.keys(listingCache).length) {
+              cacheWriteInProgress = false;
+              console.warn(
+                "[lightrail-ext] not enough local storage for listing cache; clear saved extension data or disable cache saving"
+              );
+              if (pendingCacheSave) saveListingCache();
+              return;
+            }
+            const maxBytes = Math.max(
+              2,
+              Math.min(LISTING_CACHE_MAX_BYTES, availableBytes)
             );
-            if (pendingCacheSave) saveListingCache();
-            return;
-          }
-          const maxBytes = Math.max(
-            2,
-            Math.min(LISTING_CACHE_MAX_BYTES, availableBytes)
-          );
-          writeListingCache(
-            trimListingCache(listingCache, Date.now(), maxBytes),
-            0,
-            maxBytes
-          );
+            writeWithLimit(maxBytes);
+          });
         });
-      });
+      } catch (error) {
+        writeWithoutMeasurement(
+          "could not measure local storage before saving listing cache",
+          error
+        );
+      }
     }, 500);
   }
 
@@ -1283,6 +1304,12 @@
       (IS_YAD2 ? LR.extractPriceSqm(text) : LRMadlan.extractPriceSqm(root, text));
     const listingMetadata = parser.listingExportData(root);
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
+    const observedPrice = Number.isFinite(stats.price) ? stats.price : null;
+    const priceObservation = LRCacheData.recordPriceObservation(
+      previous,
+      observedPrice,
+      Date.now()
+    );
     const listingHeading =
       root.querySelector("h1") ||
       (entry.kind === "list" ? root.querySelector('[data-testid="ad-card-title"]') : null);
@@ -1298,6 +1325,7 @@
         ? address.coordinates
         : previous.coordinates,
       price: Number.isFinite(stats.price) ? stats.price : previous.price,
+      ...priceObservation,
       sqm: Number.isFinite(stats.sqm) ? stats.sqm : previous.sqm,
       pricePerSqm: Number.isFinite(stats.ppsm) ? stats.ppsm : previous.pricePerSqm,
       rooms: Number.isFinite(listingMetadata.rooms) ? listingMetadata.rooms : previous.rooms,

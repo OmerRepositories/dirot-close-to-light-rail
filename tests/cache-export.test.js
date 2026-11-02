@@ -52,6 +52,11 @@ test("CSV export includes every amenity flag, coordinates, URL, and arbitrary re
         amenities: { parking: true, secureRoom: false, newFlag: true },
         coordinates: { lat: 32.1, lon: 34.8 },
         price: 2500000,
+        observedPrice: 2500000,
+        priceHistory: [
+          { price: 2600000, at: Date.UTC(2026, 9, 20) },
+          { price: 2500000, at: Date.UTC(2026, 9, 30) },
+        ],
         sqm: 100,
         pricePerSqm: 25000,
         rooms: 4,
@@ -88,6 +93,11 @@ test("CSV export includes every amenity flag, coordinates, URL, and arbitrary re
   assert.equal(yad2.latitude, "32.1");
   assert.equal(yad2.longitude, "34.8");
   assert.equal(yad2.price, "2500000");
+  assert.equal(yad2.observedPrice, "2500000");
+  assert.deepEqual(JSON.parse(yad2.priceHistory), [
+    { price: 2600000, date: "2026-10-20T00:00:00.000Z" },
+    { price: 2500000, date: "2026-10-30T00:00:00.000Z" },
+  ]);
   assert.equal(yad2.sqm, "100");
   assert.equal(yad2.pricePerSqm, "25000");
   assert.equal(yad2.record_type, "listing");
@@ -121,6 +131,8 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
         sqm: 100,
         maxSqm: 120,
         pricePerSqm: 25000,
+        observedPrice: 1790000,
+        priceHistory: [{ price: 1790000, at: updatedAt }],
         rooms: 5,
         railMeters: 420,
         railApprox: true,
@@ -144,10 +156,12 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
   assert.ok(files.has("[Content_Types].xml"));
-  assert.ok(sheet.includes('<autoFilter ref="A1:AH2"/>'));
+  assert.ok(sheet.includes('<autoFilter ref="A1:AJ2"/>'));
   assert.ok(sheet.includes('rightToLeft="1"'));
   assert.ok(sheet.includes("מזהה מודעה/פרויקט"));
   assert.ok(sheet.includes("מחיר / החל מ׳ (₪)"));
+  assert.ok(sheet.includes("היסטוריית מחיר (JSON)"));
+  assert.ok(sheet.includes("<t>[{&quot;price&quot;:1790000,&quot;date&quot;:&quot;2026-10-30T00:00:00.000Z&quot;}]</t>"));
   assert.ok(sheet.includes("פתח תקווה"));
   assert.ok(sheet.includes("תאריך יצירת מודעה"));
   assert.ok(sheet.includes("תאריך עדכון מודעה"));
@@ -158,8 +172,8 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   assert.ok(sheet.includes("<v>420</v>"));
   assert.ok(sheet.includes("<t>תחנת שטמפפר</t>"));
   assert.ok(sheet.includes("תיווך?"));
-  assert.ok(sheet.includes('<c r="W2" s="3" t="inlineStr"><is><t>כן</t>'));
-  assert.ok(sheet.includes('<c r="U2" t="inlineStr"><is><t>כן</t>'));
+  assert.ok(sheet.includes('<c r="Y2" s="3" t="inlineStr"><is><t>כן</t>'));
+  assert.ok(sheet.includes('<c r="W2" t="inlineStr"><is><t>כן</t>'));
   assert.ok(sheet.includes("<v>1790000</v>"));
   assert.ok(sheet.includes("<v>100</v>"));
   assert.ok(sheet.includes("<v>25000</v>"));
