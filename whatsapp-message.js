@@ -45,7 +45,7 @@ var LRWhatsAppMessage = (() => {
 
   function format(data) {
     const value = (item) => (item === null || item === undefined || item === "" ? "לא זוהה" : item);
-    return [
+    const lines = [
       `כתובת: ${value(data.address)}`,
       `מחיר: ${value(data.price)}`,
       `מ"ר: ${value(data.sqm)}`,
@@ -54,7 +54,20 @@ var LRWhatsAppMessage = (() => {
       `מחיר למ"ר: ${value(data.pricePerSqm)}`,
       `מרחק בקו אווירי מהרכבת (המרחק בהליכה עשוי להיות גדול יותר): ${value(data.railDistance)}`,
       `קישור למודעה: ${value(data.url)}`,
-    ].join("\n");
+    ];
+    const missingAmenities = Array.isArray(data.missingAmenities)
+      ? [
+          ...new Set(
+            data.missingAmenities.filter(
+              (amenity) => typeof amenity === "string" && amenity.trim()
+            )
+          ),
+        ]
+      : [];
+    if (missingAmenities.length) {
+      lines.push(`שים לב חסר: ${missingAmenities.join(", ")}`);
+    }
+    return lines.join("\n");
   }
 
   return { format, normalizeFloor, readFloor };

@@ -13,6 +13,7 @@ test("WhatsApp message lists all requested property fields in Hebrew", () => {
     pricePerSqm: "₪25,287",
     railDistance: "כ-450 מ׳ (מיקום משוער)",
     url: "https://www.madlan.co.il/listings/test-id",
+    missingAmenities: ["ממ״ד", "דוד שמש"],
   });
 
   assert.equal(
@@ -26,6 +27,7 @@ test("WhatsApp message lists all requested property fields in Hebrew", () => {
       'מחיר למ"ר: ₪25,287',
       "מרחק בקו אווירי מהרכבת (המרחק בהליכה עשוי להיות גדול יותר): כ-450 מ׳ (מיקום משוער)",
       "קישור למודעה: https://www.madlan.co.il/listings/test-id",
+      "שים לב חסר: ממ״ד, דוד שמש",
     ].join("\n")
   );
 });
@@ -34,6 +36,21 @@ test("WhatsApp message clearly marks unavailable listing fields", () => {
   const message = LRWhatsAppMessage.format({});
   assert.equal(message.split("\n").length, 8);
   assert.ok(message.split("\n").every((line) => line.endsWith("לא זוהה")));
+});
+
+test("WhatsApp message lists only confirmed missing amenities", () => {
+  const message = LRWhatsAppMessage.format({
+    missingAmenities: ["ממ״ד", "דוד שמש", "ממ״ד", "", null],
+  });
+  assert.equal(message.endsWith("שים לב חסר: ממ״ד, דוד שמש"), true);
+  assert.equal(
+    LRWhatsAppMessage.format({ missingAmenities: [] }).includes("שים לב חסר:"),
+    false
+  );
+  assert.equal(
+    LRWhatsAppMessage.format({ missingAmenities: null }).includes("שים לב חסר:"),
+    false
+  );
 });
 
 test("Floor labels are normalized from Madlan's value-first and label-first layouts", () => {

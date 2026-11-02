@@ -10,7 +10,7 @@ The extension displays useful indicators on real-estate listings in search resul
 - **Price per square meter**: `₪28,800` · `−12% from the page median`
 - `⭐ Worth checking` — highlights listings that meet all enabled criteria.
 
-Clicking an exact-distance badge opens a new Google Maps tab with walking directions from the address to the station. Approximate locations do not open Maps, to avoid showing a misleading point.
+Clicking the distance badge opens a new Google Maps tab with walking directions when a street and city are available. A house number is not required; Maps does not open when no street-and-city address was found. The extension's displayed distance is straight-line distance, not walking distance.
 
 Colors: green up to 600 m · yellow up to 1.5 km · gray for farther distances. `≈` means the location is approximate.
 
@@ -41,7 +41,7 @@ Click the extension icon in Chrome's toolbar. Settings are saved automatically a
 - **Disable the extension on selected sites** — independently disable Yad2, Madlan, or Facebook. When disabled, the extension removes its badges and highlights and stops observing the page. The preference is saved, and changes apply to already-open pages.
 - **Required listing amenities** — choose parking, secure room (Mamad), elevator, storage, air conditioning, accessibility, balcony, solar water heater, bars, garden, and pool. Missing amenities are shown as an alert on a listing page and prevent the listing from being marked as worth checking. Unknown amenities are reported as unverifiable. Mamad is selected by default.
 - **Madlan extraction** — listing cards use Madlan's structured price, area, and room fields, image address, and hydrated listing address/coordinates when available. Searches spanning multiple areas are not treated as having a single city; missing precise address/location data is not presented as an exact address.
-- **Copy listing details for WhatsApp** — the clipboard button on a listing card or listing-page panel shows a hover preview of its address, price, area, rooms, floor, price per square meter, straight-line rail distance (not walking distance), and a link to the listing. Clicking copies the message; unavailable fields are identified.
+- **Copy listing details for WhatsApp** — the clipboard button on a listing card or listing-page panel shows a hover preview of its address, price, area, rooms, floor, price per square meter, straight-line rail distance (not walking distance), and a link to the listing. Confirmed missing amenities are added in a “Missing” note; unknown amenities are not treated as missing. Clicking copies the message; unavailable fields are identified.
 - **Listing and project cache for Yad2 and Madlan** — listing visits store amenities, price, area, price per square meter, room count, available listing creation/update dates, coordinates, approximate rail distance, and brokerage detection. Project pages store available project details and price/area ranges. The cache tab lets you view and edit saved records, and export to CSV or a formatted Excel workbook with listing/project type, filters, clickable links, yes/no indicators, and rail distance/estimate status. Saving new data can be disabled; existing data remains until cleared. Up to 2,500 records and approximately 4 MiB are retained; old records are removed automatically. **Clear saved data** removes only the cache, not user settings.
 
 All enabled criteria must be met for a listing to be highlighted as worth checking.

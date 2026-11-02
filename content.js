@@ -678,6 +678,16 @@
         : LRMadlan.extractPriceSqm(root, text));
     const metadata = parser.listingExportData(root);
     const floor = readListingFloor(root);
+    const amenities =
+      entry.amenities ||
+      parser.readAmenities(root) ||
+      (entry.listingId &&
+      validCachedAmenities(listingCache[cacheKeyForListing(entry.listingId)])
+        ? listingCache[cacheKeyForListing(entry.listingId)].amenities
+        : {});
+    const missingAmenities = Object.entries(amenities)
+      .filter(([, present]) => present === false)
+      .map(([key]) => AMENITY_LABELS[key] || key);
     const railDistance =
       entry.res && entry.res.ok
         ? `${entry.res.approx ? "כ-" : ""}${fmtDistance(entry.res.meters)}${
@@ -692,6 +702,7 @@
       floor,
       pricePerSqm: Number.isFinite(stats.ppsm) ? `₪${fmtNum(stats.ppsm)}` : null,
       railDistance,
+      missingAmenities,
       url: parser.listingUrl(root) || location.href,
     };
   }
@@ -829,20 +840,15 @@
     }
     const title =
       (res.approx
-        ? "הערכה בלבד – לא נמצאה כתובת מדויקת (" +
-          res.matched +
-          "). Google Maps לא ייפתח כדי לא להציג נקודה מטעה. "
-        : "") +
-      (res.approx
-        ? "קו אווירי משוער לתחנה הקרובה."
-        : "קו אווירי לתחנה הקרובה. לחיצה תפתח כרטיסייה חדשה בגוגל מפות עם מסלול הליכה מהכתובת לתחנה.");
+        ? "מרחק בקו אווירי משוער (" + res.matched + "). "
+        : "מרחק בקו אווירי לתחנה הקרובה. ") +
+      (entry.hasMapsAddress
+        ? "לחיצה תפתח בגוגל מפות מסלול הליכה מהרחוב והעיר שזוהו; ייתכן שהמרחק בהליכה יהיה גדול יותר."
+        : "לא זוהתה כתובת הכוללת רחוב ועיר, ולכן Google Maps לא ייפתח.");
 
-    if (!res.approx) {
+    if (entry.hasMapsAddress && entry.mapsOrigin) {
       b._open = () => {
-        const origin =
-          entry.mapsOrigin ||
-          `${res.origin.lat},${res.origin.lon}`;
-        const url = LRLocation.mapsDirectionsUrl(origin, res.station.name);
+        const url = LRLocation.mapsDirectionsUrl(entry.mapsOrigin, res.station.name);
         window.open(url, "_blank", "noopener");
       };
     }
@@ -871,7 +877,9 @@
       const parsed = siteParser.readAddress(root, text, ctxCity(), entry.kind === "single");
       entry.listingId = siteParser.listingId(root);
       const { queries } = parsed;
+      entry.hasMapsAddress = LRLocation.hasListingMapsAddress(parsed, queries, ctxCity());
       entry.mapsOrigin =
+        !entry.hasMapsAddress &&
         !IS_YAD2 &&
         LRLocation.validCoordinates(parsed.coordinates) &&
         (!parsed.street || !parsed.city)

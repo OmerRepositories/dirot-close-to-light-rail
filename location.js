@@ -46,6 +46,14 @@ var LRLocation = (() => {
     );
   }
 
+  function hasListingMapsAddress(address, queries = [], fallbackCity = "") {
+    if (!String((address && address.street) || "").trim()) return false;
+    const origin = listingMapsOrigin(address, queries, fallbackCity);
+    if (!origin) return false;
+    const parts = origin.split(",").map((part) => part.trim());
+    return parts.length >= 2 && Boolean(parts[0]) && isUsableCity(parts.slice(1).join(", "));
+  }
+
   function mapsDirectionsUrl(origin, destination) {
     const params = new URLSearchParams({
       api: "1",
@@ -64,7 +72,13 @@ var LRLocation = (() => {
     return `https://www.google.com/maps/dir/?${params}`;
   }
 
-  return { validCoordinates, mapsDirectionsUrl, stationMapsQuery, listingMapsOrigin };
+  return {
+    validCoordinates,
+    mapsDirectionsUrl,
+    stationMapsQuery,
+    listingMapsOrigin,
+    hasListingMapsAddress,
+  };
 })();
 
 if (typeof module !== "undefined") module.exports = LRLocation;

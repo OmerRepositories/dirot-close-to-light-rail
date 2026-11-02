@@ -69,6 +69,32 @@ test("Google Maps origin drops filter text when no valid city is available", () 
   );
 });
 
+test("Google Maps can open from a known street and city even without a house number", () => {
+  const address = { street: "גד מכנס", city: "פתח תקווה" };
+  const origin = LRLocation.listingMapsOrigin(address);
+
+  assert.equal(origin, "גד מכנס, פתח תקווה");
+  assert.equal(LRLocation.hasListingMapsAddress(address), true);
+});
+
+test("Google Maps does not open when a listing address is unavailable", () => {
+  assert.equal(LRLocation.hasListingMapsAddress(null, [], "פתח תקווה"), false);
+  assert.equal(
+    LRLocation.hasListingMapsAddress(
+      { street: null, city: "פתח תקווה" },
+      [{ q: "פתח תקווה", cityOnly: true }]
+    ),
+    false
+  );
+  assert.equal(
+    LRLocation.hasListingMapsAddress(
+      { street: "גד מכנס", city: null },
+      [{ q: "גד מכנס" }]
+    ),
+    false
+  );
+});
+
 test("Google Maps station queries do not duplicate an existing station label", () => {
   assert.equal(
     LRLocation.stationMapsQuery("תחנת בילינסון"),
