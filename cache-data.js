@@ -1,4 +1,28 @@
 var LRCacheData = (() => {
+  function hasUncertainInitialPriceBaseline(history) {
+    if (!Array.isArray(history) || history.length < 1) return false;
+    const first = history[0];
+    if (!first) return false;
+    if (first.baselineUnknown === true) return true;
+    if (first.baselineKnown === true) return false;
+    const second = history[1];
+    if (
+      !second ||
+      !Number.isFinite(first.at) ||
+      !Number.isFinite(second.at) ||
+      first.price === second.price
+    ) {
+      return false;
+    }
+    const firstDate = new Date(first.at);
+    const secondDate = new Date(second.at);
+    return (
+      firstDate.getFullYear() === secondDate.getFullYear() &&
+      firstDate.getMonth() === secondDate.getMonth() &&
+      firstDate.getDate() === secondDate.getDate()
+    );
+  }
+
   function recordPriceObservation(previous, price, timestamp = Date.now()) {
     if (!Number.isFinite(price)) {
       return {
@@ -18,7 +42,7 @@ var LRCacheData = (() => {
       (item) =>
         item &&
         Number.isFinite(item.price) &&
-        Number.isFinite(item.at)
+        (Number.isFinite(item.at) || item.baselineUnknown === true)
     );
     const lastPrice = history.length
       ? history[history.length - 1].price
@@ -28,14 +52,17 @@ var LRCacheData = (() => {
           ? previous.price
           : null;
 
-    if (!history.length && Number.isFinite(lastPrice)) {
-      history.push({
-        price: lastPrice,
-        at: Number.isFinite(previous.updatedAt) ? previous.updatedAt : timestamp,
-      });
+    const hasUnrecordedPrice = !history.length && Number.isFinite(lastPrice);
+    const priceChangedSinceCache = hasUnrecordedPrice && lastPrice !== price;
+    if (priceChangedSinceCache) {
+      history.push({ price: lastPrice, at: null, baselineUnknown: true });
     }
-    if (!history.length || lastPrice !== price) {
-      history.push({ price, at: timestamp });
+    if (!history.length || priceChangedSinceCache || lastPrice !== price) {
+      history.push({
+        price,
+        at: timestamp,
+        ...(!history.length ? { baselineKnown: true } : {}),
+      });
     }
 
     const boundedHistory = history.slice(-50);
@@ -75,7 +102,12 @@ var LRCacheData = (() => {
     return Math.round(positives * 10 + railBonus + priceBonus - brokeragePenalty);
   }
 
-  return { recordPriceObservation, pricePerSqm, dealScore };
+  return {
+    hasUncertainInitialPriceBaseline,
+    recordPriceObservation,
+    pricePerSqm,
+    dealScore,
+  };
 })();
 
 if (typeof module !== "undefined") module.exports = LRCacheData;

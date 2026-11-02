@@ -7,7 +7,7 @@ test("price history stores an initial price and each later change once", () => {
   const first = CacheData.recordPriceObservation({}, 2_500_000, 100);
   assert.deepEqual(first, {
     observedPrice: 2_500_000,
-    priceHistory: [{ price: 2_500_000, at: 100 }],
+    priceHistory: [{ price: 2_500_000, at: 100, baselineKnown: true }],
   });
 
   const unchanged = CacheData.recordPriceObservation(first, 2_500_000, 200);
@@ -15,7 +15,7 @@ test("price history stores an initial price and each later change once", () => {
 
   const reduced = CacheData.recordPriceObservation(unchanged, 2_400_000, 300);
   assert.deepEqual(reduced.priceHistory, [
-    { price: 2_500_000, at: 100 },
+    { price: 2_500_000, at: 100, baselineKnown: true },
     { price: 2_400_000, at: 300 },
   ]);
 });
@@ -27,9 +27,38 @@ test("price history uses a prior saved price as its baseline", () => {
     100
   );
   assert.deepEqual(result.priceHistory, [
-    { price: 3_000_000, at: 50 },
+    { price: 3_000_000, at: null, baselineUnknown: true },
     { price: 2_950_000, at: 100 },
   ]);
+  assert.equal(CacheData.hasUncertainInitialPriceBaseline(result.priceHistory), true);
+
+  const laterReduction = CacheData.recordPriceObservation(
+    result,
+    2_900_000,
+    200
+  );
+  assert.equal(laterReduction.priceHistory.length, 3);
+  assert.deepEqual(laterReduction.priceHistory[0], {
+    price: 3_000_000,
+    at: null,
+    baselineUnknown: true,
+  });
+});
+
+test("legacy same-day bootstrap history is not treated as a dated price change", () => {
+  const timestamp = Date.UTC(2026, 10, 2, 10);
+  const oldHistory = [
+    { price: 2_680_000, at: timestamp - 60_000 },
+    { price: 2_850_000, at: timestamp },
+  ];
+  assert.equal(CacheData.hasUncertainInitialPriceBaseline(oldHistory), true);
+  assert.equal(
+    CacheData.hasUncertainInitialPriceBaseline([
+      { price: 2_680_000, at: timestamp, baselineKnown: true },
+      { price: 2_850_000, at: timestamp + 60_000 },
+    ]),
+    false
+  );
 });
 
 test("price history is bounded and ignores invalid observations", () => {

@@ -108,9 +108,15 @@ function validPriceHistory(record) {
         (point) =>
           point &&
           Number.isFinite(point.price) &&
-          Number.isFinite(point.at)
+          (Number.isFinite(point.at) || point.baselineUnknown === true)
       )
     : [];
+}
+
+function priceHistoryDate(point, index, history) {
+  return index === 0 && LRCacheData.hasUncertainInitialPriceBaseline(history)
+    ? "תאריך קודם לא ידוע"
+    : displayDate(point.at);
 }
 
 function refreshableListingUrl(key, record) {
@@ -133,6 +139,33 @@ function refreshableListingUrl(key, record) {
     recordSite(key) === "madlan" &&
     url.hostname === "www.madlan.co.il" &&
     /^\/(?:listings|bulletin)\/[^/]+\/?$/.test(url.pathname)
+  ) {
+    return url.href;
+  }
+  return null;
+}
+
+function listingPageUrl(key, record) {
+  const rawUrl = record.url || record.listingUrl || record.href || record.link || "";
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  const path = url.pathname;
+  if (
+    recordSite(key) === "yad2" &&
+    url.hostname === "www.yad2.co.il" &&
+    /^\/(?:realestate\/item|yad1\/project)\/[^/]+(?:\/[^/]+)?\/?$/.test(path)
+  ) {
+    return url.href;
+  }
+  if (
+    recordSite(key) === "madlan" &&
+    url.hostname === "www.madlan.co.il" &&
+    /^\/(?:listings|projects)\/[^/]+\/?$/.test(path)
   ) {
     return url.href;
   }
@@ -304,8 +337,11 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   }
   if (key === "updatedAt") return displayDate(record.updatedAt);
   if (key === "priceHistory") {
-    return validPriceHistory(record)
-      .map((point) => `${point.price} ${displayPrice(point.price)} ${displayDate(point.at)}`)
+    const history = validPriceHistory(record);
+    return history
+      .map((point, index) =>
+        `${point.price} ${displayPrice(point.price)} ${priceHistoryDate(point, index, history)}`
+      )
       .join(" ");
   }
   if (key === "dealScore") {
@@ -378,10 +414,30 @@ function renderRows() {
         td.textContent = siteName === "yad2" ? "יד2" : siteName === "madlan" ? "מדלן" : siteName;
       } else if (column.key === "title") {
         td.className = "record-name";
-        td.append(
-          textCell(record.title || key, "record-title"),
-          textCell([record.address, record.city].filter(Boolean).join(", "), "record-address")
-        );
+        const title = record.title || key;
+        const address = [record.address, record.city].filter(Boolean).join(", ");
+        const listingUrl = listingPageUrl(key, record);
+        if (listingUrl) {
+          for (const [label, className] of [
+            [title, "record-title"],
+            [address, "record-address"],
+          ]) {
+            const link = document.createElement("a");
+            link.href = listingUrl;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.className = `record-link ${className}`;
+            link.dataset.recordLink = "true";
+            link.setAttribute("aria-label", `פתיחת המודעה: ${title}`);
+            link.textContent = label;
+            td.appendChild(link);
+          }
+        } else {
+          td.append(
+            textCell(title, "record-title"),
+            textCell(address, "record-address")
+          );
+        }
       } else if (column.key === "price") {
         td.textContent = displayPrice(record.price);
       } else if (column.key === "pricePerSqm") {
@@ -408,7 +464,11 @@ function renderRows() {
         const history = validPriceHistory(record);
         const latest = history[history.length - 1];
         td.textContent = history.length ? `${history.length} · ${displayPrice(latest.price)}` : "—";
-        td.title = history.map((point) => `${displayDate(point.at)}: ${displayPrice(point.price)}`).join("\n");
+        td.title = history
+          .map((point, index) =>
+            `${priceHistoryDate(point, index, history)}: ${displayPrice(point.price)}`
+          )
+          .join("\n");
       } else if (column.key === "actions") {
         const actions = document.createElement("div");
         actions.className = "row-actions";
@@ -494,16 +554,21 @@ function renderPriceHistory(record) {
   }
   head.appendChild(heading);
   const body = document.createElement("tbody");
+  const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
   for (let index = history.length - 1; index >= 0; index--) {
     const point = history[index];
     const previous = history[index - 1];
     const row = document.createElement("tr");
     const date = document.createElement("td");
-    date.textContent = displayDate(point.at);
+    date.textContent = priceHistoryDate(point, index, history);
     const price = document.createElement("td");
     price.textContent = displayPrice(point.price);
     const change = document.createElement("td");
-    if (previous && Number.isFinite(previous.price) && Number.isFinite(point.price)) {
+    if (index === 0 && uncertainBaseline) {
+      change.textContent = "מחיר קודם שמור";
+    } else if (index === 1 && uncertainBaseline) {
+      change.textContent = "מועד השינוי לא ידוע";
+    } else if (previous && Number.isFinite(previous.price) && Number.isFinite(point.price)) {
       const difference = point.price - previous.price;
       change.textContent = `${difference > 0 ? "+" : ""}${displayPrice(difference)}`;
       if (difference < 0) change.className = "price-down";
@@ -871,6 +936,7 @@ async function loadCache() {
 rows.addEventListener("click", (event) => {
   const row = event.target.closest("tr[data-key]");
   if (!row) return;
+  if (event.target.closest("a[data-record-link]")) return;
   const button = event.target.closest("button[data-action]");
   if (button && button.dataset.action === "delete") {
     event.stopPropagation();

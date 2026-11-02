@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+global.LRCacheData = require("../cache-data.js");
 const CacheExport = require("../cache-export.js");
 
 function parseCsvRow(line) {
@@ -112,6 +113,28 @@ test("CSV export includes every amenity flag, coordinates, URL, and arbitrary re
   assert.equal(JSON.parse(yad2.record_json).amenities.secureRoom, false);
   assert.equal(madlan.listing_url, "https://www.madlan.co.il/listings/ad-456");
   assert.equal(madlan.record_legacyField, "kept");
+});
+
+test("price history export marks bootstrap prices with an unknown date", async () => {
+  const timestamp = Date.UTC(2026, 10, 2, 10);
+  const csv = await CacheExport.buildCsv(
+    {
+      "madlan:ad-789": {
+        priceHistory: [
+          { price: 2_680_000, at: timestamp - 60_000 },
+          { price: 2_850_000, at: timestamp },
+        ],
+      },
+    },
+    () => {},
+    timestamp
+  );
+  const [headers, values] = csv.slice(1).trimEnd().split("\r\n").map(parseCsvRow);
+  const row = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
+  assert.deepEqual(JSON.parse(row.priceHistory), [
+    { price: 2_680_000, date: null, baselineUnknown: true },
+    { price: 2_850_000, date: new Date(timestamp).toISOString() },
+  ]);
 });
 
 test("Excel export is a filtered XLSX with readable amenity colors and clickable listing URLs", async () => {

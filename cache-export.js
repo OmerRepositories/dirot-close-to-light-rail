@@ -71,19 +71,27 @@ var LRCacheExport = (() => {
 
   function priceHistoryJson(record) {
     const history = Array.isArray(record.priceHistory) ? record.priceHistory : [];
+    const validHistory = history.filter(
+      (point) =>
+        point &&
+        Number.isFinite(point.price) &&
+        (Number.isFinite(point.at) || point.baselineUnknown === true)
+    );
+    const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(validHistory);
     return JSON.stringify(
-      history
-        .filter(
-          (point) =>
-            point &&
-            Number.isFinite(point.price) &&
-            Number.isFinite(point.at) &&
-            Number.isFinite(new Date(point.at).getTime())
-        )
-        .map((point) => ({
+      validHistory.map((point, index) => {
+        const unknownDate =
+          index === 0 &&
+          (uncertainBaseline || !Number.isFinite(point.at));
+        return {
           price: point.price,
-          date: new Date(point.at).toISOString(),
-        }))
+          date:
+            unknownDate || !Number.isFinite(new Date(point.at).getTime())
+              ? null
+              : new Date(point.at).toISOString(),
+          ...(unknownDate ? { baselineUnknown: true } : {}),
+        };
+      })
     );
   }
 
