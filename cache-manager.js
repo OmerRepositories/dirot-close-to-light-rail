@@ -36,6 +36,8 @@ let refreshDelaySec = 30;
 let refreshPaused = false;
 let refreshStarting = false;
 let currentPageLoaded = false;
+let refreshAttemptId = 0;
+let refreshSkippedCount = 0;
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
@@ -781,8 +783,46 @@ function delayBetweenPages() {
   }, refreshDelaySec * 1000);
 }
 
-function onRefreshTabUpdated(tabId, changeInfo) {
+function skipRefreshListing(error, resetTab = false) {
+  if (!refreshQueue.length) return;
+  refreshSkippedCount++;
+  console.warn(
+    "[lightrail-ext] skipping listing during refresh",
+    error && error.message ? error.message : error
+  );
+  clearTimeout(loadTimeout);
+  loadTimeout = null;
+  refreshAttemptId++;
+  if (resetTab) refreshTabId = null;
+  currentPageLoaded = true;
+  const [key, record] = refreshQueue[refreshIndex];
+  const title = record && record.title ? record.title : key;
+  if (refreshPaused) {
+    setRefreshStatus(
+      `המודעה ${refreshIndex + 1}/${refreshQueue.length} דולגה (${title}); הרענון מושהה. אפשר להמשיך.`,
+      true
+    );
+    return;
+  }
+  if (refreshIndex + 1 >= refreshQueue.length) {
+    refreshIndex++;
+    openNextListing();
+    return;
+  }
+  setRefreshStatus(
+    `המודעה ${refreshIndex + 1}/${refreshQueue.length} דולגה (${title}). ממשיך למודעה הבאה בעוד ${refreshDelaySec} שניות.`,
+    true
+  );
+  delayBetweenPages();
+}
+
+function onRefreshTabUpdated(tabId, changeInfo, tab) {
   if (!refreshQueue.length || tabId !== refreshTabId || changeInfo.status !== "complete") return;
+  const pageUrl = changeInfo.url || (tab && tab.url) || "";
+  if (/^(?:chrome-error:|chrome:\/\/)/i.test(pageUrl)) {
+    skipRefreshListing(new Error("הדף לא נטען או אינו זמין."));
+    return;
+  }
   clearTimeout(loadTimeout);
   loadTimeout = null;
   currentPageLoaded = true;
@@ -801,20 +841,26 @@ function startLoadTimeout() {
   loadTimeout = setTimeout(() => {
     loadTimeout = null;
     if (!refreshQueue.length || refreshPaused || currentPageLoaded) return;
-    setRefreshStatus(`הדף ${refreshIndex + 1}/${refreshQueue.length} מתעכב; ממתין לטעינה לפני המשך…`);
-    loadTimeout = setTimeout(startLoadTimeout, REFRESH_LOAD_TIMEOUT_MS);
+    skipRefreshListing(new Error("הדף לא נטען בזמן שהוקצב."));
   }, REFRESH_LOAD_TIMEOUT_MS);
 }
 
 function openNextListing() {
   if (!refreshQueue.length) return;
   if (refreshIndex >= refreshQueue.length) {
+    const skippedCount = refreshSkippedCount;
     refreshQueue = [];
+    refreshSkippedCount = 0;
     currentPageLoaded = false;
     updateRefreshButtons();
-    setRefreshStatus("הרענון הסתיים.");
+    setRefreshStatus(
+      skippedCount
+        ? `הרענון הסתיים. ${skippedCount} מודעות דולגו עקב שגיאה.`
+        : "הרענון הסתיים."
+    );
     return;
   }
+  const attemptId = ++refreshAttemptId;
   const [key, record] = refreshQueue[refreshIndex];
   const url = refreshableListingUrl(key, record);
   if (!url) {
@@ -824,16 +870,16 @@ function openNextListing() {
   }
   currentPageLoaded = false;
   setRefreshStatus(`פותח מודעה ${refreshIndex + 1}/${refreshQueue.length}: ${record.title || key}`);
-  const onError = (error) => {
-    console.error("[lightrail-ext] failed to open listing for refresh", error);
-    setRefreshStatus(error.message || "פתיחת המודעה לרענון נכשלה.", true);
-    stopRefresh(false);
+  const onError = (error, resetTab) => {
+    if (attemptId !== refreshAttemptId || !refreshQueue.length) return;
+    skipRefreshListing(error, resetTab);
   };
   if (refreshTabId === null) {
     chrome.tabs.create({ url, active: false }, (tab) => {
       const error = chrome.runtime.lastError;
+      if (attemptId !== refreshAttemptId || !refreshQueue.length) return;
       if (error || !tab || !Number.isInteger(tab.id)) {
-        onError(new Error(error && error.message || "לא ניתן לפתוח כרטיסייה לרענון."));
+        onError(new Error(error && error.message || "לא ניתן לפתוח כרטיסייה לרענון."), true);
         return;
       }
       refreshTabId = tab.id;
@@ -843,8 +889,9 @@ function openNextListing() {
   }
   chrome.tabs.update(refreshTabId, { url, active: false }, (tab) => {
     const error = chrome.runtime.lastError;
+    if (attemptId !== refreshAttemptId || !refreshQueue.length) return;
     if (error || !tab) {
-      onError(new Error(error && error.message || "לא ניתן לעבור למודעה הבאה."));
+      onError(new Error(error && error.message || "לא ניתן לעבור למודעה הבאה."), true);
       return;
     }
     startLoadTimeout();
@@ -875,6 +922,7 @@ async function startRefresh() {
     Boolean(refreshableListingUrl(key, record))
   );
   refreshIndex = 0;
+  refreshSkippedCount = 0;
   refreshPaused = false;
   if (!refreshQueue.length) {
     setRefreshStatus("אין בתוצאות המסוננות מודעות עם קישור תקין.", true);
@@ -889,12 +937,14 @@ async function startRefresh() {
 }
 
 function stopRefresh(showStatus = true) {
+  refreshAttemptId++;
   clearTimeout(refreshTimer);
   clearTimeout(loadTimeout);
   refreshTimer = null;
   loadTimeout = null;
   refreshQueue = [];
   refreshIndex = 0;
+  refreshSkippedCount = 0;
   refreshPaused = false;
   currentPageLoaded = false;
   updateRefreshButtons();
@@ -913,6 +963,7 @@ function toggleRefreshPause() {
     delayBetweenPages();
   } else {
     setRefreshStatus("הרענון ממשיך וממתין לסיום טעינת הדף הנוכחי.");
+    startLoadTimeout();
   }
   updateRefreshButtons();
 }
@@ -1008,8 +1059,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabId !== refreshTabId) return;
   refreshTabId = null;
   if (refreshQueue.length && !currentPageLoaded) {
-    setRefreshStatus("כרטיסיית הרענון נסגרה לפני שהדף נטען; הרענון נעצר.", true);
-    stopRefresh(false);
+    skipRefreshListing(new Error("כרטיסיית הרענון נסגרה לפני טעינת הדף."), true);
   }
 });
 chrome.storage.onChanged.addListener((changes, area) => {

@@ -172,6 +172,8 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   );
   const files = await readZipEntries(workbook);
   const sheet = files.get("xl/worksheets/sheet1.xml");
+  const historySheet = files.get("xl/worksheets/sheet2.xml");
+  const historyLinks = files.get("xl/worksheets/_rels/sheet2.xml.rels");
   const links = files.get("xl/worksheets/_rels/sheet1.xml.rels");
 
   assert.equal(
@@ -183,8 +185,8 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   assert.ok(sheet.includes('rightToLeft="1"'));
   assert.ok(sheet.includes("מזהה מודעה/פרויקט"));
   assert.ok(sheet.includes("מחיר / החל מ׳ (₪)"));
-  assert.ok(sheet.includes("היסטוריית מחיר (JSON)"));
-  assert.ok(sheet.includes("<t>[{&quot;price&quot;:1790000,&quot;date&quot;:&quot;2026-10-30T00:00:00.000Z&quot;}]</t>"));
+  assert.ok(sheet.includes("תצפיות מחיר"));
+  assert.ok(!sheet.includes("JSON"));
   assert.ok(sheet.includes("פתח תקווה"));
   assert.ok(sheet.includes("תאריך יצירת מודעה"));
   assert.ok(sheet.includes("תאריך עדכון מודעה"));
@@ -205,6 +207,39 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   assert.ok(sheet.includes("<t>פתיחת פרויקט ↗</t>"));
   assert.ok(sheet.includes('<hyperlink ref="D2" r:id="rId1"/>'));
   assert.ok(links.includes('Target="https://www.yad2.co.il/yad1/project/18636"'));
+  assert.ok(files.get("xl/workbook.xml").includes('name="היסטוריית מחירים"'));
+  assert.ok(historySheet.includes("תאריך תצפית"));
+  assert.ok(historySheet.includes("<t>מחיר בסיס</t>"));
+  assert.ok(historySheet.includes("<t>30.10.2026</t>"));
+  assert.ok(historySheet.includes("<v>1790000</v>"));
+  assert.ok(historySheet.includes('<hyperlink ref="E2" r:id="rId1"/>'));
+  assert.ok(historyLinks.includes('Target="https://www.yad2.co.il/yad1/project/18636"'));
+});
+
+test("Excel price history uses readable rows and marks bootstrap dates as unknown", async () => {
+  const timestamp = Date.UTC(2026, 10, 2, 10);
+  const workbook = await CacheExport.buildExcel(
+    {
+      "madlan:ad-789": {
+        title: "דירה",
+        address: "חפץ חיים 25, פתח תקווה",
+        priceHistory: [
+          { price: 2_680_000, at: timestamp - 60_000 },
+          { price: 2_850_000, at: timestamp },
+        ],
+        url: "https://www.madlan.co.il/listings/ad-789",
+      },
+    },
+    () => {},
+    timestamp
+  );
+  const files = await readZipEntries(workbook);
+  const sheet = files.get("xl/worksheets/sheet2.xml");
+  assert.ok(sheet.includes("<t>מחיר קודם — התאריך לא ידוע</t>"));
+  assert.ok(sheet.includes("<t>המחיר השתנה — מועד השינוי המדויק לא ידוע</t>"));
+  assert.ok(sheet.includes("<v>2680000</v>"));
+  assert.ok(sheet.includes("<v>2850000</v>"));
+  assert.ok(!sheet.includes("<v>170000</v>"));
 });
 
 test("CSV export includes a safe Yad2 fallback URL and guards spreadsheet formulas", async () => {

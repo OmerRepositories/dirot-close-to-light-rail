@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "קרבה לרכבת הקלה – יד2 ומדלן",
   "description": "מציג על מודעות נדל\"ן ביד2, מדלן ופייסבוק את המרחק לרכבת הקלה ואת המחיר למ\"ר.",
-  "version": "1.11.40",
+  "version": "1.11.41",
   "permissions": ["storage", "clipboardWrite"],
   "icons": {
     "16": "icons/icon16.png",

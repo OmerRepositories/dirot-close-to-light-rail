@@ -95,6 +95,30 @@ var LRCacheExport = (() => {
     );
   }
 
+  function validPriceHistory(record) {
+    const history = Array.isArray(record && record.priceHistory)
+      ? record.priceHistory.filter(
+          (point) =>
+            point &&
+            Number.isFinite(point.price) &&
+            (Number.isFinite(point.at) || point.baselineUnknown === true)
+        )
+      : [];
+    return history;
+  }
+
+  function historyDate(timestamp) {
+    if (!Number.isFinite(timestamp) || !Number.isFinite(new Date(timestamp).getTime())) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("he-IL", {
+      timeZone: "Asia/Jerusalem",
+      day: "numeric",
+      month: "numeric",
+      year: "numeric",
+    }).format(new Date(timestamp));
+  }
+
   function cell(value) {
     if (value === undefined || value === null) return "";
     const isString = typeof value === "string";
@@ -266,7 +290,7 @@ var LRCacheExport = (() => {
     { key: "maxSqm", label: "שטח עד (מ״ר)", width: 16 },
     { key: "pricePerSqm", label: "מחיר למ״ר (₪)", width: 18 },
     { key: "observedPrice", label: "מחיר שנמדד באתר (₪)", width: 21 },
-    { key: "priceHistory", label: "היסטוריית מחיר (JSON)", width: 42 },
+    { key: "priceHistoryCount", label: "תצפיות מחיר", width: 14 },
     { key: "rooms", label: "חדרים", width: 12 },
     { key: "latitude", label: "קו רוחב", width: 14 },
     { key: "longitude", label: "קו אורך", width: 14 },
@@ -377,13 +401,27 @@ var LRCacheExport = (() => {
       })),
     ];
     const links = [];
+    const historyLinks = [];
     const rows = [];
+    const historyRows = [];
+    const historyColumns = [
+      { key: "site", label: "אתר", width: 14 },
+      { key: "title", label: "שם מודעה", width: 32 },
+      { key: "address", label: "כתובת", width: 30 },
+      { key: "listingId", label: "מזהה מודעה", width: 20 },
+      { key: "listingUrl", label: "קישור למודעה", width: 24 },
+      { key: "date", label: "תאריך תצפית", width: 18 },
+      { key: "price", label: "מחיר (₪)", width: 18 },
+      { key: "change", label: "שינוי במחיר (₪)", width: 20 },
+      { key: "status", label: "מה השתנה", width: 42 },
+    ];
     onProgress(0, records.length);
 
     for (let index = 0; index < records.length; index++) {
       const [key, record] = records[index];
       const { site, listingId } = parseCacheKey(key);
       const coordinates = record.coordinates || {};
+      const history = validPriceHistory(record);
       const timestamp = Number.isFinite(record.updatedAt)
         ? new Date(record.updatedAt).toISOString()
         : "";
@@ -405,7 +443,7 @@ var LRCacheExport = (() => {
         maxSqm: record.maxSqm,
         pricePerSqm: record.pricePerSqm ?? record.ppsm,
         observedPrice: record.observedPrice,
-        priceHistory: priceHistoryJson(record),
+        priceHistoryCount: history.length,
         rooms: record.rooms,
         latitude: coordinates.lat,
         longitude: coordinates.lon,
@@ -444,6 +482,64 @@ var LRCacheExport = (() => {
       });
       rows.push(`<row r="${index + 2}">${cells.join("")}</row>`);
 
+      const listingUrl = recordUrl(site, listingId, record);
+      const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
+      for (let historyIndex = 0; historyIndex < history.length; historyIndex++) {
+        const point = history[historyIndex];
+        const previous = history[historyIndex - 1];
+        const rowNumber = historyRows.length + 2;
+        const baselineDateUnknown =
+          historyIndex === 0 && (uncertainBaseline || !Number.isFinite(point.at));
+        const firstChangeDateUnknown = historyIndex === 1 && uncertainBaseline;
+        let change = null;
+        let status;
+        let changeStyle = 5;
+        if (baselineDateUnknown) {
+          status = "מחיר קודם — התאריך לא ידוע";
+        } else if (firstChangeDateUnknown) {
+          status = "המחיר השתנה — מועד השינוי המדויק לא ידוע";
+        } else if (!previous) {
+          status = "מחיר בסיס";
+        } else {
+          change = point.price - previous.price;
+          if (change < 0) {
+            status = "הוזלה";
+            changeStyle = 7;
+          } else if (change > 0) {
+            status = "עלייה";
+            changeStyle = 8;
+          } else {
+            status = "ללא שינוי";
+          }
+        }
+        const historyCells = [
+          `<c r="A${rowNumber}" s="6" t="inlineStr"><is><t>${xmlEscape(site === "yad2" ? "יד2" : site === "madlan" ? "מדלן" : site)}</t></is></c>`,
+          `<c r="B${rowNumber}" s="6" t="inlineStr"><is><t>${xmlEscape(record.title || listingId)}</t></is></c>`,
+          `<c r="C${rowNumber}" s="6" t="inlineStr"><is><t>${xmlEscape(record.address || "")}</t></is></c>`,
+          `<c r="D${rowNumber}" s="6" t="inlineStr"><is><t>${xmlEscape(listingId)}</t></is></c>`,
+        ];
+        if (listingUrl) {
+          const relationshipId = `rId${historyLinks.length + 1}`;
+          historyLinks.push({ id: relationshipId, target: listingUrl, reference: `E${rowNumber}` });
+          historyCells.push(
+            `<c r="E${rowNumber}" s="4" t="inlineStr"><is><t>פתיחת מודעה ↗</t></is></c>`
+          );
+        } else {
+          historyCells.push(`<c r="E${rowNumber}" s="6" t="inlineStr"><is><t></t></is></c>`);
+        }
+        historyCells.push(
+          baselineDateUnknown
+            ? `<c r="F${rowNumber}" s="6" t="inlineStr"><is><t>לא ידוע</t></is></c>`
+            : `<c r="F${rowNumber}" s="6" t="inlineStr"><is><t>${xmlEscape(historyDate(point.at))}</t></is></c>`,
+          `<c r="G${rowNumber}" s="5" t="n"><v>${point.price}</v></c>`,
+          Number.isFinite(change)
+            ? `<c r="H${rowNumber}" s="${changeStyle}" t="n"><v>${change}</v></c>`
+            : `<c r="H${rowNumber}" s="6" t="inlineStr"><is><t>—</t></is></c>`,
+          `<c r="I${rowNumber}" s="9" t="inlineStr"><is><t>${xmlEscape(status)}</t></is></c>`
+        );
+        historyRows.push(`<row r="${rowNumber}" ht="22" customHeight="1">${historyCells.join("")}</row>`);
+      }
+
       if ((index + 1) % BATCH_SIZE === 0 && index + 1 < records.length) {
         onProgress(index + 1, records.length);
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -463,6 +559,20 @@ var LRCacheExport = (() => {
       )
       .join("");
     const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths}</cols><sheetData><row r="1" ht="30" customHeight="1">${header}</row>${rows.join("")}</sheetData><autoFilter ref="A1:${lastColumn}${lastRow}"/>${links.length ? `<hyperlinks>${links.map((link) => `<hyperlink ref="${link.reference}" r:id="${link.id}"/>`).join("")}</hyperlinks>` : ""}</worksheet>`;
+    const historyHeader = historyColumns
+      .map(
+        (column, index) =>
+          `<c r="${columnName(index)}1" s="1" t="inlineStr"><is><t>${xmlEscape(column.label)}</t></is></c>`
+      )
+      .join("");
+    const historyWidths = historyColumns
+      .map(
+        (column, index) =>
+          `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`
+      )
+      .join("");
+    const historyLastRow = historyRows.length + 1;
+    const historySheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${historyWidths}</cols><sheetData><row r="1" ht="30" customHeight="1">${historyHeader}</row>${historyRows.join("")}</sheetData><autoFilter ref="A1:I${historyLastRow}"/>${historyLinks.length ? `<hyperlinks>${historyLinks.map((link) => `<hyperlink ref="${link.reference}" r:id="${link.id}"/>`).join("")}</hyperlinks>` : ""}</worksheet>`;
     const relationships = [
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`,
       ...links.map(
@@ -471,10 +581,18 @@ var LRCacheExport = (() => {
       ),
       "</Relationships>",
     ].join("");
-    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
-    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="מודעות" sheetId="1" r:id="rId1"/></sheets></workbook>`;
-    const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
-    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font><font><color rgb="FF0563C1"/><u/><sz val="10"/><name val="Arial"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF167C72"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFCE4D6"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFE2E8F0"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="4" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf></cellXfs></styleSheet>`;
+    const historyRelationships = [
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`,
+      ...historyLinks.map(
+        (link) =>
+          `<Relationship Id="${link.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(link.target)}" TargetMode="External"/>`
+      ),
+      "</Relationships>",
+    ].join("");
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="מודעות" sheetId="1" r:id="rId1"/><sheet name="היסטוריית מחירים" sheetId="2" r:id="rId2"/></sheets></workbook>`;
+    const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font><font><color rgb="FF0563C1"/><u/><sz val="10"/><name val="Arial"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF167C72"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFCE4D6"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFE2E8F0"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="10"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="4" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="4" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="4" fontId="0" fillId="4" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf></cellXfs></styleSheet>`;
     return zipFiles([
       ["[Content_Types].xml", contentTypes],
       ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
@@ -483,6 +601,8 @@ var LRCacheExport = (() => {
       ["xl/styles.xml", styles],
       ["xl/worksheets/sheet1.xml", sheet],
       ["xl/worksheets/_rels/sheet1.xml.rels", relationships],
+      ["xl/worksheets/sheet2.xml", historySheet],
+      ["xl/worksheets/_rels/sheet2.xml.rels", historyRelationships],
     ]);
   }
 
