@@ -44,6 +44,7 @@ let refreshAttemptId = 0;
 let refreshSkippedCount = 0;
 let fontScale = 1;
 let showFullPriceHistory = false;
+let priceTimelineFilter = "all";
 const expandedPriceHistory = new Set();
 
 const columns = [
@@ -638,21 +639,25 @@ function renderRows() {
 function renderPriceTimeline() {
   const timeline = $("priceTimeline");
   timeline.replaceChildren();
-  const changes = LRCacheExport.getPriceChanges(Object.fromEntries(visibleRecords));
+  const allEvents = LRCacheExport.getPriceTimelineEvents(cache);
+  const changes = allEvents.filter((event) => event.kind === "increase" || event.kind === "decrease");
+  const events = priceTimelineFilter === "all"
+    ? allEvents
+    : allEvents.filter((event) => event.kind === priceTimelineFilter);
   $("priceChangesCount").textContent = changes.length.toLocaleString("he-IL");
-  $("timelineCount").textContent = `${changes.length.toLocaleString("he-IL")} שינויים`;
-  $("emptyTimeline").hidden = changes.length > 0;
+  $("timelineCount").textContent = `${events.length.toLocaleString("he-IL")} אירועים`;
+  $("emptyTimeline").hidden = events.length > 0;
 
-  for (const change of changes) {
+  for (const change of events) {
     const item = document.createElement("li");
-    item.className = `timeline-item ${change.change < 0 ? "decrease" : "increase"}`;
+    item.className = `timeline-item ${change.kind}`;
     const card = document.createElement("article");
     card.className = "timeline-card";
     const metadata = document.createElement("div");
     metadata.className = "timeline-meta";
-    const date = document.createElement("time");
-    date.dateTime = new Date(change.at).toISOString();
-    date.textContent = displayHistoryDate(change.at);
+    const date = Number.isFinite(change.at) ? document.createElement("time") : document.createElement("span");
+    if (Number.isFinite(change.at)) date.dateTime = new Date(change.at).toISOString();
+    date.textContent = Number.isFinite(change.at) ? displayHistoryDate(change.at) : "תאריך לא ידוע";
     const site = document.createElement("span");
     site.className = "timeline-site";
     site.textContent = change.site === "yad2" ? "יד2" : change.site === "madlan" ? "מדלן" : change.site;
@@ -672,10 +677,15 @@ function renderPriceTimeline() {
 
     const summary = document.createElement("p");
     summary.className = "timeline-change";
-    summary.textContent = `מחיר המודעה ${change.change < 0 ? "ירד" : "עלה"} ב־${displayPrice(Math.abs(change.change))}`;
     const detail = document.createElement("p");
     detail.className = "timeline-prices";
-    detail.textContent = `מ־${displayPrice(change.fromPrice)} ל־${displayPrice(change.toPrice)}`;
+    if (change.kind === "decrease" || change.kind === "increase") {
+      summary.textContent = `מחיר המודעה ${change.kind === "decrease" ? "ירד" : "עלה"} ב־${displayPrice(Math.abs(change.change))}`;
+      detail.textContent = `מ־${displayPrice(change.fromPrice)} ל־${displayPrice(change.toPrice)}`;
+    } else if (change.kind === "uncertain") {
+      summary.textContent = "תצפית ראשונית — השינוי הקודם לא ודאי";
+      detail.textContent = `${displayPrice(change.fromPrice)} ← ${displayPrice(change.toPrice)}`;
+    }
     const address = document.createElement("p");
     address.className = "timeline-address";
     address.textContent = [change.address, change.city].filter(Boolean).join(", ");
@@ -683,6 +693,10 @@ function renderPriceTimeline() {
     if (address.textContent) card.appendChild(address);
     item.appendChild(card);
     timeline.appendChild(item);
+  }
+
+  for (const button of document.querySelectorAll("[data-price-filter]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.priceFilter === priceTimelineFilter));
   }
 }
 
@@ -1383,6 +1397,12 @@ $("listingsTab").addEventListener("click", () => setActiveTab("listings"));
 $("priceChangesTab").addEventListener("click", () => setActiveTab("priceChanges"));
 $("listingsTab").addEventListener("keydown", handleTabKeydown);
 $("priceChangesTab").addEventListener("keydown", handleTabKeydown);
+document.querySelectorAll("[data-price-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    priceTimelineFilter = button.dataset.priceFilter;
+    renderPriceTimeline();
+  });
+});
 $("exportTxt").addEventListener("click", () => exportCache("txt"));
 $("exportCsv").addEventListener("click", () => exportCache("csv"));
 $("exportExcel").addEventListener("click", () => exportCache("excel"));

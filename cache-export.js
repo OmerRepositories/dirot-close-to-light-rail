@@ -107,41 +107,62 @@ var LRCacheExport = (() => {
     return history;
   }
 
-  function getPriceChanges(cache) {
-    const changes = [];
+  function getPriceTimelineEvents(cache) {
+    const events = [];
     for (const [key, record] of getRecords(cache)) {
       if (record.recordType === "project") continue;
       const { site, listingId } = parseCacheKey(key);
       const history = validPriceHistory(record);
+      if (!history.length) continue;
       const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
+      const listing = {
+        key,
+        site,
+        listingId,
+        title: record.title || record.address || key,
+        address: record.address || "",
+        city: record.city || "",
+        url: recordUrl(site, listingId, record),
+      };
       for (let index = 1; index < history.length; index++) {
-        if (uncertainBaseline && index === 1) continue;
         const previous = history[index - 1];
         const point = history[index];
+        const shared = {
+          ...listing,
+          at: point.at,
+          fromPrice: previous.price,
+          toPrice: point.price,
+        };
+        if (uncertainBaseline && index === 1) {
+          events.push({ ...shared, kind: "uncertain" });
+          continue;
+        }
         if (
           !Number.isFinite(point.at) ||
           !Number.isFinite(previous.price) ||
           !Number.isFinite(point.price) ||
           point.price === previous.price
-        ) {
-          continue;
-        }
-        changes.push({
-          key,
-          site,
-          listingId,
-          title: record.title || record.address || key,
-          address: record.address || "",
-          city: record.city || "",
-          url: recordUrl(site, listingId, record),
-          at: point.at,
-          fromPrice: previous.price,
-          toPrice: point.price,
-          change: point.price - previous.price,
+        ) continue;
+        const change = point.price - previous.price;
+        events.push({
+          ...shared,
+          kind: change < 0 ? "decrease" : "increase",
+          change,
         });
       }
     }
-    return changes.sort((left, right) => right.at - left.at);
+    return events.sort((left, right) => {
+      if (!Number.isFinite(left.at) && !Number.isFinite(right.at)) return 0;
+      if (!Number.isFinite(left.at)) return 1;
+      if (!Number.isFinite(right.at)) return -1;
+      return right.at - left.at;
+    });
+  }
+
+  function getPriceChanges(cache) {
+    return getPriceTimelineEvents(cache).filter(
+      (event) => event.kind === "increase" || event.kind === "decrease"
+    );
   }
 
   function historyDate(timestamp) {
@@ -793,6 +814,7 @@ var LRCacheExport = (() => {
     buildTxt,
     downloadTxt,
     getPriceChanges,
+    getPriceTimelineEvents,
     parseCacheKey,
     recordUrl,
   };

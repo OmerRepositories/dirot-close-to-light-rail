@@ -217,6 +217,10 @@ tbody tr[aria-selected="true"] td { background: #e4f5f1; }
 .timeline-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #e8efed; }
 .timeline-heading h2 { margin: 0; color: #173650; font-size: 17px; }
 .timeline-heading p { margin: 4px 0 0; color: #718198; font-size: 11px; }
+.timeline-controls { display: grid; justify-items: end; gap: 6px; }
+.timeline-filters { display: flex; gap: 4px; padding: 3px; border: 1px solid #d6e4e0; border-radius: 9px; background: #f3f8f6; }
+.timeline-filters button { padding: 5px 9px; border-color: transparent; background: transparent; color: #536a7d; font-size: 10px; }
+.timeline-filters button[aria-pressed="true"] { border-color: #b8dcd3; color: #075d56; background: #fff; box-shadow: 0 1px 3px rgba(20, 70, 60, .12); }
 #timelineCount { padding: 5px 9px; border-radius: 999px; color: #12645c; background: #e0f2ed; font-size: 11px; font-weight: 750; white-space: nowrap; }
 .price-timeline { position: relative; display: grid; gap: 12px; max-width: 920px; margin: 17px 0 0; padding: 0 24px 0 0; list-style: none; }
 .price-timeline::before { position: absolute; top: 8px; right: 7px; bottom: 8px; width: 2px; background: #d8e8e4; content: ""; }
@@ -224,6 +228,8 @@ tbody tr[aria-selected="true"] td { background: #e4f5f1; }
 .timeline-item::before { position: absolute; z-index: 1; top: 17px; right: -23px; width: 12px; height: 12px; border: 3px solid #fff; border-radius: 50%; background: #78889a; box-shadow: 0 0 0 1px #ccd8d5; content: ""; }
 .timeline-item.decrease::before { background: #17815f; box-shadow: 0 0 0 1px #a8d7c1; }
 .timeline-item.increase::before { background: #cf514a; box-shadow: 0 0 0 1px #efc0bc; }
+.timeline-item.baseline::before { background: #718198; }
+.timeline-item.uncertain::before { background: #d29a31; box-shadow: 0 0 0 1px #f0d7a3; }
 .timeline-card { padding: 12px 14px; border: 1px solid #e0eae7; border-radius: 10px; background: #fbfdfc; }
 .timeline-meta { display: flex; align-items: center; gap: 8px; color: #718198; font-size: 10px; }
 .timeline-site { padding: 2px 7px; border-radius: 999px; color: #536a7d; background: #edf2f4; font-weight: 700; }
@@ -233,6 +239,8 @@ tbody tr[aria-selected="true"] td { background: #e4f5f1; }
 .timeline-change { margin: 5px 0 0; color: #607387; font-size: 12px; }
 .timeline-item.decrease .timeline-change { color: #16815e; font-weight: 800; }
 .timeline-item.increase .timeline-change { color: #a12727; font-weight: 800; }
+.timeline-item.baseline .timeline-change { color: #536a7d; font-weight: 750; }
+.timeline-item.uncertain .timeline-change { color: #8a5a10; font-weight: 750; }
 .timeline-prices { margin: 3px 0 0; color: #52677b; font-size: 11px; font-variant-numeric: tabular-nums; }
 .timeline-address { margin: 3px 0 0; color: #718198; font-size: 10px; }
 

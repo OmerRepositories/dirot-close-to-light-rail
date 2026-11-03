@@ -317,6 +317,54 @@ test("price timeline reports dated changes and ignores uncertain initial baselin
   assert.equal(changes[2].change, 50_000);
 });
 
+test("price timeline includes all dated rises, drops, and uncertain comparisons", () => {
+  const first = Date.UTC(2026, 10, 1, 10);
+  const second = Date.UTC(2026, 10, 1, 10, 1);
+  const third = Date.UTC(2026, 10, 3, 10);
+  const events = CacheExport.getPriceTimelineEvents({
+    "yad2:known-history": {
+      title: "מודעה עם עלייה וירידה",
+      priceHistory: [
+        { price: 1_000_000, at: first, baselineKnown: true },
+        { price: 1_100_000, at: second },
+        { price: 950_000, at: third },
+      ],
+    },
+    "madlan:uncertain-history": {
+      title: "מודעה עם נקודת בסיס לא ודאית",
+      priceHistory: [
+        { price: 1_000_000, at: first },
+        { price: 1_050_000, at: second },
+      ],
+    },
+    "yad2:project-1": {
+      recordType: "project",
+      priceHistory: [{ price: 2_000_000, at: first }],
+    },
+  });
+
+  assert.equal(events.length, 3);
+  assert.deepEqual(
+    events.filter((event) => event.kind === "increase").map((event) => event.change),
+    [100_000]
+  );
+  assert.deepEqual(
+    events.filter((event) => event.kind === "decrease").map((event) => event.change),
+    [-150_000]
+  );
+  const uncertain = events.find((event) => event.kind === "uncertain");
+  assert.equal(uncertain.title, "מודעה עם נקודת בסיס לא ודאית");
+  assert.equal(uncertain.at, second);
+  assert.equal(CacheExport.getPriceChanges({
+    "yad2:rise": {
+      priceHistory: [
+        { price: 1_000_000, at: first, baselineKnown: true },
+        { price: 1_100_000, at: second },
+      ],
+    },
+  })[0].kind, "increase");
+});
+
 test("TXT export is readable and includes listing fields, amenities, and price observations", async () => {
   const timestamp = Date.UTC(2026, 10, 3, 10);
   const progress = [];

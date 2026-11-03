@@ -159,12 +159,19 @@
       <div class="timeline-heading">
         <div>
           <h2>📉 ציר זמן — שינויי מחירים</h2>
-          <p>השינויים במודעות המוצגות מושווים לתצפית הקודמת. נקודת בסיס לא ודאית אינה מוצגת כשינוי.</p>
+          <p>כל שינויי המחיר מכל המודעות, ללא תלות בסינון הטבלה. השוואה ראשונית לא ודאית תוצג בנפרד ולא תסווג כעלייה או ירידה.</p>
         </div>
-        <span id="timelineCount"></span>
+        <div class="timeline-controls">
+          <div class="timeline-filters" role="group" aria-label="סינון ציר הזמן לפי שינוי מחיר">
+            <button type="button" data-price-filter="all" aria-pressed="true">הכול</button>
+            <button type="button" data-price-filter="increase" aria-pressed="false">עלו ↑</button>
+            <button type="button" data-price-filter="decrease" aria-pressed="false">ירדו ↓</button>
+          </div>
+          <span id="timelineCount"></span>
+        </div>
       </div>
       <ol id="priceTimeline" class="price-timeline"></ol>
-      <p id="emptyTimeline" class="empty-state" hidden>עדיין אין שינויי מחירים מאומתים ברשומות המוצגות.</p>
+      <p id="emptyTimeline" class="empty-state" hidden>אין אירועים בסינון הזה.</p>
     </section>
 
     <div id="detailsBackdrop" class="details-backdrop" hidden></div>
