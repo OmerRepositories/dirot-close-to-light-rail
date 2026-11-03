@@ -110,14 +110,15 @@
         <p>נפתח דף מודעה אחד בכל פעם בכרטיסייה יחידה. יש לפעול לפי תנאי האתר; אין עקיפת חסימות.</p>
       </div>
       <label class="delay-field">
-        <span>המתנה אחרי טעינת דף (שניות, מינימום 15)</span>
-        <input id="refreshDelay" type="number" min="15" max="600" step="5" value="30">
+        <span>המתנה אחרי טעינת דף (שניות, מינימום 5)</span>
+        <input id="refreshDelay" type="number" min="5" max="600" step="5" value="30">
       </label>
       <div class="refresh-actions">
         <button id="startRefresh" class="primary" type="button">התחלת רענון</button>
         <button id="pauseRefresh" type="button" disabled>השהיה</button>
         <button id="stopRefresh" type="button" disabled>עצירה</button>
       </div>
+      <p class="refresh-warning" role="note"><strong>אזהרה:</strong> השהיה של 5 שניות קצרה ועלולה להיחשב פעילות תכופה; האתרים עלולים לחסום או להגביל את הגישה. השתמשו בהשהיה קצרה רק אם אתם מודעים לסיכון. התוסף אינו עוקף חסימות.</p>
       <span id="refreshStatus" role="status" aria-live="polite">רענון אוטומטי אינו פעיל.</span>
     </section>
 

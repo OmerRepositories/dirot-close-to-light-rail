@@ -88,6 +88,17 @@ input, select {
 .refresh-toolbar > div:first-child { flex: 1 1 280px; }
 .refresh-toolbar strong { color: #173650; }
 .refresh-toolbar p { margin: 2px 0 0; color: #718198; font-size: 11px; }
+.refresh-toolbar .refresh-warning {
+  flex: 1 1 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e6b247;
+  border-radius: 7px;
+  color: #713e0b;
+  background: #fff5dc;
+  font-size: 12px;
+}
+.refresh-toolbar .refresh-warning strong { color: #713e0b; }
 .delay-field { flex: 0 1 225px; }
 .delay-field input { direction: ltr; text-align: right; }
 .refresh-actions { display: flex; gap: 6px; }

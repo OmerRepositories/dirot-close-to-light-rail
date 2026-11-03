@@ -1117,33 +1117,47 @@
   }
 
   function writeListingCache(snapshot, attempt, maxBytes) {
-    chrome.storage.local.set({ [LISTING_CACHE_KEY]: snapshot }, () => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        const quotaError = /quota|exceed|bytes/i.test(error.message || "");
-        if (quotaError && attempt < 4 && Object.keys(snapshot).length > 1) {
-          const reducedBytes = Math.max(2, Math.floor(maxBytes / 2));
-          const reduced = trimListingCache(
-            snapshot,
-            Date.now(),
-            reducedBytes
-          );
+    const handleWriteError = (error) => {
+      const errorMessage = error && error.message ? error.message : String(error || "");
+      const quotaError = /quota|exceed|bytes/i.test(errorMessage);
+      if (quotaError && attempt < 16 && Object.keys(snapshot).length > 0) {
+        const reducedBytes = Math.max(2, Math.floor(maxBytes / 2));
+        const reduced = trimListingCache(snapshot, Date.now(), reducedBytes);
+        if (Object.keys(reduced).length > 0) {
           writeListingCache(reduced, attempt + 1, reducedBytes);
           return;
         }
-        console.warn(
-          "[lightrail-ext] failed to save listing cache",
-          error.message
-        );
-      } else {
-        listingCache = snapshot;
       }
+      console.error("[lightrail-ext] failed to save listing cache", {
+        message: errorMessage || "Unknown storage error",
+        attempt: attempt + 1,
+        recordCount: Object.keys(snapshot).length,
+        byteLimit: maxBytes,
+      });
       cacheWriteInProgress = false;
       if (pendingCacheSave) {
         pendingCacheSave = false;
         saveListingCache();
       }
-    });
+    };
+
+    try {
+      chrome.storage.local.set({ [LISTING_CACHE_KEY]: snapshot }, () => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          handleWriteError(error);
+        } else {
+          listingCache = snapshot;
+          cacheWriteInProgress = false;
+          if (pendingCacheSave) {
+            pendingCacheSave = false;
+            saveListingCache();
+          }
+        }
+      });
+    } catch (error) {
+      handleWriteError(error);
+    }
   }
 
   function rememberListingAmenities(
