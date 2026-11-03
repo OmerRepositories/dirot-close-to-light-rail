@@ -6,6 +6,18 @@
   color: #17283d;
   background: #edf4f3;
 }
+textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 7px 8px;
+  border: 1px solid #d5dfeb;
+  border-radius: 7px;
+  color: #17283d;
+  background: #fff;
+  font: inherit;
+  resize: vertical;
+}
+textarea:focus-visible { outline: 2px solid #168b89; outline-offset: 2px; }
 
 body { margin: 0; min-width: 900px; }
 body { zoom: var(--cache-manager-scale, 1); }
@@ -165,6 +177,8 @@ th {
 th:first-child, td:first-child { position: sticky; z-index: 2; right: 0; background: #f8fafc; }
 thead th:first-child { z-index: 4; background: #e5f1ef; }
 th.record-name, td.record-name { min-width: 240px; max-width: 340px; }
+th.notes-column, td.notes-cell { min-width: 220px; max-width: 320px; }
+td.notes-cell { overflow: hidden; color: #53667c; white-space: normal; overflow-wrap: anywhere; }
 th.boolean-column { min-width: 95px; }
 .sort-button {
   display: inline-flex;

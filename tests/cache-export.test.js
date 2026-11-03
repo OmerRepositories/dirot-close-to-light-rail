@@ -50,6 +50,7 @@ test("CSV export includes every amenity flag, coordinates, URL, and arbitrary re
   const csv = await CacheExport.buildCsv(
     {
       "yad2:ad-123": {
+        notes: "18 דקות הליכה מהרכבת; אין אוטובוסים באזור",
         amenities: { parking: true, secureRoom: false, newFlag: true },
         coordinates: { lat: 32.1, lon: 34.8 },
         price: 2500000,
@@ -87,6 +88,7 @@ test("CSV export includes every amenity flag, coordinates, URL, and arbitrary re
 
   assert.equal(csv.charCodeAt(0), 0xfeff);
   assert.equal(yad2.cache_key, "yad2:ad-123");
+  assert.equal(yad2.notes, "18 דקות הליכה מהרכבת; אין אוטובוסים באזור");
   assert.equal(yad2.listing_url, "https://www.yad2.co.il/realestate/item/center-and-sharon/ad-123");
   assert.equal(yad2.amenity_parking, "true");
   assert.equal(yad2.amenity_secureRoom, "false");
@@ -147,6 +149,7 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   const workbook = await CacheExport.buildExcel(
     {
       "yad2:ad-123": {
+        notes: "לבדוק רעש מהכביש",
         amenities: { parking: true, secureRoom: false },
         coordinates: { lat: 32.1, lon: 34.8 },
         recordType: "project",
@@ -186,13 +189,14 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
   assert.ok(files.has("[Content_Types].xml"));
-  assert.ok(sheet.includes('<autoFilter ref="A1:AJ2"/>'));
+  assert.ok(sheet.includes('<autoFilter ref="A1:AK2"/>'));
   assert.ok(sheet.includes('rightToLeft="1"'));
   assert.ok(sheet.includes("מזהה מודעה/פרויקט"));
   assert.ok(sheet.includes("מחיר / החל מ׳ (₪)"));
   assert.ok(sheet.includes("תצפיות מחיר"));
   assert.ok(!sheet.includes("JSON"));
   assert.ok(sheet.includes("פתח תקווה"));
+  assert.ok(sheet.includes("<t>לבדוק רעש מהכביש</t>"));
   assert.ok(sheet.includes("תאריך יצירת מודעה"));
   assert.ok(sheet.includes("תאריך עדכון מודעה"));
   assert.ok(sheet.includes("<t>2026-10-14</t>"));
@@ -202,8 +206,8 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   assert.ok(sheet.includes("<v>420</v>"));
   assert.ok(sheet.includes("<t>תחנת שטמפפר</t>"));
   assert.ok(sheet.includes("תיווך?"));
-  assert.ok(sheet.includes('<c r="Y2" s="3" t="inlineStr"><is><t>כן</t>'));
-  assert.ok(sheet.includes('<c r="W2" t="inlineStr"><is><t>כן</t>'));
+  assert.ok(sheet.includes('<c r="Z2" s="3" t="inlineStr"><is><t>כן</t>'));
+  assert.ok(sheet.includes('<c r="X2" t="inlineStr"><is><t>כן</t>'));
   assert.ok(sheet.includes("<v>1790000</v>"));
   assert.ok(sheet.includes("<v>100</v>"));
   assert.ok(sheet.includes("<v>25000</v>"));
@@ -388,6 +392,7 @@ test("TXT export is readable and includes listing fields, amenities, and price o
     {
       "yad2:ad-123": {
         title: "דירה ברחוב הדוגמה",
+        notes: "18 דקות הליכה מהרכבת\nאין אוטובוסים באזור",
         address: "הדוגמה 25",
         city: "פתח תקווה",
         price: 900_000,
@@ -408,6 +413,8 @@ test("TXT export is readable and includes listing fields, amenities, and price o
 
   assert.ok(txt.startsWith("\uFEFF"));
   assert.ok(txt.includes("דירה ברחוב הדוגמה"));
+  assert.ok(txt.includes("הערה אישית: 18 דקות הליכה מהרכבת"));
+  assert.ok(txt.includes("אין אוטובוסים באזור"));
   assert.ok(txt.includes("הדוגמה 25"));
   assert.ok(txt.includes("מחיר: ₪900,000"));
   assert.ok(txt.includes("היסטוריית מחירים:\r\n  02.11.2026 (משוער) — ₪1,000,000"));

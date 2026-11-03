@@ -49,6 +49,7 @@ const expandedPriceHistory = new Set();
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
+  { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
   { key: "type", label: "סוג", sortKey: "recordType" },
   { key: "site", label: "אתר", sortKey: "site" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
@@ -427,6 +428,7 @@ function matchesNumericFilters(record, ranges) {
 
 function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "title") return [record.title, record.address, record.city, record.neighborhood].filter(Boolean).join(" ");
+  if (key === "notes") return record.notes || "";
   if (key === "type") return recordType(record) === "project" ? "פרויקט" : "מודעה";
   if (key === "site") return recordSite(recordKey);
   if (key === "listingStatus") {
@@ -574,6 +576,10 @@ function renderRows() {
             textCell(address, "record-address")
           );
         }
+      } else if (column.key === "notes") {
+        td.className = "notes-cell";
+        td.textContent = record.notes || "";
+        td.title = record.notes || "";
       } else if (column.key === "price") {
         td.textContent = displayPrice(record.price);
       } else if (column.key === "pricePerSqm") {
@@ -852,6 +858,7 @@ function openRecord(key) {
 
   const values = {
     title: record.title,
+    notes: record.notes,
     address: record.address,
     city: record.city,
     neighborhood: record.neighborhood,
