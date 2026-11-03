@@ -122,6 +122,39 @@ test("a newly observed current price is recorded even when it returns to an old 
   ]);
 });
 
+test("clearing price histories preserves listing prices and every other cached field", () => {
+  const cache = {
+    "yad2:listing": {
+      price: 2_090_000,
+      observedPrice: 2_090_000,
+      priceHistory: [
+        { price: 2_190_000, at: 100 },
+        { price: 2_090_000, at: 200 },
+      ],
+      title: "מודעת תיווך",
+      brokerage: true,
+    },
+    "madlan:no-history": {
+      price: 3_000_000,
+      title: "ללא היסטוריה",
+    },
+  };
+
+  const result = CacheData.clearPriceHistories(cache);
+  assert.equal(result.clearedCount, 1);
+  assert.deepEqual(result.cache["yad2:listing"], {
+    price: 2_090_000,
+    observedPrice: 2_090_000,
+    title: "מודעת תיווך",
+    brokerage: true,
+  });
+  assert.deepEqual(result.cache["madlan:no-history"], cache["madlan:no-history"]);
+  assert.deepEqual(cache["yad2:listing"].priceHistory, [
+    { price: 2_190_000, at: 100 },
+    { price: 2_090_000, at: 200 },
+  ]);
+});
+
 test("price history is bounded and ignores invalid observations", () => {
   const previous = {
     price: 100,

@@ -1004,6 +1004,55 @@ async function deleteRecord(key) {
   }
 }
 
+async function clearPriceHistories() {
+  const status = $("exportStatus");
+  const button = $("clearPriceHistory");
+  if (writing || dirtyFields.size) {
+    status.textContent = "יש לשמור או לבטל שינויים פתוחים לפני ניקוי היסטוריית המחירים.";
+    status.dataset.error = "true";
+    return;
+  }
+  if (!Object.values(cache).some(
+    (record) => Array.isArray(record && record.priceHistory) && record.priceHistory.length
+  )) {
+    status.textContent = "לא נמצאו היסטוריות מחירים לניקוי.";
+    status.dataset.error = "false";
+    return;
+  }
+  if (!window.confirm(
+    "לנקות את היסטוריית המחירים מכל המודעות והפרויקטים? המחיר האחרון וכל יתר פרטי המטמון יישארו ללא שינוי."
+  )) {
+    return;
+  }
+
+  button.disabled = true;
+  status.dataset.error = "false";
+  status.textContent = "מנקה היסטוריות מחירים…";
+  writing = true;
+  try {
+    const latest = await storageGet();
+    const result = LRCacheData.clearPriceHistories(latest);
+    if (!result.clearedCount) {
+      cache = latest;
+      status.textContent = "לא נותרו היסטוריות מחירים לניקוי.";
+      renderRows();
+      return;
+    }
+    await storageSet({ [CACHE_KEY]: result.cache });
+    cache = result.cache;
+    status.textContent = `היסטוריית המחירים אופסה ב־${result.clearedCount.toLocaleString("he-IL")} רשומות. המחיר האחרון ושאר הנתונים נשמרו.`;
+    if (selectedKey && cache[selectedKey]) openRecord(selectedKey);
+    else renderRows();
+  } catch (error) {
+    console.error("[lightrail-ext] failed to clear cached price histories", error);
+    status.textContent = error.message || "ניקוי היסטוריית המחירים נכשל.";
+    status.dataset.error = "true";
+  } finally {
+    writing = false;
+    button.disabled = false;
+  }
+}
+
 function setRefreshStatus(text, error = false) {
   const status = $("refreshStatus");
   status.textContent = text;
@@ -1432,6 +1481,7 @@ document.querySelectorAll("[data-price-filter]").forEach((button) => {
 $("exportTxt").addEventListener("click", () => exportCache("txt"));
 $("exportCsv").addEventListener("click", () => exportCache("csv"));
 $("exportExcel").addEventListener("click", () => exportCache("excel"));
+$("clearPriceHistory").addEventListener("click", clearPriceHistories);
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;

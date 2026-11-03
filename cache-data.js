@@ -73,6 +73,22 @@ var LRCacheData = (() => {
     return { cache: upgraded, updatedCount };
   }
 
+  function clearPriceHistories(cache) {
+    const cleared = { ...(cache && typeof cache === "object" ? cache : {}) };
+    let clearedCount = 0;
+    for (const [key, record] of Object.entries(cleared)) {
+      if (!record || typeof record !== "object" || Array.isArray(record)) continue;
+      if (!Object.prototype.hasOwnProperty.call(record, "priceHistory")) continue;
+      const updatedRecord = { ...record };
+      delete updatedRecord.priceHistory;
+      cleared[key] = updatedRecord;
+      if (Array.isArray(record.priceHistory) && record.priceHistory.length) {
+        clearedCount++;
+      }
+    }
+    return { cache: cleared, clearedCount };
+  }
+
   function recordPriceObservation(previous, price, timestamp = Date.now()) {
     if (!Number.isFinite(price)) {
       return {
@@ -171,6 +187,7 @@ var LRCacheData = (() => {
     hasUncertainInitialPriceBaseline,
     inferredPriceHistoryTimestamp,
     addEstimatedBaselineDates,
+    clearPriceHistories,
     recordPriceObservation,
     pricePerSqm,
     matchesNumericRange,

@@ -73,6 +73,8 @@ main { padding: 12px clamp(8px, 1.4vw, 20px) 20px; }
 #exportStatus { min-width: 190px; color: #16815e; font-size: 11px; }
 #exportStatus[data-error="true"] { color: #a12727; }
 #exportStatus:empty { display: none; }
+#clearPriceHistory { border-color: #efb4b1; color: #a12727; }
+#clearPriceHistory:hover { background: #fff0ef; }
 .toolbar label, .delay-field { display: grid; gap: 3px; min-width: 125px; }
 .toolbar label span, .delay-field span { color: #53667c; font-size: 10px; font-weight: 750; }
 .toolbar .search-field { flex: 1 1 270px; }

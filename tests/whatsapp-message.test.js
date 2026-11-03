@@ -14,6 +14,7 @@ test("WhatsApp message lists all requested property fields in Hebrew", () => {
     railDistance: "כ-450 מ׳ (מיקום משוער)",
     url: "https://www.madlan.co.il/listings/test-id",
     missingAmenities: ["ממ״ד", "דוד שמש"],
+    brokerage: true,
   });
 
   assert.equal(
@@ -28,6 +29,7 @@ test("WhatsApp message lists all requested property fields in Hebrew", () => {
       "מרחק בקו אווירי מהרכבת (המרחק בהליכה עשוי להיות גדול יותר): כ-450 מ׳ (מיקום משוער)",
       "קישור למודעה: https://www.madlan.co.il/listings/test-id",
       "שים לב חסר: ממ״ד, דוד שמש",
+      "שים לב מדובר במודעת תיווך!",
     ].join("\n")
   );
 });
@@ -51,6 +53,13 @@ test("WhatsApp message lists only confirmed missing amenities", () => {
     LRWhatsAppMessage.format({ missingAmenities: null }).includes("שים לב חסר:"),
     false
   );
+});
+
+test("WhatsApp message warns about brokerage only when positively identified", () => {
+  const warning = "שים לב מדובר במודעת תיווך!";
+  assert.equal(LRWhatsAppMessage.format({ brokerage: true }).endsWith(warning), true);
+  assert.equal(LRWhatsAppMessage.format({ brokerage: false }).includes(warning), false);
+  assert.equal(LRWhatsAppMessage.format({ brokerage: null }).includes(warning), false);
 });
 
 test("Floor labels are normalized from Madlan's value-first and label-first layouts", () => {

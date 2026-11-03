@@ -674,12 +674,14 @@
     const stats = parser.extractPriceSqm(root, text);
     const metadata = parser.listingExportData(root);
     const floor = readListingFloor(root);
+    const listingRecord = entry.listingId
+      ? listingCache[cacheKeyForListing(entry.listingId)]
+      : null;
     const amenities =
       entry.amenities ||
       parser.readAmenities(root) ||
-      (entry.listingId &&
-      validCachedAmenities(listingCache[cacheKeyForListing(entry.listingId)])
-        ? listingCache[cacheKeyForListing(entry.listingId)].amenities
+      (validCachedAmenities(listingRecord)
+        ? listingRecord.amenities
         : {});
     const missingAmenities = Object.entries(amenities)
       .filter(([, present]) => present === false)
@@ -699,6 +701,11 @@
       pricePerSqm: Number.isFinite(stats.ppsm) ? `₪${fmtNum(stats.ppsm)}` : null,
       railDistance,
       missingAmenities,
+      brokerage:
+        hasBrokerageSignal(
+          root === document ? document.querySelector("main") || document.body : root
+        ) ||
+        Boolean(listingRecord && listingRecord.brokerage === true),
       url: parser.listingUrl(root) || location.href,
     };
   }

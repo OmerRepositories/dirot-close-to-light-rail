@@ -67,6 +67,9 @@ var LRWhatsAppMessage = (() => {
     if (missingAmenities.length) {
       lines.push(`שים לב חסר: ${missingAmenities.join(", ")}`);
     }
+    if (data.brokerage === true) {
+      lines.push("שים לב מדובר במודעת תיווך!");
+    }
     return lines.join("\n");
   }
 
