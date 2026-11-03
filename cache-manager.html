@@ -14,7 +14,7 @@
       <p class="intro">צפייה ועריכה של מודעות ופרויקטים שנשמרו במכשיר הזה.</p>
     </div>
     <div class="header-actions">
-      <button id="togglePriceHistory" type="button" aria-pressed="true" aria-controls="recordsTable">הצג רק מחיר אחרון</button>
+      <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">⤢ הצג היסטוריה מלאה</button>
       <div class="font-controls" role="group" aria-label="שינוי גודל הטקסט">
         <button id="decreaseFont" type="button" aria-label="הקטנת הטקסט" title="הקטנת הטקסט">א−</button>
         <span id="fontScaleValue" aria-live="polite">100%</span>
@@ -27,6 +27,19 @@
   </header>
 
   <main>
+    <section class="export-toolbar" aria-label="ייצוא מידע שמור">
+      <div>
+        <strong>📦 הייצוא שלך</strong>
+        <span>כל המודעות והיסטוריית המחירים בקובץ</span>
+      </div>
+      <div class="export-actions">
+        <button id="exportTxt" type="button">📄 TXT</button>
+        <button id="exportCsv" type="button">🧾 CSV</button>
+        <button id="exportExcel" type="button">📊 Excel</button>
+      </div>
+      <span id="exportStatus" role="status" aria-live="polite"></span>
+    </section>
+
     <section class="toolbar" aria-label="חיפוש וסינון מידע שמור">
       <label class="search-field">
         <span>חיפוש בכל העמודות</span>
@@ -123,7 +136,16 @@
       <span id="refreshStatus" role="status" aria-live="polite">רענון אוטומטי אינו פעיל.</span>
     </section>
 
-    <section class="record-list" aria-label="טבלת מודעות ופרויקטים שמורים">
+    <nav class="view-tabs" role="tablist" aria-label="תצוגות מידע שמור">
+      <button id="listingsTab" class="view-tab active" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel">
+        🏠 מודעות ופרויקטים
+      </button>
+      <button id="priceChangesTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel">
+        📉 שינויי מחירים <span id="priceChangesCount" class="tab-count">0</span>
+      </button>
+    </nav>
+
+    <section id="listingsPanel" class="tab-panel record-list" role="tabpanel" aria-labelledby="listingsTab" aria-label="טבלת מודעות ופרויקטים שמורים">
       <div class="table-wrap">
         <table id="recordsTable">
           <thead id="gridHead"></thead>
@@ -131,6 +153,18 @@
         </table>
         <p id="emptyState" class="empty-state" hidden>לא נמצאו רשומות מתאימות.</p>
       </div>
+    </section>
+
+    <section id="priceChangesPanel" class="tab-panel price-timeline-panel" role="tabpanel" aria-labelledby="priceChangesTab" aria-label="ציר זמן של שינויי מחירים" hidden>
+      <div class="timeline-heading">
+        <div>
+          <h2>📉 ציר זמן — שינויי מחירים</h2>
+          <p>השינויים במודעות המוצגות מושווים לתצפית הקודמת. נקודת בסיס לא ודאית אינה מוצגת כשינוי.</p>
+        </div>
+        <span id="timelineCount"></span>
+      </div>
+      <ol id="priceTimeline" class="price-timeline"></ol>
+      <p id="emptyTimeline" class="empty-state" hidden>עדיין אין שינויי מחירים מאומתים ברשומות המוצגות.</p>
     </section>
 
     <div id="detailsBackdrop" class="details-backdrop" hidden></div>
@@ -205,6 +239,7 @@
     </aside>
   </main>
   <script src="cache-data.js"></script>
+  <script src="cache-export.js"></script>
   <script src="cache-manager.js"></script>
 </body>
 </html>

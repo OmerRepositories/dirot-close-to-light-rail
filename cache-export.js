@@ -107,6 +107,43 @@ var LRCacheExport = (() => {
     return history;
   }
 
+  function getPriceChanges(cache) {
+    const changes = [];
+    for (const [key, record] of getRecords(cache)) {
+      if (record.recordType === "project") continue;
+      const { site, listingId } = parseCacheKey(key);
+      const history = validPriceHistory(record);
+      const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
+      for (let index = 1; index < history.length; index++) {
+        if (uncertainBaseline && index === 1) continue;
+        const previous = history[index - 1];
+        const point = history[index];
+        if (
+          !Number.isFinite(point.at) ||
+          !Number.isFinite(previous.price) ||
+          !Number.isFinite(point.price) ||
+          point.price === previous.price
+        ) {
+          continue;
+        }
+        changes.push({
+          key,
+          site,
+          listingId,
+          title: record.title || record.address || key,
+          address: record.address || "",
+          city: record.city || "",
+          url: recordUrl(site, listingId, record),
+          at: point.at,
+          fromPrice: previous.price,
+          toPrice: point.price,
+          change: point.price - previous.price,
+        });
+      }
+    }
+    return changes.sort((left, right) => right.at - left.at);
+  }
+
   function historyDate(timestamp) {
     if (!Number.isFinite(timestamp) || !Number.isFinite(new Date(timestamp).getTime())) {
       return "";
@@ -117,6 +154,136 @@ var LRCacheExport = (() => {
       month: "numeric",
       year: "numeric",
     }).format(new Date(timestamp));
+  }
+
+  function textDate(timestamp) {
+    if (!Number.isFinite(timestamp) || !Number.isFinite(new Date(timestamp).getTime())) {
+      return "תאריך לא ידוע";
+    }
+    return new Intl.DateTimeFormat("he-IL-u-nu-latn", {
+      timeZone: "Asia/Jerusalem",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date(timestamp));
+  }
+
+  function textPrice(value) {
+    return Number.isFinite(value) ? `₪${Math.round(value).toLocaleString("he-IL")}` : "לא ידוע";
+  }
+
+  function textValue(value) {
+    if (value === undefined) return "לא ידוע";
+    if (value === null) return "לא ידוע";
+    if (typeof value === "boolean") return value ? "כן" : "לא";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+
+  const TEXT_FIELD_LABELS = {
+    recordType: "סוג",
+    title: "שם המודעה",
+    address: "כתובת",
+    city: "עיר",
+    neighborhood: "שכונה",
+    updatedAt: "נשמר/עודכן",
+    listingCreatedAt: "תאריך יצירת מודעה",
+    listingUpdatedAt: "תאריך עדכון מודעה",
+    listingStatus: "סטטוס מודעה",
+    listingStatusCheckedAt: "תאריך בדיקת סטטוס",
+    price: "מחיר",
+    maxPrice: "מחיר מרבי",
+    observedPrice: "מחיר שנצפה",
+    sqm: "שטח (מ״ר)",
+    maxSqm: "שטח מרבי (מ״ר)",
+    pricePerSqm: "מחיר למ״ר",
+    ppsm: "מחיר למ״ר",
+    rooms: "חדרים",
+    railMeters: "מרחק מהרכבת (מ׳)",
+    railApprox: "מרחק משוער",
+    railStation: "תחנת רכבת קרובה",
+    brokerage: "תיווך",
+    coordinates: "קואורדינטות",
+    amenities: "מאפייני הנכס",
+    url: "קישור",
+    listingUrl: "קישור למודעה",
+    href: "קישור",
+    link: "קישור",
+  };
+
+  async function buildTxt(cache, onProgress = () => {}) {
+    const records = getRecords(cache);
+    const lines = [
+      "מידע שמור — קרבה לרכבת הקלה",
+      `נוצר בתאריך: ${textDate(Date.now())}`,
+      `מספר רשומות: ${records.length.toLocaleString("he-IL")}`,
+      "",
+    ];
+    onProgress(0, records.length);
+    for (let index = 0; index < records.length; index++) {
+      const [key, record] = records[index];
+      const { site, listingId } = parseCacheKey(key);
+      lines.push("=".repeat(72));
+      lines.push(record.title || record.address || key);
+      lines.push(`אתר: ${site === "yad2" ? "יד2" : site === "madlan" ? "מדלן" : site}`);
+      lines.push(`מזהה: ${listingId}`);
+      const url = recordUrl(site, listingId, record);
+      if (url) lines.push(`קישור: ${url}`);
+      for (const [field, value] of Object.entries(record)) {
+        if (field === "title") continue;
+        const label = TEXT_FIELD_LABELS[field] || field;
+        if (field === "priceHistory") {
+          const history = validPriceHistory(record);
+          lines.push("היסטוריית מחירים:");
+          if (!history.length) {
+            lines.push("  אין תצפיות מחיר");
+          } else {
+            for (const point of history) {
+              lines.push(`  ${textDate(point.at)} — ${textPrice(point.price)}`);
+            }
+          }
+        } else if (field === "amenities" && value && typeof value === "object") {
+          lines.push(`${label}:`);
+          for (const [amenity, amenityValue] of Object.entries(value)) {
+            lines.push(`  ${AMENITY_LABELS[amenity] || amenity}: ${textValue(amenityValue)}`);
+          }
+        } else if (field === "coordinates" && value && typeof value === "object") {
+          lines.push(`קו רוחב: ${textValue(value.lat)}`);
+          lines.push(`קו אורך: ${textValue(value.lon)}`);
+        } else if (field === "recordType") {
+          lines.push(`סוג: ${value === "project" ? "פרויקט" : "מודעה"}`);
+        } else if (field === "listingStatus") {
+          const status = value === "active" ? "פעילה" : value === "removed" ? "הוסרה" : "לא נבדקה";
+          lines.push(`${label}: ${status}`);
+        } else if (["price", "maxPrice", "observedPrice", "pricePerSqm", "ppsm"].includes(field)) {
+          lines.push(`${label}: ${textPrice(value)}`);
+        } else if (["updatedAt", "listingStatusCheckedAt"].includes(field)) {
+          lines.push(`${label}: ${Number.isFinite(value) ? textDate(value) : textValue(value)}`);
+        } else {
+          lines.push(`${label}: ${textValue(value)}`);
+        }
+      }
+      lines.push("");
+      if ((index + 1) % BATCH_SIZE === 0 && index + 1 < records.length) {
+        onProgress(index + 1, records.length);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    onProgress(records.length, records.length);
+    return `\uFEFF${lines.join("\r\n")}\r\n`;
+  }
+
+  function downloadTxt(text, date = new Date()) {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `listing-cache-${date.toISOString().slice(0, 10)}.txt`;
+    anchor.hidden = true;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   function cell(value) {
@@ -618,7 +785,17 @@ var LRCacheExport = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
-  return { buildCsv, downloadCsv, buildExcel, downloadExcel, parseCacheKey, recordUrl };
+  return {
+    buildCsv,
+    downloadCsv,
+    buildExcel,
+    downloadExcel,
+    buildTxt,
+    downloadTxt,
+    getPriceChanges,
+    parseCacheKey,
+    recordUrl,
+  };
 })();
 
 if (typeof module !== "undefined") module.exports = LRCacheExport;

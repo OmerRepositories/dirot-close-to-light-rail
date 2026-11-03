@@ -205,7 +205,11 @@ $("openCacheManager").addEventListener("click", () => {
 });
 
 async function exportListingCache(format) {
-  const buttons = [$("exportListingCacheCsv"), $("exportListingCacheExcel")];
+  const buttons = [
+    $("exportListingCacheTxt"),
+    $("exportListingCacheCsv"),
+    $("exportListingCacheExcel"),
+  ];
   const status = $("exportStatus");
   const spinner = $("exportSpinner");
   buttons.forEach((button) => {
@@ -228,7 +232,7 @@ async function exportListingCache(format) {
       });
     });
     const count = Object.keys(stored).length;
-    const formatName = format === "excel" ? "Excel" : "CSV";
+    const formatName = format === "excel" ? "Excel" : format.toUpperCase();
     const progress = (complete, total) => {
       status.textContent = total
         ? `מכין ${formatName}… ${complete.toLocaleString("he-IL")} / ${total.toLocaleString("he-IL")}`
@@ -237,11 +241,14 @@ async function exportListingCache(format) {
     if (format === "excel") {
       const excel = await LRCacheExport.buildExcel(stored, progress);
       LRCacheExport.downloadExcel(excel);
-    } else {
+    } else if (format === "csv") {
       const csv = await LRCacheExport.buildCsv(stored, progress);
       LRCacheExport.downloadCsv(csv);
+    } else {
+      const txt = await LRCacheExport.buildTxt(stored, progress);
+      LRCacheExport.downloadTxt(txt);
     }
-    status.textContent = `הייצוא הושלם · ${count.toLocaleString("he-IL")} מודעות`;
+    status.textContent = `הייצוא הושלם · ${count.toLocaleString("he-IL")} רשומות`;
   } catch (error) {
     console.error("[lightrail-ext] failed to export listing cache", error);
     status.dataset.error = "true";
@@ -257,3 +264,4 @@ async function exportListingCache(format) {
 
 $("exportListingCacheCsv").addEventListener("click", () => exportListingCache("csv"));
 $("exportListingCacheExcel").addEventListener("click", () => exportListingCache("excel"));
+$("exportListingCacheTxt").addEventListener("click", () => exportListingCache("txt"));

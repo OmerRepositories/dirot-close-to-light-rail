@@ -43,7 +43,8 @@ let currentPageLoaded = false;
 let refreshAttemptId = 0;
 let refreshSkippedCount = 0;
 let fontScale = 1;
-let showFullPriceHistory = true;
+let showFullPriceHistory = false;
+const expandedPriceHistory = new Set();
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
@@ -111,6 +112,18 @@ function displayPrice(value) {
   return Number.isFinite(value) ? `₪${Math.round(value).toLocaleString("he-IL")}` : "";
 }
 
+function displayHistoryDate(value) {
+  if (!Number.isFinite(value) || !Number.isFinite(new Date(value).getTime())) {
+    return "תאריך לא ידוע";
+  }
+  return new Intl.DateTimeFormat("he-IL-u-nu-latn", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 function validPriceHistory(record) {
   return Array.isArray(record && record.priceHistory)
     ? record.priceHistory.filter(
@@ -124,8 +137,8 @@ function validPriceHistory(record) {
 
 function priceHistoryDate(point, index, history) {
   return index === 0 && LRCacheData.hasUncertainInitialPriceBaseline(history)
-    ? "תאריך קודם לא ידוע"
-    : displayDate(point.at);
+    ? "תאריך לא ידוע"
+    : displayHistoryDate(point.at);
 }
 
 function refreshableListingUrl(key, record) {
@@ -568,11 +581,11 @@ function renderRows() {
         } else {
           const historyList = document.createElement("div");
           historyList.className = "price-history-list";
-          const lastIndex = showFullPriceHistory ? 0 : history.length - 1;
-          const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
-          for (let index = history.length - 1; index >= lastIndex; index--) {
+          const expanded = showFullPriceHistory || expandedPriceHistory.has(key);
+          if (expanded) historyList.classList.add("expanded");
+          const visibleCount = expanded ? history.length : Math.min(3, history.length);
+          for (let index = history.length - 1; index >= history.length - visibleCount; index--) {
             const point = history[index];
-            const previous = history[index - 1];
             const item = document.createElement("div");
             item.className = "price-history-item";
             const date = document.createElement("span");
@@ -581,26 +594,20 @@ function renderRows() {
             const price = document.createElement("strong");
             price.textContent = displayPrice(point.price);
             item.append(date, price);
-            if (showFullPriceHistory) {
-              const change = document.createElement("span");
-              change.className = "price-history-change";
-              if (index === 0 && uncertainBaseline) {
-                change.textContent = "מחיר קודם שמור";
-              } else if (index === 1 && uncertainBaseline) {
-                change.textContent = "מועד השינוי לא ידוע";
-              } else if (previous && Number.isFinite(previous.price) && Number.isFinite(point.price)) {
-                const difference = point.price - previous.price;
-                change.textContent = `${difference > 0 ? "+" : ""}${displayPrice(difference)}`;
-                if (difference < 0) change.classList.add("price-down");
-                if (difference > 0) change.classList.add("price-up");
-              } else {
-                change.textContent = "נקודת בסיס";
-              }
-              item.appendChild(change);
-            }
             historyList.appendChild(item);
           }
           td.appendChild(historyList);
+          if (history.length > 3) {
+            const toggle = document.createElement("button");
+            toggle.type = "button";
+            toggle.className = "history-toggle";
+            toggle.dataset.historyToggle = key;
+            toggle.setAttribute("aria-expanded", String(expanded));
+            toggle.textContent = expanded
+              ? "הצג פחות"
+              : `הצג עוד ${(history.length - 3).toLocaleString("he-IL")}`;
+            td.appendChild(toggle);
+          }
         }
       } else if (column.key === "actions") {
         const actions = document.createElement("div");
@@ -625,6 +632,88 @@ function renderRows() {
   $("emptyState").hidden = visibleRecords.length > 0;
   $("sortSelect").value = sort.key;
   renderHeaderSortState();
+  renderPriceTimeline();
+}
+
+function renderPriceTimeline() {
+  const timeline = $("priceTimeline");
+  timeline.replaceChildren();
+  const changes = LRCacheExport.getPriceChanges(Object.fromEntries(visibleRecords));
+  $("priceChangesCount").textContent = changes.length.toLocaleString("he-IL");
+  $("timelineCount").textContent = `${changes.length.toLocaleString("he-IL")} שינויים`;
+  $("emptyTimeline").hidden = changes.length > 0;
+
+  for (const change of changes) {
+    const item = document.createElement("li");
+    item.className = `timeline-item ${change.change < 0 ? "decrease" : "increase"}`;
+    const card = document.createElement("article");
+    card.className = "timeline-card";
+    const metadata = document.createElement("div");
+    metadata.className = "timeline-meta";
+    const date = document.createElement("time");
+    date.dateTime = new Date(change.at).toISOString();
+    date.textContent = displayHistoryDate(change.at);
+    const site = document.createElement("span");
+    site.className = "timeline-site";
+    site.textContent = change.site === "yad2" ? "יד2" : change.site === "madlan" ? "מדלן" : change.site;
+    metadata.append(date, site);
+
+    const title = document.createElement("h3");
+    if (/^https?:\/\//i.test(change.url)) {
+      const link = document.createElement("a");
+      link.href = change.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = change.title;
+      title.appendChild(link);
+    } else {
+      title.textContent = change.title;
+    }
+
+    const summary = document.createElement("p");
+    summary.className = "timeline-change";
+    summary.textContent = `מחיר המודעה ${change.change < 0 ? "ירד" : "עלה"} ב־${displayPrice(Math.abs(change.change))}`;
+    const detail = document.createElement("p");
+    detail.className = "timeline-prices";
+    detail.textContent = `מ־${displayPrice(change.fromPrice)} ל־${displayPrice(change.toPrice)}`;
+    const address = document.createElement("p");
+    address.className = "timeline-address";
+    address.textContent = [change.address, change.city].filter(Boolean).join(", ");
+    card.append(metadata, title, summary, detail);
+    if (address.textContent) card.appendChild(address);
+    item.appendChild(card);
+    timeline.appendChild(item);
+  }
+}
+
+function setActiveTab(tab) {
+  const listingsActive = tab === "listings";
+  $("listingsTab").classList.toggle("active", listingsActive);
+  $("priceChangesTab").classList.toggle("active", !listingsActive);
+  $("listingsTab").setAttribute("aria-selected", String(listingsActive));
+  $("priceChangesTab").setAttribute("aria-selected", String(!listingsActive));
+  $("listingsPanel").hidden = !listingsActive;
+  $("priceChangesPanel").hidden = listingsActive;
+}
+
+function handleTabKeydown(event) {
+  const tabs = [$("listingsTab"), $("priceChangesTab")];
+  const currentIndex = tabs.indexOf(event.currentTarget);
+  let nextIndex;
+  if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+    nextIndex = (currentIndex + 1) % tabs.length;
+  } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+    nextIndex = (currentIndex + tabs.length - 1) % tabs.length;
+  } else if (event.key === "Home") {
+    nextIndex = 0;
+  } else if (event.key === "End") {
+    nextIndex = tabs.length - 1;
+  } else {
+    return;
+  }
+  event.preventDefault();
+  tabs[nextIndex].focus();
+  tabs[nextIndex].click();
 }
 
 function renderHeaderSortState() {
@@ -680,35 +769,21 @@ function renderPriceHistory(record) {
   const table = document.createElement("table");
   const head = document.createElement("thead");
   const heading = document.createElement("tr");
-  for (const label of ["תאריך", "מחיר", "שינוי"]) {
+  for (const label of ["תאריך", "מחיר"]) {
     const th = document.createElement("th");
     th.textContent = label;
     heading.appendChild(th);
   }
   head.appendChild(heading);
   const body = document.createElement("tbody");
-  const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
   for (let index = history.length - 1; index >= 0; index--) {
     const point = history[index];
-    const previous = history[index - 1];
     const row = document.createElement("tr");
     const date = document.createElement("td");
     date.textContent = priceHistoryDate(point, index, history);
     const price = document.createElement("td");
     price.textContent = displayPrice(point.price);
-    const change = document.createElement("td");
-    if (index === 0 && uncertainBaseline) {
-      change.textContent = "מחיר קודם שמור";
-    } else if (index === 1 && uncertainBaseline) {
-      change.textContent = "מועד השינוי לא ידוע";
-    } else if (previous && Number.isFinite(previous.price) && Number.isFinite(point.price)) {
-      const difference = point.price - previous.price;
-      change.textContent = `${difference > 0 ? "+" : ""}${displayPrice(difference)}`;
-      if (difference < 0) change.className = "price-down";
-    } else {
-      change.textContent = "נקודת בסיס";
-    }
-    row.append(date, price, change);
+    row.append(date, price);
     body.appendChild(row);
   }
   table.append(head, body);
@@ -1214,10 +1289,56 @@ async function loadCache() {
   }
 }
 
+async function exportCache(format) {
+  const buttons = ["exportTxt", "exportCsv", "exportExcel"].map($);
+  const status = $("exportStatus");
+  buttons.forEach((button) => {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  });
+  status.dataset.error = "false";
+  status.textContent = "מכין את המידע לייצוא…";
+  const formatName = format === "excel" ? "Excel" : format.toUpperCase();
+  try {
+    const stored = await storageGet();
+    const progress = (complete, total) => {
+      status.textContent = total
+        ? `מכין ${formatName}… ${complete.toLocaleString("he-IL")} / ${total.toLocaleString("he-IL")}`
+        : `מכין קובץ ${formatName}…`;
+    };
+    if (format === "excel") {
+      LRCacheExport.downloadExcel(await LRCacheExport.buildExcel(stored, progress));
+    } else if (format === "csv") {
+      LRCacheExport.downloadCsv(await LRCacheExport.buildCsv(stored, progress));
+    } else {
+      LRCacheExport.downloadTxt(await LRCacheExport.buildTxt(stored, progress));
+    }
+    status.textContent = `הייצוא הושלם · ${Object.keys(stored).length.toLocaleString("he-IL")} רשומות`;
+  } catch (error) {
+    console.error(`[lightrail-ext] failed to export cache as ${formatName}`, error);
+    status.dataset.error = "true";
+    status.textContent = `ייצוא ${formatName} נכשל: ${error.message || "שגיאה לא ידועה"}`;
+  } finally {
+    buttons.forEach((button) => {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    });
+  }
+}
+
 rows.addEventListener("click", (event) => {
   const row = event.target.closest("tr[data-key]");
   if (!row) return;
   if (event.target.closest("a[data-record-link]")) return;
+  const historyToggle = event.target.closest("button[data-history-toggle]");
+  if (historyToggle) {
+    event.stopPropagation();
+    const key = historyToggle.dataset.historyToggle;
+    if (expandedPriceHistory.has(key)) expandedPriceHistory.delete(key);
+    else expandedPriceHistory.add(key);
+    renderRows();
+    return;
+  }
   const button = event.target.closest("button[data-action]");
   if (button && button.dataset.action === "delete") {
     event.stopPropagation();
@@ -1252,11 +1373,19 @@ $("increaseFont").addEventListener("click", () => changeFontScale(FONT_SCALE_STE
 $("resetFont").addEventListener("click", () => changeFontScale(1 - fontScale));
 $("togglePriceHistory").addEventListener("click", (event) => {
   showFullPriceHistory = !showFullPriceHistory;
+  expandedPriceHistory.clear();
   const button = event.currentTarget;
-  button.textContent = showFullPriceHistory ? "הצג רק מחיר אחרון" : "הצג היסטוריה מלאה";
+  button.textContent = showFullPriceHistory ? "⌃ הצג עד 3 בכל שורה" : "⤢ הצג היסטוריה מלאה";
   button.setAttribute("aria-pressed", String(showFullPriceHistory));
   renderRows();
 });
+$("listingsTab").addEventListener("click", () => setActiveTab("listings"));
+$("priceChangesTab").addEventListener("click", () => setActiveTab("priceChanges"));
+$("listingsTab").addEventListener("keydown", handleTabKeydown);
+$("priceChangesTab").addEventListener("keydown", handleTabKeydown);
+$("exportTxt").addEventListener("click", () => exportCache("txt"));
+$("exportCsv").addEventListener("click", () => exportCache("csv"));
+$("exportExcel").addEventListener("click", () => exportCache("excel"));
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;

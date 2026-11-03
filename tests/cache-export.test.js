@@ -282,3 +282,75 @@ test("CSV generation yields progress while processing a large cache", async () =
     [450, 450],
   ]);
 });
+
+test("price timeline reports dated changes and ignores uncertain initial baselines", () => {
+  const first = Date.UTC(2026, 10, 1, 10);
+  const second = Date.UTC(2026, 10, 2, 10);
+  const third = Date.UTC(2026, 10, 3, 10);
+  const changes = CacheExport.getPriceChanges({
+    "yad2:known-history": {
+      title: "דירה א",
+      priceHistory: [
+        { price: 1_000_000, at: first, baselineKnown: true },
+        { price: 1_050_000, at: second },
+        { price: 900_000, at: third },
+      ],
+    },
+    "madlan:uncertain-history": {
+      title: "דירה ב",
+      priceHistory: [
+        { price: 1_000_000, at: first },
+        { price: 1_050_000, at: first + 60_000 },
+        { price: 950_000, at: third },
+      ],
+    },
+  });
+
+  assert.equal(changes.length, 3);
+  assert.equal(changes[0].title, "דירה א");
+  assert.equal(changes[0].change, -150_000);
+  assert.equal(changes[0].fromPrice, 1_050_000);
+  assert.equal(changes[0].toPrice, 900_000);
+  assert.equal(changes[0].at, third);
+  assert.equal(changes[1].title, "דירה ב");
+  assert.equal(changes[1].change, -100_000);
+  assert.equal(changes[2].change, 50_000);
+});
+
+test("TXT export is readable and includes listing fields, amenities, and price observations", async () => {
+  const timestamp = Date.UTC(2026, 10, 3, 10);
+  const progress = [];
+  const txt = await CacheExport.buildTxt(
+    {
+      "yad2:ad-123": {
+        title: "דירה ברחוב הדוגמה",
+        address: "הדוגמה 25",
+        city: "פתח תקווה",
+        price: 900_000,
+        sqm: 80,
+        rooms: 3,
+        updatedAt: timestamp,
+        priceHistory: [
+          { price: 1_000_000, at: null, baselineUnknown: true },
+          { price: 900_000, at: timestamp },
+        ],
+        amenities: { secureRoom: true, parking: false },
+        coordinates: { lat: 32.1, lon: 34.8 },
+        extraNote: "תוספת",
+      },
+    },
+    (complete, total) => progress.push([complete, total])
+  );
+
+  assert.ok(txt.startsWith("\uFEFF"));
+  assert.ok(txt.includes("דירה ברחוב הדוגמה"));
+  assert.ok(txt.includes("הדוגמה 25"));
+  assert.ok(txt.includes("מחיר: ₪900,000"));
+  assert.ok(txt.includes("היסטוריית מחירים:\r\n  תאריך לא ידוע — ₪1,000,000"));
+  assert.ok(txt.includes("  03.11.2026 — ₪900,000"));
+  assert.ok(txt.includes("ממ״ד: כן"));
+  assert.ok(txt.includes("חניה: לא"));
+  assert.ok(txt.includes("קו רוחב: 32.1"));
+  assert.ok(txt.includes("extraNote: תוספת"));
+  assert.deepEqual(progress, [[0, 1], [1, 1]]);
+});
