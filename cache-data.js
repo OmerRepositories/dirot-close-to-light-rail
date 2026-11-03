@@ -23,6 +23,56 @@ var LRCacheData = (() => {
     );
   }
 
+  function inferredPriceHistoryTimestamp(history, index) {
+    if (!Array.isArray(history) || !history[index]) return null;
+    const point = history[index];
+    if (Number.isFinite(point.baselineEstimatedAt)) return point.baselineEstimatedAt;
+    const uncertainInitialBaseline =
+      index === 0 && hasUncertainInitialPriceBaseline(history);
+    if (
+      !uncertainInitialBaseline &&
+      point.baselineUnknown !== true &&
+      Number.isFinite(point.at)
+    ) {
+      return null;
+    }
+    for (let nextIndex = index + 1; nextIndex < history.length; nextIndex++) {
+      if (Number.isFinite(history[nextIndex] && history[nextIndex].at)) {
+        return history[nextIndex].at - 24 * 60 * 60 * 1000;
+      }
+    }
+    return null;
+  }
+
+  function addEstimatedBaselineDates(cache) {
+    const upgraded = { ...(cache && typeof cache === "object" ? cache : {}) };
+    let updatedCount = 0;
+    for (const [key, record] of Object.entries(upgraded)) {
+      const history = record && Array.isArray(record.priceHistory)
+        ? record.priceHistory
+        : [];
+      if (
+        history.length < 2 ||
+        !history[0] ||
+        history[0].baselineDateEstimated === true ||
+        !hasUncertainInitialPriceBaseline(history)
+      ) {
+        continue;
+      }
+      const estimatedAt = inferredPriceHistoryTimestamp(history, 0);
+      if (!Number.isFinite(estimatedAt)) continue;
+      const updatedHistory = [...history];
+      updatedHistory[0] = {
+        ...history[0],
+        baselineEstimatedAt: estimatedAt,
+        baselineDateEstimated: true,
+      };
+      upgraded[key] = { ...record, priceHistory: updatedHistory };
+      updatedCount++;
+    }
+    return { cache: upgraded, updatedCount };
+  }
+
   function recordPriceObservation(previous, price, timestamp = Date.now()) {
     if (!Number.isFinite(price)) {
       return {
@@ -119,6 +169,8 @@ var LRCacheData = (() => {
 
   return {
     hasUncertainInitialPriceBaseline,
+    inferredPriceHistoryTimestamp,
+    addEstimatedBaselineDates,
     recordPriceObservation,
     pricePerSqm,
     matchesNumericRange,

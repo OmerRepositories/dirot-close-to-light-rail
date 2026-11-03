@@ -671,11 +671,7 @@
     const text = entry.getText();
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
     const parts = [address.street, address.city].filter(Boolean);
-    const stats =
-      entry.parsed ||
-      (IS_YAD2
-        ? LR.extractPriceSqm(text)
-        : LRMadlan.extractPriceSqm(root, text));
+    const stats = parser.extractPriceSqm(root, text);
     const metadata = parser.listingExportData(root);
     const floor = readListingFloor(root);
     const amenities =
@@ -1313,9 +1309,7 @@
     if (cacheWriteSuppressedIds.has(key)) return;
     const previous = listingCache[key] || {};
     const text = entry.getText();
-    const stats =
-      entry.parsed ||
-      (IS_YAD2 ? LR.extractPriceSqm(text) : LRMadlan.extractPriceSqm(root, text));
+    const stats = parser.extractPriceSqm(root, text);
     const listingMetadata = parser.listingExportData(root);
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
     const observedPrice = Number.isFinite(stats.price) ? stats.price : null;
@@ -1434,31 +1428,30 @@
         entry.cacheNote.hidden = true;
         continue;
       }
+      const root = entry.kind === "single" ? document : entry.card;
+      const siteParser = IS_YAD2 ? LRYad2 : LRMadlan;
       if (!CFG.calculatePpsm) {
         entry.info = null;
         entry.parsed = null;
         entry.delta = null;
         entry.ppsm.hidden = true;
+      } else if (IS_YAD2 && entry.kind === "single") {
+        entry.parsed = siteParser.extractPriceSqm(root, entry.getText());
+        entry.info = entry.parsed.ppsm ? entry.parsed : null;
       } else if (!entry.info && entry.priceTries < 8 && now - entry.lastTry > 1500) {
         entry.priceTries++;
         entry.lastTry = now;
         const text = entry.getText();
-        entry.parsed = IS_YAD2
-          ? LR.extractPriceSqm(text)
-          : LRMadlan.extractPriceSqm(entry.kind === "single" ? document : entry.card, text);
+        entry.parsed = siteParser.extractPriceSqm(root, text);
         entry.info = entry.parsed.ppsm ? entry.parsed : null;
       }
-      const root = entry.kind === "single" ? document : entry.card;
-      const siteParser = IS_YAD2 ? LRYad2 : LRMadlan;
       entry.listingId = siteParser.listingId(root);
       const currentAmenities = (IS_YAD2 ? LRYad2 : LRMadlan).readAmenities(root);
       if (entry.kind === "single") rememberListingExportData(entry);
       if (entry.kind === "single" && currentAmenities) {
         entry.amenities = currentAmenities;
         const listingText = entry.getText();
-        const listingStats = IS_YAD2
-          ? LR.extractPriceSqm(listingText)
-          : LRMadlan.extractPriceSqm(root, listingText);
+        const listingStats = siteParser.extractPriceSqm(root, listingText);
         const address = siteParser.readAddress(
           root,
           listingText,

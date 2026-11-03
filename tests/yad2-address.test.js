@@ -53,6 +53,26 @@ test("Yad2 search cards use locality shown outside the address line", () => {
   });
 });
 
+test("Yad2 listing price extraction prefers the current price over the previous tagged price", () => {
+  const root = {
+    querySelector(selector) {
+      assert.equal(
+        selector,
+        '[data-testid="current-price"] [data-testid="price"]'
+      );
+      return { innerText: "2,090,000 ₪" };
+    },
+  };
+  const stats = context.LRYad2.extractPriceSqm(
+    root,
+    "2,190,000 ₪ 2,090,000 ₪ 100 מ״ר"
+  );
+
+  assert.equal(stats.price, 2_090_000);
+  assert.equal(stats.sqm, 100);
+  assert.equal(stats.ppsm, 20_900);
+});
+
 test("Yad2 does not replace a focused address with a conflicting house number", () => {
   const text = [
     "ביאליק 3",

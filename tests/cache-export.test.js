@@ -115,7 +115,7 @@ test("CSV export includes every amenity flag, coordinates, URL, and arbitrary re
   assert.equal(madlan.record_legacyField, "kept");
 });
 
-test("price history export marks bootstrap prices with an unknown date", async () => {
+test("price history export marks inferred bootstrap dates as estimates", async () => {
   const timestamp = Date.UTC(2026, 10, 2, 10);
   const csv = await CacheExport.buildCsv(
     {
@@ -132,7 +132,12 @@ test("price history export marks bootstrap prices with an unknown date", async (
   const [headers, values] = csv.slice(1).trimEnd().split("\r\n").map(parseCsvRow);
   const row = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
   assert.deepEqual(JSON.parse(row.priceHistory), [
-    { price: 2_680_000, date: null, baselineUnknown: true },
+    {
+      price: 2_680_000,
+      date: new Date(timestamp - 86_400_000).toISOString(),
+      baselineUnknown: true,
+      baselineDateEstimated: true,
+    },
     { price: 2_850_000, date: new Date(timestamp).toISOString() },
   ]);
 });
@@ -216,7 +221,7 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   assert.ok(historyLinks.includes('Target="https://www.yad2.co.il/yad1/project/18636"'));
 });
 
-test("Excel price history uses readable rows and marks bootstrap dates as unknown", async () => {
+test("Excel price history uses readable rows and marks bootstrap dates as estimates", async () => {
   const timestamp = Date.UTC(2026, 10, 2, 10);
   const workbook = await CacheExport.buildExcel(
     {
@@ -235,11 +240,12 @@ test("Excel price history uses readable rows and marks bootstrap dates as unknow
   );
   const files = await readZipEntries(workbook);
   const sheet = files.get("xl/worksheets/sheet2.xml");
-  assert.ok(sheet.includes("<t>מחיר קודם — התאריך לא ידוע</t>"));
-  assert.ok(sheet.includes("<t>המחיר השתנה — מועד השינוי המדויק לא ידוע</t>"));
+  assert.ok(sheet.includes("<t>מחיר קודם — תאריך משוער</t>"));
+  assert.ok(sheet.includes("<t>עלייה — מחיר קודם עם תאריך משוער</t>"));
+  assert.ok(sheet.includes("<t>1.11.2026 (משוער)</t>"));
   assert.ok(sheet.includes("<v>2680000</v>"));
   assert.ok(sheet.includes("<v>2850000</v>"));
-  assert.ok(!sheet.includes("<v>170000</v>"));
+  assert.ok(sheet.includes("<v>170000</v>"));
 });
 
 test("CSV export includes a safe Yad2 fallback URL and guards spreadsheet formulas", async () => {
@@ -283,7 +289,7 @@ test("CSV generation yields progress while processing a large cache", async () =
   ]);
 });
 
-test("price timeline reports dated changes and ignores uncertain initial baselines", () => {
+test("price timeline includes changes from uncertain initial baselines with estimated-date markers", () => {
   const first = Date.UTC(2026, 10, 1, 10);
   const second = Date.UTC(2026, 10, 2, 10);
   const third = Date.UTC(2026, 10, 3, 10);
@@ -306,18 +312,26 @@ test("price timeline reports dated changes and ignores uncertain initial baselin
     },
   });
 
-  assert.equal(changes.length, 3);
-  assert.equal(changes[0].title, "דירה א");
-  assert.equal(changes[0].change, -150_000);
-  assert.equal(changes[0].fromPrice, 1_050_000);
-  assert.equal(changes[0].toPrice, 900_000);
-  assert.equal(changes[0].at, third);
-  assert.equal(changes[1].title, "דירה ב");
-  assert.equal(changes[1].change, -100_000);
-  assert.equal(changes[2].change, 50_000);
+  assert.equal(changes.length, 4);
+  const knownReduction = changes.find(
+    (event) => event.title === "דירה א" && event.toPrice === 900_000
+  );
+  assert.equal(knownReduction.change, -150_000);
+  assert.equal(knownReduction.fromPrice, 1_050_000);
+  assert.equal(knownReduction.at, third);
+  const estimatedIncrease = changes.find(
+    (event) => event.title === "דירה ב" && event.kind === "increase"
+  );
+  assert.equal(estimatedIncrease.change, 50_000);
+  assert.equal(estimatedIncrease.baselineDateEstimated, true);
+  assert.equal(estimatedIncrease.baselineEstimatedAt, first + 60_000 - 86_400_000);
+  const laterReduction = changes.find(
+    (event) => event.title === "דירה ב" && event.kind === "decrease"
+  );
+  assert.equal(laterReduction.change, -100_000);
 });
 
-test("price timeline includes all dated rises, drops, and uncertain comparisons", () => {
+test("price timeline classifies uncertain baseline changes as estimated", () => {
   const first = Date.UTC(2026, 10, 1, 10);
   const second = Date.UTC(2026, 10, 1, 10, 1);
   const third = Date.UTC(2026, 10, 3, 10);
@@ -333,7 +347,7 @@ test("price timeline includes all dated rises, drops, and uncertain comparisons"
     "madlan:uncertain-history": {
       title: "מודעה עם נקודת בסיס לא ודאית",
       priceHistory: [
-        { price: 1_000_000, at: first },
+        { price: 1_000_000, at: null, baselineUnknown: true },
         { price: 1_050_000, at: second },
       ],
     },
@@ -346,15 +360,17 @@ test("price timeline includes all dated rises, drops, and uncertain comparisons"
   assert.equal(events.length, 3);
   assert.deepEqual(
     events.filter((event) => event.kind === "increase").map((event) => event.change),
-    [100_000]
+    [100_000, 50_000]
   );
   assert.deepEqual(
     events.filter((event) => event.kind === "decrease").map((event) => event.change),
     [-150_000]
   );
-  const uncertain = events.find((event) => event.kind === "uncertain");
-  assert.equal(uncertain.title, "מודעה עם נקודת בסיס לא ודאית");
-  assert.equal(uncertain.at, second);
+  const estimated = events.find((event) => event.title === "מודעה עם נקודת בסיס לא ודאית");
+  assert.equal(estimated.kind, "increase");
+  assert.equal(estimated.at, second);
+  assert.equal(estimated.baselineEstimatedAt, second - 86_400_000);
+  assert.equal(estimated.baselineDateEstimated, true);
   assert.equal(CacheExport.getPriceChanges({
     "yad2:rise": {
       priceHistory: [
@@ -394,7 +410,7 @@ test("TXT export is readable and includes listing fields, amenities, and price o
   assert.ok(txt.includes("דירה ברחוב הדוגמה"));
   assert.ok(txt.includes("הדוגמה 25"));
   assert.ok(txt.includes("מחיר: ₪900,000"));
-  assert.ok(txt.includes("היסטוריית מחירים:\r\n  תאריך לא ידוע — ₪1,000,000"));
+  assert.ok(txt.includes("היסטוריית מחירים:\r\n  02.11.2026 (משוער) — ₪1,000,000"));
   assert.ok(txt.includes("  03.11.2026 — ₪900,000"));
   assert.ok(txt.includes("ממ״ד: כן"));
   assert.ok(txt.includes("חניה: לא"));

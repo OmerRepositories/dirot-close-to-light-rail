@@ -61,6 +61,67 @@ test("legacy same-day bootstrap history is not treated as a dated price change",
   );
 });
 
+test("uncertain price baselines get an idempotent estimated date without changing their source timestamp", () => {
+  const observedAt = Date.UTC(2026, 10, 3, 10);
+  const cache = {
+    "yad2:listing": {
+      title: "מודעה",
+      priceHistory: [
+        { price: 1_800_000, at: null, baselineUnknown: true },
+        { price: 1_999_999, at: observedAt },
+      ],
+    },
+    "madlan:known": {
+      priceHistory: [
+        { price: 2_000_000, at: observedAt - 86_400_000, baselineKnown: true },
+        { price: 2_100_000, at: observedAt },
+      ],
+    },
+    "yad2:undated": {
+      priceHistory: [
+        { price: 1_500_000, at: null, baselineUnknown: true },
+        { price: 1_600_000, at: null, baselineUnknown: true },
+      ],
+    },
+  };
+
+  const result = CacheData.addEstimatedBaselineDates(cache);
+  assert.equal(result.updatedCount, 1);
+  assert.deepEqual(result.cache["yad2:listing"].priceHistory[0], {
+    price: 1_800_000,
+    at: null,
+    baselineUnknown: true,
+    baselineEstimatedAt: observedAt - 86_400_000,
+    baselineDateEstimated: true,
+  });
+  assert.equal(result.cache["yad2:listing"].priceHistory[1].at, observedAt);
+  assert.deepEqual(result.cache["madlan:known"], cache["madlan:known"]);
+  assert.deepEqual(result.cache["yad2:undated"], cache["yad2:undated"]);
+
+  const repeated = CacheData.addEstimatedBaselineDates(result.cache);
+  assert.equal(repeated.updatedCount, 0);
+  assert.deepEqual(repeated.cache, result.cache);
+});
+
+test("a newly observed current price is recorded even when it returns to an old baseline price", () => {
+  const yesterday = Date.UTC(2026, 10, 2, 10);
+  const observedAt = Date.UTC(2026, 10, 3, 10);
+  const previous = {
+    observedPrice: 2_190_000,
+    priceHistory: [
+      { price: 2_090_000, at: null, baselineUnknown: true },
+      { price: 2_190_000, at: yesterday },
+    ],
+  };
+
+  const result = CacheData.recordPriceObservation(previous, 2_090_000, observedAt);
+  assert.deepEqual(result.priceHistory, [
+    { price: 2_090_000, at: null, baselineUnknown: true },
+    { price: 2_190_000, at: yesterday },
+    { price: 2_090_000, at: observedAt },
+  ]);
+});
+
 test("price history is bounded and ignores invalid observations", () => {
   const previous = {
     price: 100,

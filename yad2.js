@@ -81,6 +81,21 @@ var LRYad2 = (() => {
     return link ? new URL(link.href, location.href).href : null;
   }
 
+  function extractPriceSqm(root, text) {
+    const stats = LR.extractPriceSqm(text);
+    const currentPriceElement =
+      root &&
+      root.querySelector &&
+      root.querySelector('[data-testid="current-price"] [data-testid="price"]');
+    if (!currentPriceElement) return stats;
+
+    const currentPriceText = currentPriceElement.innerText || currentPriceElement.textContent || "";
+    const currentPrice = LR.extractPriceSqm(currentPriceText).price;
+    if (!Number.isFinite(currentPrice)) return stats;
+    const details = Number.isFinite(stats.sqm) ? `${stats.sqm} מ״ר` : "";
+    return LR.extractPriceSqm(`${currentPrice} ₪ ${details}`);
+  }
+
   function placeFromData(root) {
     const id = listingId(root);
     const index = id ? getPageListingsById() : null;
@@ -399,6 +414,7 @@ var LRYad2 = (() => {
   return {
     listingId,
     listingUrl,
+    extractPriceSqm,
     readAddress,
     listingExportData,
     listingPageStatus,

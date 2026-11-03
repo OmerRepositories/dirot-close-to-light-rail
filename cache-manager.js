@@ -103,6 +103,27 @@ function storageSet(values) {
   });
 }
 
+async function migrateEstimatedBaselineDates(sourceCache) {
+  let latestCache = sourceCache;
+  try {
+    latestCache = await storageGet();
+    const migration = LRCacheData.addEstimatedBaselineDates(latestCache);
+    if (!migration.updatedCount) return latestCache;
+    await storageSet({ [CACHE_KEY]: migration.cache });
+    setRefreshStatus(
+      `עודכנו ${migration.updatedCount.toLocaleString("he-IL")} תאריכי בסיס משוערים בהיסטוריית המחירים.`
+    );
+    return migration.cache;
+  } catch (error) {
+    console.error("[lightrail-ext] failed to save estimated price baseline dates", error);
+    setRefreshStatus(
+      `תאריך הבסיס המשוער חושב לתצוגה, אך לא נשמר במטמון: ${error.message || "שגיאת שמירה"}`,
+      true
+    );
+    return latestCache;
+  }
+}
+
 function displayDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -137,9 +158,10 @@ function validPriceHistory(record) {
 }
 
 function priceHistoryDate(point, index, history) {
-  return index === 0 && LRCacheData.hasUncertainInitialPriceBaseline(history)
-    ? "תאריך לא ידוע"
-    : displayHistoryDate(point.at);
+  const estimatedAt = LRCacheData.inferredPriceHistoryTimestamp(history, index);
+  const timestamp = Number.isFinite(estimatedAt) ? estimatedAt : point.at;
+  const date = displayHistoryDate(timestamp);
+  return Number.isFinite(estimatedAt) ? `${date} (משוער)` : date;
 }
 
 function refreshableListingUrl(key, record) {
@@ -685,6 +707,9 @@ function renderPriceTimeline() {
     } else if (change.kind === "uncertain") {
       summary.textContent = "תצפית ראשונית — השינוי הקודם לא ודאי";
       detail.textContent = `${displayPrice(change.fromPrice)} ← ${displayPrice(change.toPrice)}`;
+    }
+    if (change.baselineDateEstimated && Number.isFinite(change.baselineEstimatedAt)) {
+      detail.textContent += ` (תאריך המחיר הקודם משוער: ${displayHistoryDate(change.baselineEstimatedAt)})`;
     }
     const address = document.createElement("p");
     address.className = "timeline-address";
@@ -1290,7 +1315,8 @@ function toggleRefreshPause() {
 async function loadCache() {
   $("refreshButton").disabled = true;
   try {
-    cache = await storageGet();
+    const storedCache = await storageGet();
+    cache = await migrateEstimatedBaselineDates(storedCache);
     renderRows();
     if (selectedKey && cache[selectedKey]) openRecord(selectedKey);
     else if (selectedKey) closeDetails();
@@ -1484,8 +1510,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 renderHeader();
 Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_KEY)])
-  .then(([storedCache, storedDelay, storedFontScale]) => {
-    cache = storedCache;
+  .then(async ([storedCache, storedDelay, storedFontScale]) => {
+    cache = await migrateEstimatedBaselineDates(storedCache);
     if (Number.isFinite(storedDelay)) {
       refreshDelaySec = Math.max(
         MIN_REFRESH_DELAY_SEC,

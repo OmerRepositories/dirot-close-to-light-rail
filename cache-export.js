@@ -83,13 +83,19 @@ var LRCacheExport = (() => {
         const unknownDate =
           index === 0 &&
           (uncertainBaseline || !Number.isFinite(point.at));
+        const estimatedAt = unknownDate
+          ? LRCacheData.inferredPriceHistoryTimestamp(validHistory, index)
+          : null;
+        const hasEstimatedDate = Number.isFinite(estimatedAt);
         return {
           price: point.price,
           date:
-            unknownDate || !Number.isFinite(new Date(point.at).getTime())
+            unknownDate && !hasEstimatedDate ||
+            !Number.isFinite(new Date(hasEstimatedDate ? estimatedAt : point.at).getTime())
               ? null
-              : new Date(point.at).toISOString(),
+              : new Date(hasEstimatedDate ? estimatedAt : point.at).toISOString(),
           ...(unknownDate ? { baselineUnknown: true } : {}),
+          ...(hasEstimatedDate ? { baselineDateEstimated: true } : {}),
         };
       })
     );
@@ -127,22 +133,30 @@ var LRCacheExport = (() => {
       for (let index = 1; index < history.length; index++) {
         const previous = history[index - 1];
         const point = history[index];
+        const uncertainInitialComparison = uncertainBaseline && index === 1;
+        const baselineEstimatedAt = uncertainInitialComparison
+          ? LRCacheData.inferredPriceHistoryTimestamp(history, 0)
+          : null;
         const shared = {
           ...listing,
           at: point.at,
           fromPrice: previous.price,
           toPrice: point.price,
+          ...(Number.isFinite(baselineEstimatedAt)
+            ? { baselineEstimatedAt, baselineDateEstimated: true }
+            : {}),
         };
-        if (uncertainBaseline && index === 1) {
-          events.push({ ...shared, kind: "uncertain" });
-          continue;
-        }
         if (
           !Number.isFinite(point.at) ||
           !Number.isFinite(previous.price) ||
           !Number.isFinite(point.price) ||
           point.price === previous.price
-        ) continue;
+        ) {
+          if (uncertainInitialComparison && Number.isFinite(point.at)) {
+            events.push({ ...shared, kind: "uncertain" });
+          }
+          continue;
+        }
         const change = point.price - previous.price;
         events.push({
           ...shared,
@@ -259,8 +273,12 @@ var LRCacheExport = (() => {
           if (!history.length) {
             lines.push("  אין תצפיות מחיר");
           } else {
-            for (const point of history) {
-              lines.push(`  ${textDate(point.at)} — ${textPrice(point.price)}`);
+            for (let historyIndex = 0; historyIndex < history.length; historyIndex++) {
+              const point = history[historyIndex];
+              const estimatedAt = LRCacheData.inferredPriceHistoryTimestamp(history, historyIndex);
+              const timestamp = Number.isFinite(estimatedAt) ? estimatedAt : point.at;
+              const estimated = Number.isFinite(estimatedAt);
+              lines.push(`  ${textDate(timestamp)}${estimated ? " (משוער)" : ""} — ${textPrice(point.price)}`);
             }
           }
         } else if (field === "amenities" && value && typeof value === "object") {
@@ -676,14 +694,24 @@ var LRCacheExport = (() => {
         const point = history[historyIndex];
         const previous = history[historyIndex - 1];
         const rowNumber = historyRows.length + 2;
+        const estimatedAt = LRCacheData.inferredPriceHistoryTimestamp(history, historyIndex);
+        const hasEstimatedDate = Number.isFinite(estimatedAt);
         const baselineDateUnknown =
-          historyIndex === 0 && (uncertainBaseline || !Number.isFinite(point.at));
-        const firstChangeDateUnknown = historyIndex === 1 && uncertainBaseline;
+          historyIndex === 0 &&
+          (uncertainBaseline || !Number.isFinite(point.at)) &&
+          !hasEstimatedDate;
+        const estimatedBaseline = historyIndex === 0 && uncertainBaseline && hasEstimatedDate;
+        const firstChangeDateUnknown =
+          historyIndex === 1 && uncertainBaseline && !Number.isFinite(
+            LRCacheData.inferredPriceHistoryTimestamp(history, 0)
+          );
         let change = null;
         let status;
         let changeStyle = 5;
         if (baselineDateUnknown) {
           status = "מחיר קודם — התאריך לא ידוע";
+        } else if (estimatedBaseline) {
+          status = "מחיר קודם — תאריך משוער";
         } else if (firstChangeDateUnknown) {
           status = "המחיר השתנה — מועד השינוי המדויק לא ידוע";
         } else if (!previous) {
@@ -691,10 +719,14 @@ var LRCacheExport = (() => {
         } else {
           change = point.price - previous.price;
           if (change < 0) {
-            status = "הוזלה";
+            status = historyIndex === 1 && uncertainBaseline
+              ? "הוזלה — מחיר קודם עם תאריך משוער"
+              : "הוזלה";
             changeStyle = 7;
           } else if (change > 0) {
-            status = "עלייה";
+            status = historyIndex === 1 && uncertainBaseline
+              ? "עלייה — מחיר קודם עם תאריך משוער"
+              : "עלייה";
             changeStyle = 8;
           } else {
             status = "ללא שינוי";
@@ -718,7 +750,7 @@ var LRCacheExport = (() => {
         historyCells.push(
           baselineDateUnknown
             ? `<c r="F${rowNumber}" s="6" t="inlineStr"><is><t>לא ידוע</t></is></c>`
-            : `<c r="F${rowNumber}" s="6" t="inlineStr"><is><t>${xmlEscape(historyDate(point.at))}</t></is></c>`,
+            : `<c r="F${rowNumber}" s="6" t="inlineStr"><is><t>${xmlEscape(historyDate(hasEstimatedDate ? estimatedAt : point.at))}${estimatedBaseline ? " (משוער)" : ""}</t></is></c>`,
           `<c r="G${rowNumber}" s="5" t="n"><v>${point.price}</v></c>`,
           Number.isFinite(change)
             ? `<c r="H${rowNumber}" s="${changeStyle}" t="n"><v>${change}</v></c>`
