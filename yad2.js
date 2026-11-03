@@ -225,6 +225,26 @@ var LRYad2 = (() => {
     };
   }
 
+  function listingPageStatus(root = document) {
+    const match = location.pathname.match(/^\/realestate\/item\/[^/]+\/([^/]+)/);
+    if (!match) return null;
+    const id = match[1];
+    const pageText = root.body && (root.body.innerText || root.body.textContent || "");
+    const normalizedText = pageText.replace(/\s+/g, " ");
+    if (
+      normalizedText.includes("חיפשנו בכל מקום") &&
+      normalizedText.includes("אין לנו עמוד כזה")
+    ) {
+      return { id, status: "removed" };
+    }
+
+    const listing = getPageListingsById()?.get(id);
+    if (listing && listing.address && typeof listing.address === "object") {
+      return { id, status: "active" };
+    }
+    return null;
+  }
+
   function addressFromCardDetails(root) {
     const streetElement = root.querySelector('[data-testid="street-name"]');
     const locationElement = root.querySelector('[data-testid="item-info-line-1st"]');
@@ -381,6 +401,7 @@ var LRYad2 = (() => {
     listingUrl,
     readAddress,
     listingExportData,
+    listingPageStatus,
     projectExportData,
     readAmenities,
     isProjectPage,

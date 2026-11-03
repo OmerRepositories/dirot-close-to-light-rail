@@ -170,6 +170,86 @@ test("Yad2 listing export reads rooms and published/updated dates", () => {
   context.document.querySelector = () => null;
 });
 
+test("Yad2 listing status detects an explicitly removed listing", () => {
+  const removedContext = {
+    LR,
+    URL,
+    document: {
+      body: { innerText: "חיפשנו בכל מקום אבל אין לנו עמוד כזה" },
+      querySelector: () => null,
+    },
+    location: {
+      pathname: "/realestate/item/center-and-sharon/6huup2do",
+      href: "https://www.yad2.co.il/realestate/item/center-and-sharon/6huup2do",
+    },
+  };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"),
+    removedContext
+  );
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(removedContext.LRYad2.listingPageStatus())),
+    { id: "6huup2do", status: "removed" }
+  );
+});
+
+test("Yad2 listing status marks a listing active only with matching listing data", () => {
+  const activeContext = {
+    LR,
+    URL,
+    document: {
+      body: { innerText: "מודעה למכירה" },
+      querySelector: (selector) =>
+        selector === "script#__NEXT_DATA__"
+          ? {
+              textContent: JSON.stringify({
+                props: {
+                  pageProps: {
+                    listing: {
+                      token: "6huup2do",
+                      address: { city: { text: "פתח תקווה" } },
+                    },
+                  },
+                },
+              }),
+            }
+          : null,
+    },
+    location: {
+      pathname: "/realestate/item/center-and-sharon/6huup2do",
+      href: "https://www.yad2.co.il/realestate/item/center-and-sharon/6huup2do",
+    },
+  };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"),
+    activeContext
+  );
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(activeContext.LRYad2.listingPageStatus())),
+    { id: "6huup2do", status: "active" }
+  );
+});
+
+test("Yad2 listing status stays unknown without explicit removal or listing data", () => {
+  const unknownContext = {
+    LR,
+    URL,
+    document: { body: { innerText: "העמוד נטען" }, querySelector: () => null },
+    location: {
+      pathname: "/realestate/item/center-and-sharon/6huup2do",
+      href: "https://www.yad2.co.il/realestate/item/center-and-sharon/6huup2do",
+    },
+  };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"),
+    unknownContext
+  );
+
+  assert.equal(unknownContext.LRYad2.listingPageStatus(), null);
+});
+
 test("city-only geocoding queries are explicitly marked as not being an address", () => {
   const parsed = LR.parseAddress("", "פתח תקווה");
 

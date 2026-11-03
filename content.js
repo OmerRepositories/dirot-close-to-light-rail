@@ -1759,6 +1759,14 @@
     }
   }
 
+  if (IS_YAD2) {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!message || message.type !== "lightrail:get-yad2-listing-status") return false;
+      sendResponse(LRYad2.listingPageStatus());
+      return false;
+    });
+  }
+
   try {
     chrome.storage.local.get(["lastMedian", LISTING_CACHE_KEY], (r) => {
       const m = r && r.lastMedian;

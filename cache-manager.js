@@ -49,6 +49,7 @@ const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
   { key: "type", label: "סוג", sortKey: "recordType" },
   { key: "site", label: "אתר", sortKey: "site" },
+  { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
   { key: "price", label: "מחיר", sortKey: "price" },
   { key: "sqm", label: "מ״ר", sortKey: "sqm" },
@@ -392,6 +393,15 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "title") return [record.title, record.address, record.city, record.neighborhood].filter(Boolean).join(" ");
   if (key === "type") return recordType(record) === "project" ? "פרויקט" : "מודעה";
   if (key === "site") return recordSite(recordKey);
+  if (key === "listingStatus") {
+    return recordSite(recordKey) === "yad2" && recordType(record) === "listing"
+      ? record.listingStatus === "active"
+        ? "פעילה"
+        : record.listingStatus === "removed"
+          ? "הוסרה"
+          : "לא נבדקה"
+      : "";
+  }
   if (key === "price") return `${record.price ?? ""} ${displayPrice(record.price)}`;
   if (key === "sqm" || key === "rooms" || key === "railMeters") return String(record[key] ?? "");
   if (key === "pricePerSqm") return `${LRCacheData.pricePerSqm(record) ?? ""} ${displayPrice(LRCacheData.pricePerSqm(record))}`;
@@ -478,6 +488,30 @@ function renderRows() {
       } else if (column.key === "site") {
         const siteName = recordSite(key);
         td.textContent = siteName === "yad2" ? "יד2" : siteName === "madlan" ? "מדלן" : siteName;
+      } else if (column.key === "listingStatus") {
+        td.className = "listing-status-cell";
+        const status = document.createElement("span");
+        const site = recordSite(key);
+        if (site !== "yad2" || recordType(record) !== "listing") {
+          status.className = "listing-status unknown";
+          status.textContent = "—";
+        } else if (record.listingStatus === "active") {
+          status.className = "listing-status active";
+          status.textContent = "פעילה";
+          td.title = record.listingStatusCheckedAt
+            ? `נבדקה ב־${displayDate(record.listingStatusCheckedAt)}`
+            : "";
+        } else if (record.listingStatus === "removed") {
+          status.className = "listing-status removed";
+          status.textContent = "הוסרה";
+          td.title = record.listingStatusCheckedAt
+            ? `נבדקה ב־${displayDate(record.listingStatusCheckedAt)}`
+            : "";
+        } else {
+          status.className = "listing-status unknown";
+          status.textContent = "לא נבדקה";
+        }
+        td.appendChild(status);
       } else if (column.key === "title") {
         td.className = "record-name";
         const title = record.title || key;
@@ -862,6 +896,81 @@ function setRefreshStatus(text, error = false) {
   status.dataset.error = String(error);
 }
 
+async function saveYad2ListingStatus(key, status, attemptId, index) {
+  if (!["active", "removed"].includes(status)) return;
+  if (
+    !refreshQueue.length ||
+    refreshAttemptId !== attemptId ||
+    refreshIndex !== index ||
+    writing
+  ) {
+    return;
+  }
+  try {
+    const latest = await storageGet();
+    if (
+      !refreshQueue.length ||
+      refreshAttemptId !== attemptId ||
+      refreshIndex !== index ||
+      !latest[key] ||
+      recordSite(key) !== "yad2"
+    ) {
+      return;
+    }
+    latest[key] = {
+      ...latest[key],
+      listingStatus: status,
+      listingStatusCheckedAt: Date.now(),
+    };
+    writing = true;
+    await storageSet({ [CACHE_KEY]: latest });
+    cache = latest;
+    renderRows();
+  } catch (error) {
+    console.error("[lightrail-ext] failed to save Yad2 listing status", error);
+    setRefreshStatus(`הדף נטען, אך סטטוס המודעה לא נשמר: ${error.message}`, true);
+  } finally {
+    writing = false;
+  }
+}
+
+function checkCurrentYad2ListingStatus(tabId, key, record, retries = 4) {
+  const expectedId = key.slice(key.indexOf(":") + 1);
+  const url = refreshableListingUrl(key, record);
+  let urlId;
+  try {
+    const parsedUrl = new URL(url);
+    const match = parsedUrl.pathname.match(/^\/realestate\/item\/[^/]+\/([^/]+)/);
+    urlId = match && match[1];
+  } catch {
+    return;
+  }
+  if (!urlId || urlId !== expectedId) return;
+
+  const attemptId = refreshAttemptId;
+  const index = refreshIndex;
+  chrome.tabs.sendMessage(tabId, { type: "lightrail:get-yad2-listing-status" }, (result) => {
+    const error = chrome.runtime.lastError;
+    if (error) {
+      if (
+        retries > 0 &&
+        refreshQueue.length &&
+        refreshAttemptId === attemptId &&
+        refreshIndex === index
+      ) {
+        setTimeout(() => {
+          checkCurrentYad2ListingStatus(tabId, key, record, retries - 1);
+        }, 250);
+        return;
+      }
+      console.warn("[lightrail-ext] could not check Yad2 listing status", error.message);
+      return;
+    }
+    if (!result || result.id !== expectedId) return;
+    saveYad2ListingStatus(key, result.status, attemptId, index);
+  });
+}
+
 function updateRefreshButtons() {
   const active = refreshQueue.length > 0;
   $("startRefresh").disabled = active || refreshStarting;
@@ -943,6 +1052,10 @@ function onRefreshTabUpdated(tabId, changeInfo, tab) {
   clearTimeout(loadTimeout);
   loadTimeout = null;
   currentPageLoaded = true;
+  const [key, record] = refreshQueue[refreshIndex];
+  if (recordSite(key) === "yad2") {
+    checkCurrentYad2ListingStatus(tabId, key, record);
+  }
   if (refreshPaused) {
     setRefreshStatus(`הדף ${refreshIndex + 1}/${refreshQueue.length} נטען; הרענון מושהה.`);
     return;

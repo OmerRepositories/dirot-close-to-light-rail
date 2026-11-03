@@ -160,6 +160,10 @@ tbody tr[aria-selected="true"] td { background: #e4f5f1; }
 .record-address { display: block; max-width: 320px; overflow: hidden; color: #718198; font-size: 10px; text-overflow: ellipsis; }
 .type-chip { display: inline-block; padding: 2px 6px; border-radius: 999px; background: #edf2f8; color: #4a6078; white-space: nowrap; }
 .type-chip.project { background: #f2ecff; color: #6a49a5; }
+.listing-status { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 750; white-space: nowrap; }
+.listing-status.active { color: #166534; background: #ddf5e5; }
+.listing-status.removed { color: #a12727; background: #fee4e2; }
+.listing-status.unknown { color: #64748b; background: #edf1f5; }
 .boolean-value { display: inline-block; min-width: 35px; padding: 2px 7px; border-radius: 999px; text-align: center; font-weight: 750; }
 .boolean-value.yes { background: #ddf5e5; color: #166534; }
 .boolean-value.no { background: #fee4e2; color: #a12727; }
