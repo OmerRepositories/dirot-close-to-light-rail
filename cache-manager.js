@@ -43,6 +43,7 @@ let currentPageLoaded = false;
 let refreshAttemptId = 0;
 let refreshSkippedCount = 0;
 let fontScale = 1;
+let showFullPriceHistory = true;
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
@@ -527,13 +528,46 @@ function renderRows() {
         td.textContent = displayDate(record.updatedAt);
       } else if (column.key === "priceHistory") {
         const history = validPriceHistory(record);
-        const latest = history[history.length - 1];
-        td.textContent = history.length ? `${history.length} · ${displayPrice(latest.price)}` : "—";
-        td.title = history
-          .map((point, index) =>
-            `${priceHistoryDate(point, index, history)}: ${displayPrice(point.price)}`
-          )
-          .join("\n");
+        td.className = "price-history-cell";
+        if (!history.length) {
+          td.textContent = "—";
+        } else {
+          const historyList = document.createElement("div");
+          historyList.className = "price-history-list";
+          const lastIndex = showFullPriceHistory ? 0 : history.length - 1;
+          const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
+          for (let index = history.length - 1; index >= lastIndex; index--) {
+            const point = history[index];
+            const previous = history[index - 1];
+            const item = document.createElement("div");
+            item.className = "price-history-item";
+            const date = document.createElement("span");
+            date.className = "price-history-date";
+            date.textContent = priceHistoryDate(point, index, history);
+            const price = document.createElement("strong");
+            price.textContent = displayPrice(point.price);
+            item.append(date, price);
+            if (showFullPriceHistory) {
+              const change = document.createElement("span");
+              change.className = "price-history-change";
+              if (index === 0 && uncertainBaseline) {
+                change.textContent = "מחיר קודם שמור";
+              } else if (index === 1 && uncertainBaseline) {
+                change.textContent = "מועד השינוי לא ידוע";
+              } else if (previous && Number.isFinite(previous.price) && Number.isFinite(point.price)) {
+                const difference = point.price - previous.price;
+                change.textContent = `${difference > 0 ? "+" : ""}${displayPrice(difference)}`;
+                if (difference < 0) change.classList.add("price-down");
+                if (difference > 0) change.classList.add("price-up");
+              } else {
+                change.textContent = "נקודת בסיס";
+              }
+              item.appendChild(change);
+            }
+            historyList.appendChild(item);
+          }
+          td.appendChild(historyList);
+        }
       } else if (column.key === "actions") {
         const actions = document.createElement("div");
         actions.className = "row-actions";
@@ -1103,6 +1137,13 @@ $("clearAdvancedFilters").addEventListener("click", () => {
 $("decreaseFont").addEventListener("click", () => changeFontScale(-FONT_SCALE_STEP));
 $("increaseFont").addEventListener("click", () => changeFontScale(FONT_SCALE_STEP));
 $("resetFont").addEventListener("click", () => changeFontScale(1 - fontScale));
+$("togglePriceHistory").addEventListener("click", (event) => {
+  showFullPriceHistory = !showFullPriceHistory;
+  const button = event.currentTarget;
+  button.textContent = showFullPriceHistory ? "הצג רק מחיר אחרון" : "הצג היסטוריה מלאה";
+  button.setAttribute("aria-pressed", String(showFullPriceHistory));
+  renderRows();
+});
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;
