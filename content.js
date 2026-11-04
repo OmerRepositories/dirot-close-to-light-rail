@@ -30,6 +30,7 @@
     disableYad2: false,
     disableMadlan: false,
     saveListingData: true,
+    listingIndexingMode: "encountered",
     requiredAmenities: ["secureRoom"],
   };
   const CFG = {
@@ -42,14 +43,15 @@
   const LISTING_CACHE_TTL_MS = 60 * 24 * 60 * 60 * 1000;
   const LISTING_CACHE_MAX_ITEMS = 2500;
   const LISTING_CACHE_MAX_BYTES = 4 * 1024 * 1024;
-  const LOCAL_STORAGE_QUOTA_BYTES = 10 * 1024 * 1024;
-  const LOCAL_STORAGE_RESERVE_BYTES = 512 * 1024;
   const SITE_DISABLE_KEY = IS_YAD2 ? "disableYad2" : "disableMadlan";
   let listingCache = {};
   let listingCacheLoaded = false;
   let pendingCacheSave = false;
   let cacheWriteInProgress = false;
   let cacheSaveTimer = null;
+  let cacheWriteRetryTimer = null;
+  let cacheWriteFailureCount = 0;
+  let cacheWriteErrorLogged = false;
   const cacheWriteSuppressedIds = new Set();
 
   // קישורים שמזהים מודעה בודדת
@@ -1037,6 +1039,10 @@
 
   function saveListingCache() {
     if (!CFG.saveListingData) return;
+    if (cacheWriteRetryTimer) {
+      pendingCacheSave = true;
+      return;
+    }
     clearTimeout(cacheSaveTimer);
     cacheSaveTimer = setTimeout(() => {
       cacheSaveTimer = null;
@@ -1051,71 +1057,12 @@
       }
       pendingCacheSave = false;
       cacheWriteInProgress = true;
-      const writeWithLimit = (maxBytes) => {
-        writeListingCache(
-          trimListingCache(listingCache, Date.now(), maxBytes),
-          0,
-          maxBytes
-        );
-      };
-      const writeWithoutMeasurement = (operation, error) => {
-        const detail = error && error.message ? error.message : String(error || "unknown error");
-        console.info(
-          `[lightrail-ext] ${operation}; saving with the conservative cache limit instead`,
-          detail
-        );
-        writeWithLimit(LISTING_CACHE_MAX_BYTES);
-      };
-      if (typeof chrome.storage.local.getBytesInUse !== "function") {
-        writeWithoutMeasurement("local storage usage is unavailable");
-        return;
-      }
-      try {
-        chrome.storage.local.getBytesInUse(null, (totalBytes) => {
-          const totalError = chrome.runtime.lastError;
-          if (totalError) {
-            writeWithoutMeasurement(
-              "could not measure local storage before saving listing cache",
-              totalError
-            );
-            return;
-          }
-          chrome.storage.local.getBytesInUse(LISTING_CACHE_KEY, (cacheBytes) => {
-            const cacheError = chrome.runtime.lastError;
-            if (cacheError) {
-              writeWithoutMeasurement("could not measure existing listing cache", cacheError);
-              return;
-            }
-            if (!Number.isFinite(totalBytes) || !Number.isFinite(cacheBytes)) {
-              writeWithoutMeasurement("local storage usage returned an invalid size");
-              return;
-            }
-            const otherBytes = Math.max(0, totalBytes - cacheBytes);
-            const availableBytes =
-              LOCAL_STORAGE_QUOTA_BYTES -
-              otherBytes -
-              LOCAL_STORAGE_RESERVE_BYTES;
-            if (availableBytes < 2 && Object.keys(listingCache).length) {
-              cacheWriteInProgress = false;
-              console.warn(
-                "[lightrail-ext] not enough local storage for listing cache; clear saved extension data or disable cache saving"
-              );
-              if (pendingCacheSave) saveListingCache();
-              return;
-            }
-            const maxBytes = Math.max(
-              2,
-              Math.min(LISTING_CACHE_MAX_BYTES, availableBytes)
-            );
-            writeWithLimit(maxBytes);
-          });
-        });
-      } catch (error) {
-        writeWithoutMeasurement(
-          "could not measure local storage before saving listing cache",
-          error
-        );
-      }
+      const maxBytes = LISTING_CACHE_MAX_BYTES;
+      writeListingCache(
+        trimListingCache(listingCache, Date.now(), maxBytes),
+        0,
+        maxBytes
+      );
     }, 500);
   }
 
@@ -1131,16 +1078,24 @@
           return;
         }
       }
-      console.error("[lightrail-ext] failed to save listing cache", {
-        message: errorMessage || "Unknown storage error",
-        attempt: attempt + 1,
-        recordCount: Object.keys(snapshot).length,
-        byteLimit: maxBytes,
-      });
+      if (!cacheWriteErrorLogged) {
+        console.error("[lightrail-ext] failed to save listing cache", {
+          message: errorMessage || "Unknown storage error",
+          attempt: attempt + 1,
+          recordCount: Object.keys(snapshot).length,
+          byteLimit: maxBytes,
+        });
+        cacheWriteErrorLogged = true;
+      }
       cacheWriteInProgress = false;
-      if (pendingCacheSave) {
+      cacheWriteFailureCount++;
+      const retryDelay = Math.min(5 * 60 * 1000, 1000 * 2 ** Math.min(cacheWriteFailureCount, 8));
+      if (CFG.saveListingData) {
         pendingCacheSave = false;
-        saveListingCache();
+        cacheWriteRetryTimer = setTimeout(() => {
+          cacheWriteRetryTimer = null;
+          saveListingCache();
+        }, retryDelay);
       }
     };
 
@@ -1152,6 +1107,10 @@
         } else {
           listingCache = snapshot;
           cacheWriteInProgress = false;
+          cacheWriteFailureCount = 0;
+          cacheWriteErrorLogged = false;
+          clearTimeout(cacheWriteRetryTimer);
+          cacheWriteRetryTimer = null;
           if (pendingCacheSave) {
             pendingCacheSave = false;
             saveListingCache();
@@ -1307,7 +1266,11 @@
   }
 
   function rememberListingExportData(entry, extra = {}) {
-    if (!CFG.saveListingData || !listingCacheLoaded) return;
+    if (
+      !CFG.saveListingData ||
+      !listingCacheLoaded ||
+      (entry.kind === "list" && CFG.listingIndexingMode !== "encountered")
+    ) return;
     const parser = IS_YAD2 ? LRYad2 : LRMadlan;
     const root = entry.kind === "single" ? document : entry.card;
     const id = parser.listingId(root);
@@ -1454,7 +1417,9 @@
       }
       entry.listingId = siteParser.listingId(root);
       const currentAmenities = (IS_YAD2 ? LRYad2 : LRMadlan).readAmenities(root);
-      if (entry.kind === "single") rememberListingExportData(entry);
+      if (entry.kind === "single" || CFG.listingIndexingMode === "encountered") {
+        rememberListingExportData(entry);
+      }
       if (entry.kind === "single" && currentAmenities) {
         entry.amenities = currentAmenities;
         const listingText = entry.getText();
@@ -1753,6 +1718,8 @@
         CFG[k] = Array.isArray(s[k])
           ? s[k].filter((amenity) => Object.prototype.hasOwnProperty.call(AMENITY_LABELS, amenity))
           : [...DEFAULTS.requiredAmenities];
+      } else if (k === "listingIndexingMode") {
+        CFG[k] = s[k] === "opened" ? "opened" : "encountered";
       } else {
         CFG[k] = NUM_KEYS.includes(k) ? Math.max(0, Number(s[k]) || 0) : Boolean(s[k]);
       }

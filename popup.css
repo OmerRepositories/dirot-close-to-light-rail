@@ -134,12 +134,24 @@ input[type="number"] {
   transition: border-color .15s ease, box-shadow .15s ease;
 }
 
+select {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid #d5dfeb;
+  border-radius: 9px;
+  color: #17283d;
+  background: #fff;
+  font: inherit;
+}
+
 input[type="number"]:focus {
   outline: none;
   border-color: #168b89;
   box-shadow: 0 0 0 3px rgba(22, 139, 137, .13);
 }
 input[type="number"]:disabled { color: #97a2b1; background: #f1f4f8; }
+select:disabled { color: #97a2b1; background: #f1f4f8; }
 
 .row.switch {
   display: flex;

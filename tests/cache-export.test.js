@@ -385,6 +385,37 @@ test("price timeline classifies uncertain baseline changes as estimated", () => 
   })[0].kind, "increase");
 });
 
+test("price timeline events include saved listing details", () => {
+  const first = Date.UTC(2026, 10, 1, 10);
+  const second = Date.UTC(2026, 10, 2, 10);
+  const event = CacheExport.getPriceTimelineEvents({
+    "yad2:listing-details": {
+      rooms: 4,
+      sqm: 100,
+      price: 2_500_000,
+      railMeters: 420,
+      railApprox: true,
+      railStation: "תחנת הדוגמה",
+      brokerage: false,
+      amenities: { secureRoom: true, storage: false },
+      priceHistory: [
+        { price: 2_600_000, at: first, baselineKnown: true },
+        { price: 2_500_000, at: second },
+      ],
+    },
+  })[0];
+
+  assert.equal(event.rooms, 4);
+  assert.equal(event.sqm, 100);
+  assert.equal(event.currentPrice, 2_500_000);
+  assert.equal(event.pricePerSqm, 25_000);
+  assert.equal(event.railMeters, 420);
+  assert.equal(event.railApprox, true);
+  assert.equal(event.railStation, "תחנת הדוגמה");
+  assert.equal(event.brokerage, false);
+  assert.deepEqual(event.amenities, { secureRoom: true, storage: false });
+});
+
 test("TXT export is readable and includes listing fields, amenities, and price observations", async () => {
   const timestamp = Date.UTC(2026, 10, 3, 10);
   const progress = [];

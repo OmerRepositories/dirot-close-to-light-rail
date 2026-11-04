@@ -1,5 +1,8 @@
 const CACHE_KEY = "yad2AmenityCache_v1";
 const REFRESH_DELAY_KEY = "cacheRefreshDelaySec";
+const REFRESH_SCHEDULE_KEY = "lightrailRefreshSchedule";
+const REFRESH_RUNTIME_KEY = "lightrailRefreshRuntime";
+const REFRESH_ALARM_NAME = "lightrail-periodic-listing-refresh";
 const FONT_SCALE_KEY = "cacheManagerFontScale";
 const MIN_REFRESH_DELAY_SEC = 5;
 const MAX_REFRESH_DELAY_SEC = 600;
@@ -42,10 +45,120 @@ let refreshStarting = false;
 let currentPageLoaded = false;
 let refreshAttemptId = 0;
 let refreshSkippedCount = 0;
+let refreshRunScheduled = false;
 let fontScale = 1;
 let showFullPriceHistory = false;
 let priceTimelineFilter = "all";
+let timelinePreferencesEnabled = false;
+let timelinePreferences = {
+  requiredAmenities: ["secureRoom"],
+  removeBrokerage: false,
+  calculateRail: true,
+  requireRail: true,
+  nearM: 800,
+  calculatePpsm: true,
+  maxPpsm: 0,
+};
 const expandedPriceHistory = new Set();
+const timelineAmenityLabels = {
+  parking: "חניה",
+  secureRoom: "ממ״ד",
+  elevator: "מעלית",
+  storage: "מחסן",
+  airConditioner: "מיזוג",
+  accessible: "נגישות",
+  balcony: "מרפסת",
+  sunBoiler: "דוד שמש",
+  grating: "סורגים",
+  garden: "גינה",
+  pool: "בריכה",
+};
+
+function initializeTimelineAmenityFilters() {
+  const container = $("timelineAmenityFilters");
+  for (const [key, label] of AMENITIES) {
+    const field = document.createElement("label");
+    field.className = "timeline-choice";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const select = document.createElement("select");
+    select.dataset.timelineAmenity = key;
+    for (const [value, text] of [["", "הכול"], ["true", "כן"], ["false", "לא"], ["unknown", "לא ידוע"]]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      select.appendChild(option);
+    }
+    field.append(caption, select);
+    container.appendChild(field);
+  }
+}
+
+function readTimelinePreferences(settings) {
+  timelinePreferences = {
+    requiredAmenities: Array.isArray(settings.requiredAmenities)
+      ? settings.requiredAmenities.filter((key) => AMENITIES.some(([amenity]) => amenity === key))
+      : [],
+    removeBrokerage: Boolean(settings.removeBrokerage),
+    calculateRail: Boolean(settings.calculateRail),
+    requireRail: Boolean(settings.requireRail),
+    nearM: Number.isFinite(Number(settings.nearM)) ? Math.max(0, Number(settings.nearM)) : 800,
+    calculatePpsm: Boolean(settings.calculatePpsm),
+    maxPpsm: Number.isFinite(Number(settings.maxPpsm)) ? Math.max(0, Number(settings.maxPpsm)) : 0,
+  };
+}
+
+function passesTimelineRange(event, field) {
+  const minimum = document.querySelector(`[data-timeline-min="${field}"]`);
+  const maximum = document.querySelector(`[data-timeline-max="${field}"]`);
+  const min = minimum && minimum.value !== "" ? Number(minimum.value) : null;
+  const max = maximum && maximum.value !== "" ? Number(maximum.value) : null;
+  if (min === null && max === null) return true;
+  const value = field === "price"
+    ? Number.isFinite(event.currentPrice) ? event.currentPrice : event.toPrice
+    : event[field];
+  if (!Number.isFinite(value)) return false;
+  return (min === null || value >= min) && (max === null || value <= max);
+}
+
+function passesTimelineFilters(event) {
+  if (!["price", "railMeters", "pricePerSqm", "rooms"].every((field) => passesTimelineRange(event, field))) {
+    return false;
+  }
+  const brokerageFilter = $("timelineBrokerage").value;
+  if (brokerageFilter === "unknown") {
+    if (typeof event.brokerage === "boolean") return false;
+  } else if (brokerageFilter && String(event.brokerage) !== brokerageFilter) {
+    return false;
+  }
+  for (const input of document.querySelectorAll("[data-timeline-amenity]")) {
+    if (!input.value) continue;
+    const value = event.amenities && event.amenities[input.dataset.timelineAmenity];
+    if (input.value === "unknown" ? typeof value === "boolean" : String(value) !== input.value) {
+      return false;
+    }
+  }
+
+  if (timelinePreferencesEnabled) {
+    for (const amenity of timelinePreferences.requiredAmenities) {
+      if (!event.amenities || event.amenities[amenity] !== true) return false;
+    }
+    if (timelinePreferences.removeBrokerage && event.brokerage === true) return false;
+    if (timelinePreferences.calculateRail && timelinePreferences.requireRail) {
+      if (
+        !Number.isFinite(event.railMeters) ||
+        event.railApprox === true ||
+        event.railMeters > timelinePreferences.nearM
+      ) return false;
+    }
+    if (timelinePreferences.calculatePpsm && timelinePreferences.maxPpsm > 0) {
+      if (!Number.isFinite(event.pricePerSqm) || event.pricePerSqm > timelinePreferences.maxPpsm) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
@@ -102,6 +215,54 @@ function storageSet(values) {
       resolve();
     });
   });
+}
+
+function storageGetAll(area) {
+  return new Promise((resolve, reject) => {
+    chrome.storage[area].get(null, (result) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message || `טעינת ${area} נכשלה.`));
+        return;
+      }
+      resolve(result || {});
+    });
+  });
+}
+
+function storageSetArea(area, values) {
+  return new Promise((resolve, reject) => {
+    chrome.storage[area].set(values, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message || `שמירת ${area} נכשלה.`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function storageRemove(area, keys) {
+  if (!keys.length) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    chrome.storage[area].remove(keys, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message || `מחיקה מ-${area} נכשלה.`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function restoreStorageArea(area, snapshot, attemptedValues) {
+  await storageSetArea(area, snapshot);
+  await storageRemove(
+    area,
+    Object.keys(attemptedValues).filter((key) => !(key in snapshot))
+  );
 }
 
 async function migrateEstimatedBaselineDates(sourceCache) {
@@ -669,12 +830,14 @@ function renderPriceTimeline() {
   timeline.replaceChildren();
   const allEvents = LRCacheExport.getPriceTimelineEvents(cache);
   const changes = allEvents.filter((event) => event.kind === "increase" || event.kind === "decrease");
-  const events = priceTimelineFilter === "all"
+  const kindFilteredEvents = priceTimelineFilter === "all"
     ? allEvents
     : allEvents.filter((event) => event.kind === priceTimelineFilter);
+  const events = kindFilteredEvents.filter(passesTimelineFilters);
   $("priceChangesCount").textContent = changes.length.toLocaleString("he-IL");
-  $("timelineCount").textContent = `${events.length.toLocaleString("he-IL")} אירועים`;
+  $("timelineCount").textContent = `${events.length.toLocaleString("he-IL")} מתוך ${kindFilteredEvents.length.toLocaleString("he-IL")} אירועים`;
   $("emptyTimeline").hidden = events.length > 0;
+  $("timelinePreferences").setAttribute("aria-pressed", String(timelinePreferencesEnabled));
 
   for (const change of events) {
     const item = document.createElement("li");
@@ -720,7 +883,40 @@ function renderPriceTimeline() {
     const address = document.createElement("p");
     address.className = "timeline-address";
     address.textContent = [change.address, change.city].filter(Boolean).join(", ");
-    card.append(metadata, title, summary, detail);
+    const facts = [];
+    if (Number.isFinite(change.currentPrice)) {
+      facts.push(`מחיר עדכני: ${displayPrice(change.currentPrice)}`);
+    }
+    if (Number.isFinite(change.rooms)) facts.push(`${change.rooms} חדרים`);
+    if (Number.isFinite(change.sqm)) facts.push(`${change.sqm} מ״ר`);
+    if (Number.isFinite(change.pricePerSqm)) {
+      facts.push(`${displayPrice(change.pricePerSqm)} למ״ר`);
+    }
+    if (Number.isFinite(change.railMeters)) {
+      const estimate = change.railApprox ? " (משוער)" : "";
+      const station = change.railStation ? ` · תחנה: ${change.railStation}` : "";
+      facts.push(`מרחק מהרכבת: ${Math.round(change.railMeters)} מ׳${estimate}${station}`);
+    }
+    if (typeof change.brokerage === "boolean") {
+      facts.push(`תיווך: ${change.brokerage ? "כן" : "לא"}`);
+    }
+    for (const amenity of ["secureRoom", "storage"]) {
+      const value = change.amenities && change.amenities[amenity];
+      facts.push(
+        `${timelineAmenityLabels[amenity]}: ${
+          typeof value === "boolean" ? (value ? "כן" : "לא") : "לא ידוע"
+        }`
+      );
+    }
+    for (const [amenity, label] of Object.entries(timelineAmenityLabels)) {
+      if (amenity === "secureRoom" || amenity === "storage") continue;
+      const value = change.amenities && change.amenities[amenity];
+      if (typeof value === "boolean") facts.push(`${label}: ${value ? "כן" : "לא"}`);
+    }
+    const factsElement = document.createElement("p");
+    factsElement.className = "timeline-facts";
+    factsElement.textContent = facts.join(" · ");
+    card.append(metadata, title, summary, detail, factsElement);
     if (address.textContent) card.appendChild(address);
     item.appendChild(card);
     timeline.appendChild(item);
@@ -729,6 +925,28 @@ function renderPriceTimeline() {
   for (const button of document.querySelectorAll("[data-price-filter]")) {
     button.setAttribute("aria-pressed", String(button.dataset.priceFilter === priceTimelineFilter));
   }
+}
+
+function loadTimelinePreferences() {
+  const defaults = {
+    requiredAmenities: ["secureRoom"],
+    removeBrokerage: false,
+    calculateRail: true,
+    requireRail: true,
+    nearM: 800,
+    calculatePpsm: true,
+    maxPpsm: 0,
+  };
+  chrome.storage.sync.get(defaults, (settings) => {
+    const error = chrome.runtime.lastError;
+    if (error) {
+      console.error("[lightrail-ext] failed to load timeline preferences", error.message);
+      $("timelinePreferences").title = "לא ניתן לטעון את ההעדפות מההגדרות.";
+      return;
+    }
+    readTimelinePreferences(settings || defaults);
+    renderPriceTimeline();
+  });
 }
 
 function setActiveTab(tab) {
@@ -1066,6 +1284,118 @@ function setRefreshStatus(text, error = false) {
   status.dataset.error = String(error);
 }
 
+function reportRefreshRun(type, result) {
+  chrome.runtime.sendMessage(
+    {
+      type,
+      ...(result && typeof result === "object" ? result : { result }),
+    },
+    (response) => {
+      const error = chrome.runtime.lastError;
+      if (error) console.error("[lightrail-ext] failed to report refresh run state", error.message);
+      else if (response && response.ok === false) {
+        console.error("[lightrail-ext] failed to report refresh run state", response.error);
+      }
+    }
+  );
+}
+
+async function loadRefreshSchedule() {
+  try {
+    const [schedule, runtime] = await Promise.all([
+      storageGet(REFRESH_SCHEDULE_KEY),
+      storageGet(REFRESH_RUNTIME_KEY),
+    ]);
+    const alarm = await new Promise((resolve, reject) => {
+      chrome.alarms.get(REFRESH_ALARM_NAME, (value) => {
+        const error = chrome.runtime.lastError;
+        if (error) reject(new Error(error.message));
+        else resolve(value);
+      });
+    });
+    $("refreshScheduleEnabled").checked = Boolean(schedule && schedule.enabled);
+    $("refreshScheduleHours").value = String(
+      Math.max(1, Math.min(168, Math.round(Number(schedule && schedule.everyHours) || 5)))
+    );
+    if (schedule && Number.isFinite(schedule.delaySeconds)) {
+      refreshDelaySec = Math.max(
+        MIN_REFRESH_DELAY_SEC,
+        Math.min(MAX_REFRESH_DELAY_SEC, Math.round(schedule.delaySeconds))
+      );
+      $("refreshDelay").value = String(refreshDelaySec);
+    }
+    $("refreshScope").value = schedule && schedule.uncheckedOnly ? "unchecked" : "filtered";
+    const nextRun = alarm && Number.isFinite(alarm.scheduledTime)
+      ? new Date(alarm.scheduledTime).toLocaleString("he-IL")
+      : "";
+    if (runtime && runtime.running === true) {
+      $("scheduleStatus").textContent = `מחזור רענון פעיל עכשיו · ${nextRun ? `הבא: ${nextRun}` : `כל ${$("refreshScheduleHours").value} שעות`}`;
+    } else if (runtime && Number.isFinite(runtime.lastFinishedAt)) {
+      const date = new Date(runtime.lastFinishedAt).toLocaleString("he-IL");
+      $("scheduleStatus").textContent = `${schedule && schedule.enabled ? "התזמון פעיל" : "התזמון כבוי"}${nextRun ? ` · הבא: ${nextRun}` : ""} · רענון אחרון: ${date} · ${runtime.lastResult || "הסתיים"}`;
+    } else {
+      $("scheduleStatus").textContent = schedule && schedule.enabled
+        ? `התזמון פעיל · כל ${$("refreshScheduleHours").value} שעות${nextRun ? ` · הבא: ${nextRun}` : ""}`
+        : "רענון אוטומטי כבוי.";
+    }
+  } catch (error) {
+    console.error("[lightrail-ext] failed to load refresh schedule", error);
+    $("scheduleStatus").textContent = error.message || "טעינת התזמון נכשלה.";
+    $("scheduleStatus").dataset.error = "true";
+  }
+}
+
+async function saveRefreshSchedule() {
+  const enabled = $("refreshScheduleEnabled").checked;
+  const hours = Math.max(1, Math.min(168, Math.round(Number($("refreshScheduleHours").value) || 5)));
+  const delaySeconds = Math.max(
+    MIN_REFRESH_DELAY_SEC,
+    Math.min(MAX_REFRESH_DELAY_SEC, Math.round(Number($("refreshDelay").value) || 30))
+  );
+  $("refreshScheduleHours").value = String(hours);
+  $("refreshDelay").value = String(delaySeconds);
+  const button = $("saveRefreshSchedule");
+  button.disabled = true;
+  $("scheduleStatus").dataset.error = "false";
+  $("scheduleStatus").textContent = "שומר תזמון…";
+  try {
+    const schedule = {
+      enabled,
+      everyHours: hours,
+      delaySeconds,
+      uncheckedOnly: $("refreshScope").value === "unchecked",
+      updatedAt: Date.now(),
+    };
+    await storageSet({
+      [REFRESH_SCHEDULE_KEY]: schedule,
+      [REFRESH_DELAY_KEY]: delaySeconds,
+    });
+    await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: "lightrail:refresh-schedule-updated" },
+        (result) => {
+          const error = chrome.runtime.lastError;
+          if (error) reject(new Error(error.message));
+          else if (!result || !result.ok) reject(new Error(result && result.error || "עדכון התזמון נכשל."));
+          else resolve(result);
+        }
+      );
+    });
+    await loadRefreshSchedule();
+    if (enabled) {
+      $("scheduleStatus").textContent += ` · ${$("refreshScope").value === "unchecked" ? "מודעות לא נבדקו בלבד" : "כל המודעות השמורות"} · ${delaySeconds} שניות בין מודעות`;
+    } else {
+      $("scheduleStatus").textContent = "התזמון בוטל. רענון ידני עדיין זמין.";
+    }
+  } catch (error) {
+    console.error("[lightrail-ext] failed to save refresh schedule", error);
+    $("scheduleStatus").dataset.error = "true";
+    $("scheduleStatus").textContent = error.message || "שמירת התזמון נכשלה.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function saveYad2ListingStatus(key, status, attemptId, index) {
   if (!["active", "removed"].includes(status)) return;
   if (
@@ -1253,11 +1583,12 @@ function openNextListing() {
     refreshSkippedCount = 0;
     currentPageLoaded = false;
     updateRefreshButtons();
-    setRefreshStatus(
-      skippedCount
-        ? `הרענון הסתיים. ${skippedCount} מודעות דולגו עקב שגיאה.`
-        : "הרענון הסתיים."
-    );
+    const result = skippedCount
+      ? `הרענון הסתיים. ${skippedCount} מודעות דולגו עקב שגיאה.`
+      : "הרענון הסתיים.";
+    setRefreshStatus(result);
+    reportRefreshRun("lightrail:refresh-run-finished", result);
+    refreshRunScheduled = false;
     return;
   }
   const attemptId = ++refreshAttemptId;
@@ -1298,7 +1629,7 @@ function openNextListing() {
   });
 }
 
-async function startRefresh() {
+async function startRefresh(options = {}) {
   if (refreshQueue.length || refreshStarting) return;
   refreshStarting = true;
   updateRefreshButtons();
@@ -1317,26 +1648,44 @@ async function startRefresh() {
     updateRefreshButtons();
     return;
   }
-  refreshQueue = visibleRecords.filter(([key, record]) =>
+  const uncheckedOnly = options.uncheckedOnly === true || $("refreshScope").value === "unchecked";
+  const sourceRecords = options.scheduled === true
+    ? Object.entries(cache)
+    : visibleRecords;
+  refreshQueue = sourceRecords.filter(([key, record]) =>
     recordType(record) === "listing" &&
-    Boolean(refreshableListingUrl(key, record))
+    Boolean(refreshableListingUrl(key, record)) &&
+    (!uncheckedOnly ||
+      recordSite(key) === "yad2" &&
+      !["active", "removed"].includes(record.listingStatus))
   );
   refreshIndex = 0;
   refreshSkippedCount = 0;
   refreshPaused = false;
+  refreshRunScheduled = options.scheduled === true;
   if (!refreshQueue.length) {
-    setRefreshStatus("אין בתוצאות המסוננות מודעות עם קישור תקין.", true);
+    const message = uncheckedOnly
+      ? "אין מודעות יד2 בסטטוס „לא נבדקה” עם קישור תקין."
+      : "אין בתוצאות המסוננות מודעות עם קישור תקין.";
+    setRefreshStatus(message, true);
     refreshStarting = false;
     updateRefreshButtons();
+    if (refreshRunScheduled) {
+      reportRefreshRun("lightrail:refresh-run-finished", message);
+      refreshRunScheduled = false;
+    }
     return;
   }
   refreshStarting = false;
   updateRefreshButtons();
-  setRefreshStatus(`מתחיל רענון הדרגתי של ${refreshQueue.length} מודעות; ההמתנה היא ${refreshDelaySec} שניות אחרי כל טעינה.`);
+  const scopeText = uncheckedOnly ? "מודעות יד2 שלא נבדקו" : "מודעות";
+  setRefreshStatus(`מתחיל רענון של ${refreshQueue.length} ${scopeText}; ההמתנה היא ${refreshDelaySec} שניות אחרי כל טעינה.`);
+  reportRefreshRun("lightrail:refresh-run-started", { scheduled: refreshRunScheduled });
   openNextListing();
 }
 
 function stopRefresh(showStatus = true) {
+  const wasRunning = refreshQueue.length > 0;
   refreshAttemptId++;
   clearTimeout(refreshTimer);
   clearTimeout(loadTimeout);
@@ -1349,6 +1698,10 @@ function stopRefresh(showStatus = true) {
   currentPageLoaded = false;
   updateRefreshButtons();
   if (showStatus) setRefreshStatus("הרענון נעצר. כרטיסיית המודעה נשארה פתוחה.");
+  if (wasRunning) {
+    reportRefreshRun("lightrail:refresh-run-finished", "הרענון נעצר על ידי המשתמש");
+  }
+  refreshRunScheduled = false;
 }
 
 function toggleRefreshPause() {
@@ -1422,6 +1775,202 @@ async function exportCache(format) {
   }
 }
 
+function downloadBackup(backup) {
+  const blob = new Blob([JSON.stringify(backup)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `lightrail-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function exportFullBackup() {
+  const button = $("exportBackup");
+  const status = $("exportStatus");
+  button.disabled = true;
+  status.dataset.error = "false";
+  status.textContent = "מכין גיבוי מלא…";
+  try {
+    const [local, sync] = await Promise.all([
+      storageGetAll("local"),
+      storageGetAll("sync"),
+    ]);
+    local[CACHE_KEY] = local[CACHE_KEY] && typeof local[CACHE_KEY] === "object"
+      ? local[CACHE_KEY]
+      : {};
+    const runtime = local[REFRESH_RUNTIME_KEY] || {};
+    local[REFRESH_RUNTIME_KEY] = {
+      managerTabId: null,
+      running: false,
+      scheduled: false,
+      ...(Number.isFinite(runtime.lastFinishedAt) ? { lastFinishedAt: runtime.lastFinishedAt } : {}),
+      ...(runtime.lastResult ? { lastResult: runtime.lastResult } : {}),
+    };
+    downloadBackup({
+      format: "lightrail-extension-backup",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      local,
+      sync,
+    });
+    status.textContent = `הגיבוי המלא מוכן · ${Object.keys(local[CACHE_KEY]).length.toLocaleString("he-IL")} רשומות`;
+  } catch (error) {
+    console.error("[lightrail-ext] failed to export full backup", error);
+    status.dataset.error = "true";
+    status.textContent = `ייצוא הגיבוי נכשל: ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function validateBackup(value) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    value.format !== "lightrail-extension-backup" ||
+    value.version !== 1 ||
+    !value.local ||
+    typeof value.local !== "object" ||
+    Array.isArray(value.local) ||
+    !value.sync ||
+    typeof value.sync !== "object" ||
+    Array.isArray(value.sync)
+  ) {
+    throw new Error("הקובץ אינו גיבוי תקין של התוסף או שגרסתו אינה נתמכת.");
+  }
+  const importedCache = value.local[CACHE_KEY];
+  if (!importedCache || typeof importedCache !== "object" || Array.isArray(importedCache)) {
+    throw new Error("הגיבוי אינו מכיל מטמון מודעות תקין.");
+  }
+  for (const [key, record] of Object.entries(importedCache)) {
+    if (!key || !record || typeof record !== "object" || Array.isArray(record)) {
+      throw new Error("נמצאה רשומת מודעה לא תקינה בגיבוי.");
+    }
+  }
+}
+
+async function importFullBackup(file) {
+  const button = $("importBackup");
+  const status = $("exportStatus");
+  const mode = $("backupImportMode").value;
+  status.dataset.error = "false";
+  status.textContent = "בודק את קובץ הגיבוי…";
+  button.disabled = true;
+  try {
+    if (writing || dirtyFields.size || refreshQueue.length) {
+      throw new Error("לפני ייבוא, יש לסיים רענון ולשמור או לבטל שינויים פתוחים.");
+    }
+    const backup = JSON.parse(await file.text());
+    validateBackup(backup);
+    const importedCount = Object.keys(backup.local[CACHE_KEY]).length;
+    if (mode === "replace") {
+      const confirmed = window.confirm(
+        "החלפת כל המידע תמחק מהמחשב הזה את המטמון, יתר הנתונים המקומיים וההעדפות הנוכחיות, ותשחזר את הגיבוי. להמשיך?"
+      );
+      if (!confirmed) {
+        status.textContent = "הייבוא בוטל.";
+        return;
+      }
+    }
+
+    const [currentLocal, currentSync] = await Promise.all([
+      storageGetAll("local"),
+      storageGetAll("sync"),
+    ]);
+    const currentRuntime = currentLocal[REFRESH_RUNTIME_KEY];
+    if (currentRuntime && currentRuntime.running === true) {
+      throw new Error("מתבצע כרגע רענון בכרטיסייה אחרת. יש לעצור אותו לפני ייבוא.");
+    }
+    const mergedLocal = mode === "replace"
+      ? { ...backup.local }
+      : { ...currentLocal, ...backup.local };
+    const mergedSync = mode === "replace"
+      ? { ...backup.sync }
+      : { ...currentSync, ...backup.sync };
+    if (mode === "merge") {
+      mergedLocal[CACHE_KEY] = {
+        ...(currentLocal[CACHE_KEY] || {}),
+        ...backup.local[CACHE_KEY],
+      };
+    }
+    const importedRuntime = backup.local[REFRESH_RUNTIME_KEY] || {};
+    mergedLocal[REFRESH_RUNTIME_KEY] = {
+      managerTabId: null,
+      running: false,
+      scheduled: false,
+      ...(Number.isFinite(importedRuntime.lastFinishedAt)
+        ? { lastFinishedAt: importedRuntime.lastFinishedAt }
+        : {}),
+      ...(importedRuntime.lastResult ? { lastResult: importedRuntime.lastResult } : {}),
+    };
+
+    await storageSetArea("local", mergedLocal);
+    try {
+      await storageSetArea("sync", mergedSync);
+    } catch (error) {
+      try {
+        await restoreStorageArea("local", currentLocal, mergedLocal);
+        await restoreStorageArea("sync", currentSync, mergedSync);
+      } catch (rollbackError) {
+        throw new Error(
+          `שמירת ההעדפות נכשלה (${error.message}), וגם שחזור נתוני הגיבוי הקודמים נכשל (${rollbackError.message}).`
+        );
+      }
+      throw error;
+    }
+    if (mode === "replace") {
+      try {
+        await storageRemove("local", Object.keys(currentLocal).filter((key) => !(key in mergedLocal)));
+        await storageRemove("sync", Object.keys(currentSync).filter((key) => !(key in mergedSync)));
+      } catch (error) {
+        try {
+          await restoreStorageArea("local", currentLocal, mergedLocal);
+          await restoreStorageArea("sync", currentSync, mergedSync);
+        } catch (rollbackError) {
+          throw new Error(
+            `ניקוי הנתונים הקודמים נכשל (${error.message}), וגם שחזור המידע הקודם נכשל (${rollbackError.message}).`
+          );
+        }
+        throw error;
+      }
+    }
+    cache = mergedLocal[CACHE_KEY];
+    renderRows();
+    const scheduleResult = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: "lightrail:refresh-schedule-updated" },
+        (result) => resolve({
+          result,
+          error: chrome.runtime.lastError,
+        })
+      );
+    });
+    if (scheduleResult.error || !scheduleResult.result || !scheduleResult.result.ok) {
+      throw new Error(
+        `המידע יובא, אך עדכון תזמון הרענון נכשל: ${
+          scheduleResult.error && scheduleResult.error.message ||
+          scheduleResult.result && scheduleResult.result.error ||
+          "שגיאה לא ידועה"
+        }`
+      );
+    }
+    await loadRefreshSchedule();
+    status.textContent = `הייבוא הושלם · ${importedCount.toLocaleString("he-IL")} רשומות מהגיבוי`;
+  } catch (error) {
+    console.error("[lightrail-ext] failed to import full backup", error);
+    status.dataset.error = "true";
+    status.textContent = `ייבוא הגיבוי נכשל: ${error.message || "שגיאה לא ידועה"}`;
+  } finally {
+    button.disabled = false;
+    $("backupFile").value = "";
+  }
+}
+
 rows.addEventListener("click", (event) => {
   const row = event.target.closest("tr[data-key]");
   if (!row) return;
@@ -1485,6 +2034,27 @@ document.querySelectorAll("[data-price-filter]").forEach((button) => {
     renderPriceTimeline();
   });
 });
+document.querySelectorAll("[data-timeline-min], [data-timeline-max]").forEach((input) => {
+  input.addEventListener("input", renderPriceTimeline);
+});
+for (const input of document.querySelectorAll("#timelineBrokerage, [data-timeline-amenity]")) {
+  input.addEventListener("change", renderPriceTimeline);
+}
+$("timelinePreferences").addEventListener("click", () => {
+  timelinePreferencesEnabled = !timelinePreferencesEnabled;
+  renderPriceTimeline();
+});
+$("clearTimelineFilters").addEventListener("click", () => {
+  document.querySelectorAll("[data-timeline-min], [data-timeline-max]").forEach((input) => {
+    input.value = "";
+  });
+  $("timelineBrokerage").value = "";
+  document.querySelectorAll("[data-timeline-amenity]").forEach((input) => {
+    input.value = "";
+  });
+  timelinePreferencesEnabled = false;
+  renderPriceTimeline();
+});
 $("exportTxt").addEventListener("click", () => exportCache("txt"));
 $("exportCsv").addEventListener("click", () => exportCache("csv"));
 $("exportExcel").addEventListener("click", () => exportCache("excel"));
@@ -1532,6 +2102,13 @@ $("refreshDelay").addEventListener("change", async () => {
     setRefreshStatus(error.message || "שמירת זמן ההמתנה נכשלה.", true);
   }
 });
+$("saveRefreshSchedule").addEventListener("click", saveRefreshSchedule);
+$("exportBackup").addEventListener("click", exportFullBackup);
+$("importBackup").addEventListener("click", () => $("backupFile").click());
+$("backupFile").addEventListener("change", (event) => {
+  const file = event.currentTarget.files && event.currentTarget.files[0];
+  if (file) importFullBackup(file);
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !$("detailsPanel").hidden) closeDetails();
 });
@@ -1544,6 +2121,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "sync") {
+    const updated = {
+      requiredAmenities: timelinePreferences.requiredAmenities,
+      removeBrokerage: timelinePreferences.removeBrokerage,
+      calculateRail: timelinePreferences.calculateRail,
+      requireRail: timelinePreferences.requireRail,
+      nearM: timelinePreferences.nearM,
+      calculatePpsm: timelinePreferences.calculatePpsm,
+      maxPpsm: timelinePreferences.maxPpsm,
+    };
+    for (const key of Object.keys(updated)) {
+      if (changes[key]) updated[key] = changes[key].newValue;
+    }
+    readTimelinePreferences(updated);
+    if (timelinePreferencesEnabled) renderPriceTimeline();
+    return;
+  }
   if (area !== "local") return;
   if (changes[FONT_SCALE_KEY]) {
     const storedScale = Number(changes[FONT_SCALE_KEY].newValue);
@@ -1556,6 +2150,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
       $("refreshDelay").value = String(refreshDelaySec);
     }
   }
+  if (changes[REFRESH_RUNTIME_KEY]) loadRefreshSchedule();
   if (!changes[CACHE_KEY] || writing) return;
   if (dirtyFields.size) {
     $("saveStatus").textContent = "המטמון השתנה בחלון אחר. רענן לפני שמירה.";
@@ -1565,7 +2160,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   loadCache();
 });
 
+initializeTimelineAmenityFilters();
 renderHeader();
+loadTimelinePreferences();
 Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_KEY)])
   .then(async ([storedCache, storedDelay, storedFontScale]) => {
     cache = await migrateEstimatedBaselineDates(storedCache);
@@ -1577,7 +2174,22 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
       $("refreshDelay").value = String(refreshDelaySec);
     }
     if (Number.isFinite(storedFontScale)) applyFontScale(storedFontScale);
+    await loadRefreshSchedule();
     renderRows();
+    const params = new URLSearchParams(location.search);
+    if (params.get("scheduledRefresh") === "1") {
+      const uncheckedOnly = params.get("uncheckedOnly") === "1";
+      history.replaceState(null, "", location.pathname);
+      $("refreshScope").value = uncheckedOnly ? "unchecked" : "filtered";
+      const schedule = await storageGet(REFRESH_SCHEDULE_KEY);
+      if (schedule && schedule.enabled === true) {
+        startRefresh({ scheduled: true, uncheckedOnly });
+      } else {
+        const message = "התזמון בוטל לפני תחילת הרענון.";
+        setRefreshStatus(message);
+        reportRefreshRun("lightrail:refresh-run-finished", message);
+      }
+    }
   })
   .catch((error) => {
     console.error("[lightrail-ext] failed to initialize cache manager", error);

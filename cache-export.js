@@ -130,6 +130,18 @@ var LRCacheExport = (() => {
         address: record.address || "",
         city: record.city || "",
         url: recordUrl(site, listingId, record),
+        currentPrice: Number.isFinite(record.price) ? record.price : null,
+        sqm: record.sqm,
+        rooms: record.rooms,
+        pricePerSqm: LRCacheData.pricePerSqm(record),
+        railMeters: record.railMeters,
+        railApprox: record.railApprox,
+        railStation: record.railStation || "",
+        brokerage: record.brokerage,
+        amenities:
+          record.amenities && typeof record.amenities === "object"
+            ? record.amenities
+            : {},
       };
       for (let index = 1; index < history.length; index++) {
         const previous = history[index - 1];

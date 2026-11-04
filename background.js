@@ -10,6 +10,9 @@ const GEO_MIN_GAP_MS = 1050; // Nominatim: מקסימום בקשה בשנייה
 const WALK_DETOUR = 1.3; // מקדם המרה מקו אווירי למרחק הליכה משוער
 const WALK_M_PER_MIN = 80;
 const BIAS_DEG = 0.3; // ~30 ק"מ סביב אזור הדף, לשאילתות בלי עיר
+const REFRESH_SCHEDULE_KEY = "lightrailRefreshSchedule";
+const REFRESH_RUNTIME_KEY = "lightrailRefreshRuntime";
+const REFRESH_ALARM_NAME = "lightrail-periodic-listing-refresh";
 
 // ---------- עזרי מרחק ----------
 function haversine(lat1, lon1, lat2, lon2) {
@@ -91,6 +94,95 @@ function getStations() {
 // טעינה מוקדמת של התחנות, כדי שלא יחכו להן כשנכנסים לאתר
 chrome.runtime.onInstalled.addListener(() => getStations().catch(() => {}));
 chrome.runtime.onStartup.addListener(() => getStations().catch(() => {}));
+
+async function syncRefreshAlarm() {
+  const { [REFRESH_SCHEDULE_KEY]: schedule } = await chrome.storage.local.get(REFRESH_SCHEDULE_KEY);
+  if (!schedule || schedule.enabled !== true) {
+    await chrome.alarms.clear(REFRESH_ALARM_NAME);
+    return;
+  }
+  const hours = Math.max(1, Math.min(168, Math.round(Number(schedule.everyHours) || 5)));
+  await chrome.alarms.create(REFRESH_ALARM_NAME, { periodInMinutes: hours * 60 });
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  syncRefreshAlarm().catch((error) =>
+    console.error("[lightrail-ext] failed to initialize refresh schedule", error)
+  );
+});
+chrome.runtime.onStartup.addListener(() => {
+  syncRefreshAlarm().catch((error) =>
+    console.error("[lightrail-ext] failed to restore refresh schedule", error)
+  );
+  chrome.storage.local.get(REFRESH_RUNTIME_KEY, (result) => {
+    const runtime = result && result[REFRESH_RUNTIME_KEY];
+    if (!runtime || runtime.running !== true) return;
+    chrome.storage.local.set({
+      [REFRESH_RUNTIME_KEY]: {
+        ...runtime,
+        running: false,
+        scheduled: false,
+        lastFinishedAt: Date.now(),
+        lastResult: "הדפדפן נסגר בזמן הרענון",
+      },
+    });
+  });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== REFRESH_ALARM_NAME) return;
+  Promise.all([
+    chrome.storage.local.get(REFRESH_SCHEDULE_KEY),
+    chrome.storage.local.get(REFRESH_RUNTIME_KEY),
+  ])
+    .then(async ([scheduleResult, runtimeResult]) => {
+      const schedule = scheduleResult[REFRESH_SCHEDULE_KEY];
+      if (!schedule || schedule.enabled !== true) return;
+      const runtime = runtimeResult[REFRESH_RUNTIME_KEY] || {};
+      if (runtime.running === true && Number.isInteger(runtime.managerTabId)) {
+        const activeTab = await chrome.tabs.get(runtime.managerTabId).catch(() => null);
+        if (activeTab) return;
+      }
+      const url = chrome.runtime.getURL(
+        `cache-manager.html?scheduledRefresh=1&uncheckedOnly=${schedule.uncheckedOnly === true ? "1" : "0"}`
+      );
+      let tab = Number.isInteger(runtime.managerTabId)
+        ? await chrome.tabs.get(runtime.managerTabId).catch(() => null)
+        : null;
+      if (tab) {
+        tab = await chrome.tabs.update(tab.id, { url, active: false });
+      } else {
+        tab = await chrome.tabs.create({ url, active: false });
+      }
+      await chrome.storage.local.set({
+        [REFRESH_RUNTIME_KEY]: {
+          managerTabId: tab.id,
+          running: true,
+          scheduled: true,
+          startedAt: Date.now(),
+        },
+      });
+    })
+    .catch((error) =>
+      console.error("[lightrail-ext] failed to start scheduled listing refresh", error)
+    );
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.local.get(REFRESH_RUNTIME_KEY, (result) => {
+    const runtime = result && result[REFRESH_RUNTIME_KEY];
+    if (!runtime || runtime.managerTabId !== tabId) return;
+    chrome.storage.local.set({
+      [REFRESH_RUNTIME_KEY]: {
+        managerTabId: null,
+        running: false,
+        scheduled: false,
+        lastFinishedAt: Date.now(),
+        lastResult: "הכרטיסייה נסגרה לפני סיום הרענון",
+      },
+    });
+  });
+});
 
 // ---------- גיאוקוד ----------
 let geoCache = null;
@@ -248,5 +340,58 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, reason: "error", error: String(err) }));
     return true; // תשובה אסינכרונית
+  }
+  if (msg && msg.type === "lightrail:refresh-schedule-updated") {
+    syncRefreshAlarm()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => {
+        console.error("[lightrail-ext] failed to update refresh schedule", error);
+        sendResponse({ ok: false, error: error.message || "עדכון התזמון נכשל." });
+      });
+    return true;
+  }
+  if (msg && msg.type === "lightrail:refresh-run-started") {
+    const managerTabId = _sender.tab && _sender.tab.id;
+    if (!Number.isInteger(managerTabId)) {
+      sendResponse({ ok: false, error: "לא ניתן לזהות את כרטיסיית מנהל המודעות." });
+      return false;
+    }
+    chrome.storage.local.set({
+      [REFRESH_RUNTIME_KEY]: {
+        managerTabId,
+        running: true,
+        scheduled: Boolean(msg.scheduled),
+        startedAt: Date.now(),
+      },
+    }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) console.error("[lightrail-ext] failed to save refresh run state", error.message);
+      sendResponse(error ? { ok: false, error: error.message } : { ok: true });
+    });
+    return true;
+  }
+  if (msg && msg.type === "lightrail:refresh-run-finished") {
+    const managerTabId = _sender.tab && _sender.tab.id;
+    chrome.storage.local.get(REFRESH_RUNTIME_KEY, (result) => {
+      const runtime = result && result[REFRESH_RUNTIME_KEY];
+      if (runtime && runtime.managerTabId === managerTabId) {
+        chrome.storage.local.set({
+          [REFRESH_RUNTIME_KEY]: {
+            managerTabId: runtime.managerTabId,
+            running: false,
+            scheduled: false,
+            lastFinishedAt: Date.now(),
+            lastResult: String(msg.result || "הסתיים"),
+          },
+        }, () => {
+          const error = chrome.runtime.lastError;
+          if (error) console.error("[lightrail-ext] failed to save refresh completion", error.message);
+          sendResponse(error ? { ok: false, error: error.message } : { ok: true });
+        });
+      } else {
+        sendResponse({ ok: true });
+      }
+    });
+    return true;
   }
 });

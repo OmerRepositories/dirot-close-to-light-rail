@@ -14,6 +14,7 @@ const DEFAULTS = {
   disableMadlan: false,
   disableFacebook: false,
   saveListingData: true,
+  listingIndexingMode: "encountered",
   requiredAmenities: ["secureRoom"],
 };
 
@@ -80,6 +81,8 @@ const boolKeys = [
 function fill(s) {
   for (const k of numberKeys) $(k).value = s[k] ? s[k] : k === "nearM" ? s[k] : "";
   for (const k of boolKeys) $(k).checked = Boolean(s[k]);
+  $("listingIndexingMode").value =
+    s.listingIndexingMode === "opened" ? "opened" : "encountered";
   const required = Array.isArray(s.requiredAmenities)
     ? s.requiredAmenities
     : DEFAULTS.requiredAmenities;
@@ -96,6 +99,7 @@ function syncDisabled() {
   $("ppsmSettings").disabled = !calculatePpsm;
   $("railSettings").disabled = !calculateRail;
   $("nearM").disabled = !$("requireRail").checked;
+  $("listingIndexingMode").disabled = !$("saveListingData").checked;
 }
 
 function read() {
@@ -107,6 +111,8 @@ function read() {
   if (!out.nearM) out.nearM = DEFAULTS.nearM;
   out.belowMedianPct = Math.min(out.belowMedianPct, 90);
   for (const k of boolKeys) out[k] = $(k).checked;
+  out.listingIndexingMode =
+    $("listingIndexingMode").value === "opened" ? "opened" : "encountered";
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
   );
@@ -135,6 +141,7 @@ for (const k of [...numberKeys, ...boolKeys]) {
   $(k).addEventListener("input", save);
   $(k).addEventListener("change", save);
 }
+$("listingIndexingMode").addEventListener("change", save);
 
 for (const [key, label] of AMENITIES) {
   const option = document.createElement("label");

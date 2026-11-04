@@ -139,7 +139,14 @@
         <input type="checkbox" id="saveListingData">
         <span>לשמור נתוני מודעות ופרויקטים לייצוא</span>
       </label>
-      <p class="small">כיבוי מפסיק שמירת נתונים חדשים. מידע שכבר נשמר יישאר עד למחיקתו.</p>
+      <label class="field">
+        <span>מתי לשמור מודעות?</span>
+        <select id="listingIndexingMode">
+          <option value="encountered">כשאני רואה אותן בתוצאות החיפוש</option>
+          <option value="opened">רק כשאני פותח/ת את עמוד המודעה</option>
+        </select>
+      </label>
+      <p class="small">הבחירה לא מוחקת מידע שכבר נשמר. פרויקטים יישמרו כרגיל; כיבוי השמירה עוצר שמירת מידע חדש.</p>
       <p class="small">אפשר לייצא את כל המידע ל־TXT, CSV או Excel. Excel כולל מסננים בכותרות, קישורים לחיצים וצביעה ירוקה/אדומה למאפיינים.</p>
       <div class="cache-actions">
         <button id="openCacheManager" type="button">צפייה ועריכת מידע שמור</button>
