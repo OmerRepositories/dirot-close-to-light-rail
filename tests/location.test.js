@@ -77,6 +77,20 @@ test("Google Maps can open from a known street and city even without a house num
   assert.equal(LRLocation.hasListingMapsAddress(address), true);
 });
 
+test("Google Maps can open from a street-and-city query when parsed address fields are missing", () => {
+  const queries = [
+    { q: "בעל שם טוב, פתח תקווה", approx: true, bias: false },
+  ];
+  const origin = LRLocation.listingMapsOrigin(null, queries);
+  const url = new URL(
+    LRLocation.mapsDirectionsUrl(origin, "תחנה מרכזית פתח תקווה")
+  );
+
+  assert.equal(origin, "בעל שם טוב, פתח תקווה");
+  assert.equal(LRLocation.hasListingMapsAddress(null, queries), true);
+  assert.equal(url.searchParams.get("origin"), "בעל שם טוב, פתח תקווה");
+});
+
 test("Google Maps does not open when a listing address is unavailable", () => {
   assert.equal(LRLocation.hasListingMapsAddress(null, [], "פתח תקווה"), false);
   assert.equal(

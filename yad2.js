@@ -81,19 +81,54 @@ var LRYad2 = (() => {
     return link ? new URL(link.href, location.href).href : null;
   }
 
+  function readListingDetailNumber(root, testId) {
+    if (!root || !root.querySelector) return null;
+    const element = root.querySelector(`[data-testid="${testId}"]`);
+    const text = element && (element.innerText || element.textContent || "");
+    const match = String(text || "").replace(/[\u200e\u200f]/g, "").match(/^\s*([\d,]+(?:\.\d+)?)/);
+    if (!match) return null;
+    const value = Number(match[1].replace(/,/g, ""));
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function readListingBuiltArea(root) {
+    const explicitArea = readListingDetailNumber(root, "square-meter-build-value");
+    if (Number.isFinite(explicitArea)) return explicitArea;
+    if (!root || !root.querySelectorAll) return null;
+
+    for (const element of root.querySelectorAll('[data-testid="building-text"]')) {
+      const itemText = element.parentElement &&
+        (element.parentElement.innerText || element.parentElement.textContent || "");
+      if (!/(?:מ["״”'׳]?ר|מ²|מ2)\s*$/.test(String(itemText || "").replace(/\s+/g, ""))) {
+        continue;
+      }
+      const value = Number(String(element.innerText || element.textContent || "").replace(/[,\s]/g, ""));
+      if (Number.isFinite(value) && value >= 15 && value <= 1000) return value;
+    }
+    return null;
+  }
+
   function extractPriceSqm(root, text) {
     const stats = LR.extractPriceSqm(text);
     const currentPriceElement =
       root &&
       root.querySelector &&
       root.querySelector('[data-testid="current-price"] [data-testid="price"]');
-    if (!currentPriceElement) return stats;
-
-    const currentPriceText = currentPriceElement.innerText || currentPriceElement.textContent || "";
+    const currentPriceText = currentPriceElement
+      ? currentPriceElement.innerText || currentPriceElement.textContent || ""
+      : "";
     const currentPrice = LR.extractPriceSqm(currentPriceText).price;
-    if (!Number.isFinite(currentPrice)) return stats;
-    const details = Number.isFinite(stats.sqm) ? `${stats.sqm} מ״ר` : "";
-    return LR.extractPriceSqm(`${currentPrice} ₪ ${details}`);
+    const structuredSqm = readListingBuiltArea(root);
+    const structuredPricePerSqm = readListingDetailNumber(root, "price-per-squaremeter-value");
+    const price = Number.isFinite(currentPrice) ? currentPrice : stats.price;
+    const sqm = Number.isFinite(structuredSqm) ? structuredSqm : stats.sqm;
+    const normalized = LR.extractPriceSqm(
+      `${Number.isFinite(price) ? `${price} ₪ ` : ""}${Number.isFinite(sqm) ? `${sqm} מ״ר` : ""}`
+    );
+    if (Number.isFinite(structuredPricePerSqm)) {
+      normalized.ppsm = structuredPricePerSqm;
+    }
+    return normalized;
   }
 
   function placeFromData(root) {

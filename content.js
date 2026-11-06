@@ -481,6 +481,9 @@
   // ---------- זיהוי כרטיסים ----------
   function findCards() {
     const byHref = new Map();
+    const currentListingPath = LISTING_HREF.test(location.pathname)
+      ? location.pathname.replace(//+$/, "")
+      : null;
     document.querySelectorAll("a[href]").forEach((a) => {
       let path;
       try {
@@ -489,6 +492,7 @@
         return;
       }
       if (!LISTING_HREF.test(path)) return;
+      if (currentListingPath && path.replace(//+$/, "") === currentListingPath) return;
       if (!byHref.has(path)) byHref.set(path, []);
       byHref.get(path).push(a);
     });

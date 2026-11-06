@@ -56,11 +56,10 @@ test("Yad2 search cards use locality shown outside the address line", () => {
 test("Yad2 listing price extraction prefers the current price over the previous tagged price", () => {
   const root = {
     querySelector(selector) {
-      assert.equal(
-        selector,
-        '[data-testid="current-price"] [data-testid="price"]'
-      );
-      return { innerText: "2,090,000 ₪" };
+      if (selector === '[data-testid="current-price"] [data-testid="price"]') {
+        return { innerText: "2,090,000 ₪" };
+      }
+      return null;
     },
   };
   const stats = context.LRYad2.extractPriceSqm(
@@ -71,6 +70,66 @@ test("Yad2 listing price extraction prefers the current price over the previous 
   assert.equal(stats.price, 2_090_000);
   assert.equal(stats.sqm, 100);
   assert.equal(stats.ppsm, 20_900);
+});
+
+test("Yad2 listing detail area overrides balcony area mentioned in the description", () => {
+  const root = {
+    querySelector(selector) {
+      if (selector === '[data-testid="current-price"] [data-testid="price"]') {
+        return { innerText: "2,600,000 ₪" };
+      }
+      if (selector === '[data-testid="square-meter-build-value"]') {
+        return { innerText: "127 מ״ר" };
+      }
+      if (selector === '[data-testid="price-per-squaremeter-value"]') {
+        return { innerText: "20,472 ₪" };
+      }
+      return null;
+    },
+  };
+  const stats = context.LRYad2.extractPriceSqm(
+    root,
+    "פנטהאוז 4 חדרים. מרפסת שמש 35 מ״ר, מחסן וחניה."
+  );
+
+  assert.equal(stats.price, 2_600_000);
+  assert.equal(stats.sqm, 127);
+  assert.equal(stats.ppsm, 20_472);
+});
+
+test("Yad2 uses the structured building-details area when the separate built-area field is absent", () => {
+  const buildingValues = [
+    { value: "5", item: "5חדרים" },
+    { value: "קומה", item: "קומה1/4" },
+    { value: "148", item: "148מ״ר" },
+  ];
+  const root = {
+    querySelector(selector) {
+      if (selector === '[data-testid="current-price"] [data-testid="price"]') {
+        return { innerText: "3,450,000 ₪" };
+      }
+      if (selector === '[data-testid="square-meter-build-value"]') return null;
+      if (selector === '[data-testid="price-per-squaremeter-value"]') {
+        return { innerText: "23,310 ₪" };
+      }
+      return null;
+    },
+    querySelectorAll(selector) {
+      assert.equal(selector, '[data-testid="building-text"]');
+      return buildingValues.map(({ value, item }) => ({
+        innerText: value,
+        parentElement: { innerText: item },
+      }));
+    },
+  };
+  const stats = context.LRYad2.extractPriceSqm(
+    root,
+    "דירה 5 חדרים, 148 מ״ר. מרפסת גדולה ופתוחה 35 מ״ר."
+  );
+
+  assert.equal(stats.price, 3_450_000);
+  assert.equal(stats.sqm, 148);
+  assert.equal(stats.ppsm, 23_310);
 });
 
 test("Yad2 does not replace a focused address with a conflicting house number", () => {
