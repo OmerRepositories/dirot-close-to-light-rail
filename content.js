@@ -32,6 +32,8 @@
     saveListingData: true,
     listingIndexingMode: "encountered",
     requiredAmenities: ["secureRoom"],
+    hideAds: true, // להסתיר פרסומות (באנרים של Google ופרויקטים ממומנים) ביד2
+    blockedStreets: [], // רחובות שמודעות עליהם לא יוצגו לעולם
   };
   const CFG = {
     ...DEFAULTS,
@@ -256,6 +258,31 @@
     return /תיווך|נדל(?:[״"'׳]?ן)/.test(text);
   }
 
+  // רחובות חסומים: הכתובת נקראת מחדש רק כשהטקסט של הכרטיס משתנה
+  let blockedStreetRules = [];
+  function filterStreetEntry(entry) {
+    if (entry.kind !== "list") return false;
+    let blocked = null;
+    if (blockedStreetRules.length) {
+      const text = entry.getText();
+      if (entry.streetFilterText !== text) {
+        entry.streetFilterText = text;
+        try {
+          const siteParser = IS_YAD2 ? LRYad2 : LRMadlan;
+          const address = siteParser.readAddress(entry.card, text, ctxCity(), false);
+          entry.streetFilterAddress = { street: address.street || "", city: address.city || "" };
+        } catch {
+          entry.streetFilterAddress = null;
+        }
+      }
+      const address = entry.streetFilterAddress;
+      blocked = address ? LRStreetFilter.match(blockedStreetRules, address.street, address.city) : null;
+    }
+    entry.card.classList.toggle("lr-street-removed", Boolean(blocked));
+    entry.streetRemoved = Boolean(blocked);
+    return Boolean(blocked);
+  }
+
   function filterBrokerageEntry(entry) {
     if (entry.kind !== "list") return false;
     const filterActive = removeBrokerageForPage ?? CFG.removeBrokerage;
@@ -455,7 +482,12 @@
     const railStatus = document.createElement("span");
     railStatus.className = "lr-rail-filter-status";
     railStatus.setAttribute("aria-live", "polite");
+    const dragHandle = document.createElement("div");
+    dragHandle.className = "lr-filter-drag";
+    dragHandle.textContent = "⠿ גרור להזזה";
+    dragHandle.title = "גרור כדי להזיז את הכפתורים. לחיצה כפולה מחזירה למקום ברירת המחדל.";
     brokerageFilterBar.append(
+      dragHandle,
       brokerageButton,
       brokerageStatus,
       projectButton,
@@ -464,7 +496,84 @@
       railStatus
     );
     document.body.append(brokerageFilterBar);
+    makeFilterBarDraggable(brokerageFilterBar, dragHandle);
   }
+
+  // ---------- הזזת סרגל הכפתורים ----------
+  // המיקום נשמר (באחוזים מגודל החלון, כדי שיתאים גם כשהחלון משנה גודל) ומשותף לכל הדפים.
+  const FILTER_BAR_POSITION_KEY = "lightrailFilterBarPosition";
+  let filterBarPosition = null;
+
+  function applyFilterBarPosition(bar) {
+    if (!bar) return;
+    const props = ["left", "top", "bottom", "right"];
+    if (!filterBarPosition) {
+      for (const prop of props) bar.style.removeProperty(prop);
+      return;
+    }
+    const maxLeft = Math.max(0, window.innerWidth - bar.offsetWidth);
+    const maxTop = Math.max(0, window.innerHeight - bar.offsetHeight);
+    const left = Math.min(maxLeft, Math.max(0, filterBarPosition.x * window.innerWidth));
+    const top = Math.min(maxTop, Math.max(0, filterBarPosition.y * window.innerHeight));
+    // שומרים את המיקום המוגבל לחלון, כדי שגרירה אל מחוץ למסך לא תישמר
+    filterBarPosition = { x: left / window.innerWidth, y: top / window.innerHeight };
+    bar.style.setProperty("left", `${Math.round(left)}px`, "important");
+    bar.style.setProperty("top", `${Math.round(top)}px`, "important");
+    bar.style.setProperty("bottom", "auto", "important");
+    bar.style.setProperty("right", "auto", "important");
+  }
+
+  function saveFilterBarPosition() {
+    try {
+      if (filterBarPosition) chrome.storage.local.set({ [FILTER_BAR_POSITION_KEY]: filterBarPosition });
+      else chrome.storage.local.remove(FILTER_BAR_POSITION_KEY);
+    } catch {}
+  }
+
+  function makeFilterBarDraggable(bar, handle) {
+    applyFilterBarPosition(bar);
+    let drag = null;
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const rect = bar.getBoundingClientRect();
+      drag = { dx: event.clientX - rect.left, dy: event.clientY - rect.top, id: event.pointerId };
+      handle.setPointerCapture(event.pointerId);
+      bar.dataset.dragging = "true";
+      event.preventDefault();
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      filterBarPosition = {
+        x: (event.clientX - drag.dx) / window.innerWidth,
+        y: (event.clientY - drag.dy) / window.innerHeight,
+      };
+      applyFilterBarPosition(bar);
+    });
+    const endDrag = (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      drag = null;
+      delete bar.dataset.dragging;
+      saveFilterBarPosition();
+    };
+    handle.addEventListener("pointerup", endDrag);
+    handle.addEventListener("pointercancel", endDrag);
+    handle.addEventListener("dblclick", () => {
+      filterBarPosition = null;
+      applyFilterBarPosition(bar);
+      saveFilterBarPosition();
+    });
+  }
+
+  window.addEventListener("resize", () => applyFilterBarPosition(brokerageFilterBar), { passive: true });
+  try {
+    chrome.storage.local.get(FILTER_BAR_POSITION_KEY, (result) => {
+      const saved = result && result[FILTER_BAR_POSITION_KEY];
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+        filterBarPosition = { x: saved.x, y: saved.y };
+        applyFilterBarPosition(brokerageFilterBar);
+      }
+    });
+  } catch {}
 
   // ---------- טקסט של מודעה בודדת ----------
   function mainText() {
@@ -1515,6 +1624,7 @@
       renderCachedAmenities(entry);
       filterBrokerageEntry(entry);
       filterNearRailEntry(entry);
+      filterStreetEntry(entry);
       const listingRoot =
         entry.kind === "single"
           ? document.querySelector("main") || document.body
@@ -1761,7 +1871,8 @@
           "lr-cache-missing",
           "lr-deal-card",
           "lr-project-removed",
-          "lr-not-near-rail"
+          "lr-not-near-rail",
+          "lr-street-removed"
         );
         highlightBrokerage(entry.card, false);
       }
@@ -1780,7 +1891,18 @@
     highlightBrokerage(document.querySelector("main") || document.body, false);
   }
 
+  // הסתרת פרסומות ביד2: מחלקה על <html> וכללי CSS ב-content.css (בלי לולאות JS ובלי למחוק
+  // צמתים ש-React מנהל). מופעל מיד עם ברירת המחדל, כדי שהפרסומות לא יהבהבו עד שההגדרות נטענות.
+  function syncAdHiding() {
+    document.documentElement.classList.toggle(
+      "lr-hide-ads",
+      Boolean(IS_YAD2 && CFG.hideAds && !CFG[SITE_DISABLE_KEY])
+    );
+  }
+  syncAdHiding();
+
   function updateSiteState() {
+    syncAdHiding();
     if (CFG[SITE_DISABLE_KEY]) stop();
     else start();
   }
@@ -1809,6 +1931,9 @@
           : [...DEFAULTS.requiredAmenities];
       } else if (k === "listingIndexingMode") {
         CFG[k] = s[k] === "opened" ? "opened" : "encountered";
+      } else if (k === "blockedStreets") {
+        CFG[k] = Array.isArray(s[k]) ? s[k].map(String) : [];
+        blockedStreetRules = LRStreetFilter.parseRules(CFG[k]);
       } else {
         CFG[k] = NUM_KEYS.includes(k) ? Math.max(0, Number(s[k]) || 0) : Boolean(s[k]);
       }

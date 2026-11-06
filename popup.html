@@ -104,6 +104,16 @@
         <span>להסיר פרויקטים תמיד</span>
       </label>
       <p class="small">אפשר גם להסיר פרויקטים רק בעמוד הנוכחי באמצעות הכפתור בראש עמוד החיפוש.</p>
+      <label class="row switch">
+        <input type="checkbox" id="hideAds">
+        <span>להסתיר פרסומות ביד2</span>
+      </label>
+      <p class="small">מסתיר באנרים ופרויקטים ממומנים. כבה אם אתה רוצה לראות את הפרסומות.</p>
+      <label class="field">
+        <span>רחובות שלא יוצגו לעולם</span>
+        <textarea id="blockedStreets" rows="3" placeholder="שטמפר&#10;ז'בוטינסקי, פתח תקווה"></textarea>
+      </label>
+      <p class="small">רחוב אחד בכל שורה. אפשר להוסיף עיר אחרי פסיק כדי לחסום רק בעיר הזו. ההתאמה לפי מילים שלמות, כך ש"הרצל" לא יחסום את "הרצליה".</p>
     </section>
 
     <section class="tab-panel" id="panel-sites" role="tabpanel" aria-labelledby="tab-sites" data-panel="sites" hidden>
@@ -172,6 +182,7 @@
 
   <script src="cache-data.js"></script>
   <script src="cache-export.js"></script>
+  <script src="street-filter.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

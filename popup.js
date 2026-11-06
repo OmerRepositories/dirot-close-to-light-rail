@@ -16,6 +16,8 @@ const DEFAULTS = {
   saveListingData: true,
   listingIndexingMode: "encountered",
   requiredAmenities: ["secureRoom"],
+  hideAds: true,
+  blockedStreets: [],
 };
 
 const AMENITIES = [
@@ -76,6 +78,7 @@ const boolKeys = [
   "disableMadlan",
   "disableFacebook",
   "saveListingData",
+  "hideAds",
 ];
 
 function fill(s) {
@@ -88,6 +91,10 @@ function fill(s) {
     : DEFAULTS.requiredAmenities;
   for (const input of document.querySelectorAll("[data-amenity]")) {
     input.checked = required.includes(input.dataset.amenity);
+  }
+  // לא דורסים את מה שהמשתמש מקליד כרגע (השמירה האוטומטית מחזירה את הערך המנוקה)
+  if (document.activeElement !== $("blockedStreets")) {
+    $("blockedStreets").value = (Array.isArray(s.blockedStreets) ? s.blockedStreets : []).join("\n");
   }
   syncDisabled();
 }
@@ -116,6 +123,7 @@ function read() {
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
   );
+  out.blockedStreets = LRStreetFilter.parseInput($("blockedStreets").value);
   return out;
 }
 
@@ -142,6 +150,7 @@ for (const k of [...numberKeys, ...boolKeys]) {
   $(k).addEventListener("change", save);
 }
 $("listingIndexingMode").addEventListener("change", save);
+$("blockedStreets").addEventListener("input", save);
 
 for (const [key, label] of AMENITIES) {
   const option = document.createElement("label");
@@ -159,7 +168,7 @@ for (const [key, label] of AMENITIES) {
 $("reset").addEventListener("click", () => {
   fill(DEFAULTS);
   chrome.storage.sync.set(
-    { ...DEFAULTS, requiredAmenities: [...DEFAULTS.requiredAmenities] },
+    { ...DEFAULTS, requiredAmenities: [...DEFAULTS.requiredAmenities], blockedStreets: [] },
     () => flash("✓ אופס")
   );
 });

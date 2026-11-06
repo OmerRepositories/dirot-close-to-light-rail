@@ -121,7 +121,18 @@
 
 .lr-brokerage-removed,
 .lr-project-removed,
-.lr-not-near-rail { display: none !important; }
+.lr-not-near-rail,
+.lr-street-removed { display: none !important; }
+
+/* פרסומות ביד2 (Google Ad Manager / DFP ופרויקטים ממומנים). פעיל רק כש-<html> מסומן
+   ב-lr-hide-ads, כלומר ביד2 כשההגדרה "להסתיר פרסומות" דלוקה. שים לב: ad-card ביד2 הוא
+   מודעת נדל"ן רגילה ולא פרסומת, ולכן לא נוגעים בו. */
+html.lr-hide-ads [class*="dfp-slot-module"][class*="__container"],
+html.lr-hide-ads [class*="dfp-mega-slot-module"][class*="__dfpMegaBox"],
+html.lr-hide-ads [class*="desktop-plasma-dfp-module"][class*="__dfpBox"],
+html.lr-hide-ads [class*="promo-ad-module"][class*="__promoBox"],
+html.lr-hide-ads [id^="google_ads_iframe"],
+html.lr-hide-ads [id^="div-gpt-ad"] { display: none !important; }
 
 .lr-brokerage-warning {
   color: #b42318;
@@ -168,6 +179,23 @@
   opacity: .55;
   cursor: not-allowed !important;
 }
+.lr-filter-drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: -3px -3px 0;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: #9a3412;
+  font: 600 10px/1.2 system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.lr-filter-drag:hover { background: rgba(194, 65, 12, .1); }
+#lr-brokerage-filter[data-dragging="true"] .lr-filter-drag { cursor: grabbing; }
+#lr-brokerage-filter[data-dragging="true"] { opacity: .9; }
 .lr-brokerage-filter-status,
 .lr-project-filter-status,
 .lr-rail-filter-status { color: #7c2d12; }
