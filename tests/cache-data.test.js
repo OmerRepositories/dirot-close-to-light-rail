@@ -205,3 +205,65 @@ test("numeric filters support ranges and match overlapping project price or area
   );
   assert.equal(CacheData.matchesNumericRange(null, null, 3_000_000), false);
 });
+
+test("bulk deletion matches only listings that meet every selected optional filter", () => {
+  const cache = {
+    "yad2:cheap": {
+      title: "דירה למכירה",
+      price: 1_800_000,
+      sqm: 80,
+      rooms: 3,
+      railMeters: 500,
+      brokerage: false,
+      amenities: { secureRoom: false, storage: null },
+    },
+    "madlan:cheap": {
+      title: "דירה בלי ממ״ד",
+      price: 1_950_000,
+      sqm: 90,
+      rooms: 3.5,
+      railMeters: 700,
+      brokerage: false,
+      amenities: { secureRoom: false, storage: true },
+    },
+    "yad2:unknown": {
+      title: "מידע חלקי",
+      price: 1_700_000,
+      sqm: 75,
+      rooms: 3,
+      railMeters: 400,
+      brokerage: false,
+      amenities: { secureRoom: null },
+    },
+    "yad2:project": {
+      recordType: "project",
+      title: "פרויקט בלי ממ״ד",
+      price: 1_500_000,
+      amenities: { secureRoom: false },
+    },
+  };
+
+  assert.equal(CacheData.hasListingDeletionFilters({}), false);
+  assert.deepEqual(CacheData.filterListingsForDeletion(cache, {}), []);
+  assert.deepEqual(
+    CacheData.filterListingsForDeletion(cache, {
+      site: "yad2",
+      ranges: { price: { max: 1_900_000 }, railMeters: { max: 600 } },
+      amenities: { secureRoom: "false" },
+      brokerage: "false",
+    }).map(([key]) => key),
+    ["yad2:cheap"]
+  );
+  assert.deepEqual(
+    CacheData.filterListingsForDeletion(cache, {
+      amenities: { secureRoom: "unknown" },
+    }).map(([key]) => key),
+    ["yad2:unknown"]
+  );
+  assert.deepEqual(
+    CacheData.filterListingsForDeletion(cache, {
+      ranges: { price: { min: 1_850_000, max: 2_000_000 } },
+    }).map(([key]) => key),
+    ["madlan:cheap"]
+  );
+});

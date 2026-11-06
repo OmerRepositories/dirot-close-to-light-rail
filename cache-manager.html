@@ -52,7 +52,7 @@
       <span id="exportStatus" role="status" aria-live="polite"></span>
     </section>
 
-    <section class="toolbar" aria-label="חיפוש וסינון מידע שמור">
+    <section id="listingToolbar" class="toolbar" aria-label="חיפוש וסינון מידע שמור">
       <label class="search-field">
         <span>חיפוש בכל העמודות</span>
         <input id="searchInput" type="search" placeholder="כתובת, עיר, מחיר, תכונה, מזהה…">
@@ -88,7 +88,7 @@
       <span id="recordCount" class="record-count" aria-live="polite"></span>
     </section>
 
-    <details class="advanced-filters">
+    <details id="listingAdvancedFilters" class="advanced-filters">
       <summary>מסננים מתקדמים <span>אפשר לשלב כמה טווחים יחד, למשל מרחק מהרכבת ומחיר למ״ר</span></summary>
       <div class="filter-grid">
         <label class="range-filter">
@@ -170,12 +170,229 @@
 
     <nav class="view-tabs" role="tablist" aria-label="תצוגות מידע שמור">
       <button id="listingsTab" class="view-tab active" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel">
-        🏠 מודעות ופרויקטים
+        🏠 מודעות ופרויקטים <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
+      </button>
+      <button id="listingSearchTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel">
+        🔎 חיפוש מודעה
+      </button>
+      <button id="listingDeleteTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel">
+        🗑️ מחיקת מודעות
       </button>
       <button id="priceChangesTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel">
         📉 שינויי מחירים <span id="priceChangesCount" class="tab-count">0</span>
       </button>
     </nav>
+
+    <section id="listingSearchPanel" class="tab-panel listing-search-panel record-list" role="tabpanel" aria-labelledby="listingSearchTab" aria-label="חיפוש מודעה במידע השמור" hidden>
+      <div class="search-panel-heading">
+        <div>
+          <h2>🔎 חיפוש מודעה</h2>
+          <p>חיפוש וסינון של מודעות שכבר נשמרו בתוסף. אפשר לשלב טווחים, מאפיינים ומילות חיפוש; הסינון לא משנה את המידע במאגר.</p>
+        </div>
+        <span id="searchResultCount" class="record-count" aria-live="polite"></span>
+      </div>
+      <div class="listing-search-grid">
+        <label class="search-field">
+          <span>מילות חיפוש</span>
+          <input id="listingSearchQuery" type="search" placeholder="כתובת, עיר, שכונה, תחנה, הערה, קישור…">
+        </label>
+        <label class="search-choice">
+          <span>אתר</span>
+          <select id="listingSearchSite">
+            <option value="">כל האתרים</option>
+            <option value="yad2">יד2</option>
+            <option value="madlan">מדלן</option>
+          </select>
+        </label>
+        <label class="search-choice">
+          <span>סוג רשומה</span>
+          <select id="listingSearchType">
+            <option value="">מודעות ופרויקטים</option>
+            <option value="listing">מודעות</option>
+            <option value="project">פרויקטים</option>
+          </select>
+        </label>
+        <label class="search-choice">
+          <span>סטטוס מודעה</span>
+          <select id="listingSearchStatus">
+            <option value="">כל הסטטוסים</option>
+            <option value="active">פעילה</option>
+            <option value="removed">הוסרה</option>
+            <option value="unchecked">לא נבדקה</option>
+          </select>
+        </label>
+        <label class="range-filter">
+          <span>מחיר (₪)</span>
+          <span class="range-inputs">
+            <input data-search-range-min="price" type="number" min="0" step="any" placeholder="מ־" aria-label="מחיר מינימלי לחיפוש">
+            <input data-search-range-max="price" type="number" min="0" step="any" placeholder="עד" aria-label="מחיר מקסימלי לחיפוש">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>שטח (מ״ר)</span>
+          <span class="range-inputs">
+            <input data-search-range-min="sqm" type="number" min="0" step="any" placeholder="מ־" aria-label="שטח מינימלי לחיפוש">
+            <input data-search-range-max="sqm" type="number" min="0" step="any" placeholder="עד" aria-label="שטח מקסימלי לחיפוש">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>חדרים</span>
+          <span class="range-inputs">
+            <input data-search-range-min="rooms" type="number" min="0" step="0.5" placeholder="מ־" aria-label="מספר חדרים מינימלי לחיפוש">
+            <input data-search-range-max="rooms" type="number" min="0" step="0.5" placeholder="עד" aria-label="מספר חדרים מקסימלי לחיפוש">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מרחק מהרכבת (מ׳)</span>
+          <span class="range-inputs">
+            <input data-search-range-min="railMeters" type="number" min="0" step="any" placeholder="מ־" aria-label="מרחק מינימלי מהרכבת לחיפוש">
+            <input data-search-range-max="railMeters" type="number" min="0" step="any" placeholder="עד" aria-label="מרחק מקסימלי מהרכבת לחיפוש">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מחיר למ״ר (₪)</span>
+          <span class="range-inputs">
+            <input data-search-range-min="pricePerSqm" type="number" min="0" step="any" placeholder="מ־" aria-label="מחיר למטר מינימלי לחיפוש">
+            <input data-search-range-max="pricePerSqm" type="number" min="0" step="any" placeholder="עד" aria-label="מחיר למטר מקסימלי לחיפוש">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>תאריך פרסום</span>
+          <span class="range-inputs">
+            <input data-search-date-min="listingCreatedAt" type="date" aria-label="תאריך פרסום מוקדם ביותר">
+            <input data-search-date-max="listingCreatedAt" type="date" aria-label="תאריך פרסום מאוחר ביותר">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>תאריך עדכון מודעה</span>
+          <span class="range-inputs">
+            <input data-search-date-min="listingUpdatedAt" type="date" aria-label="תאריך עדכון מוקדם ביותר">
+            <input data-search-date-max="listingUpdatedAt" type="date" aria-label="תאריך עדכון מאוחר ביותר">
+          </span>
+        </label>
+        <label class="search-choice">
+          <span>תיווך</span>
+          <select data-search-boolean="brokerage">
+            <option value="">הכול</option>
+            <option value="false">ללא תיווך</option>
+            <option value="true">עם תיווך</option>
+            <option value="unknown">לא ידוע</option>
+          </select>
+        </label>
+        <label class="search-choice">
+          <span>מרחק מהרכבת משוער</span>
+          <select data-search-boolean="railApprox">
+            <option value="">הכול</option>
+            <option value="false">מרחק מדויק</option>
+            <option value="true">מרחק משוער</option>
+            <option value="unknown">לא ידוע</option>
+          </select>
+        </label>
+        <div id="searchAmenityFilters" class="search-amenity-filters" role="group" aria-label="סינון לפי מאפייני הנכס"></div>
+        <button id="clearListingSearch" type="button">ניקוי כל המסננים</button>
+      </div>
+      <p class="search-filter-hint">ברשומות עם מחיר או שטח שמורים כטווח, תוצאה תופיע אם הטווח שלה חופף לטווח שבחרת. מאפיינים לא ידועים ניתנים לסינון בנפרד.</p>
+      <div id="searchResultsHost"></div>
+    </section>
+
+    <section id="listingDeletePanel" class="tab-panel listing-delete-panel record-list" role="tabpanel" aria-labelledby="listingDeleteTab" aria-label="מחיקת מודעות שמורות" hidden>
+      <div class="search-panel-heading">
+        <div>
+          <h2>🗑️ מחיקת מודעות שמורות</h2>
+          <p>כל המסננים לבחירתך ואפשר להשאיר את כולם ריקים. בחר מסנן אחד או יותר כדי לראות אילו מודעות יימחקו.</p>
+        </div>
+      </div>
+      <div class="delete-warning" role="note">
+        <strong>המחיקה לצמיתות ואינה ניתנת לביטול.</strong>
+        תחילה תוצג רשימת התאמות; שום מודעה לא תימחק עד שתלחץ על כפתור המחיקה ותאשר את הפעולה.
+        פרויקטים אינם מושפעים.
+      </div>
+      <div class="listing-search-grid">
+        <label class="search-field">
+          <span>מילים בשם, בכתובת או בפרטי המודעה (רשות)</span>
+          <input id="deleteListingQuery" type="search" placeholder="למשל: תל אביב, שם רחוב…">
+        </label>
+        <label class="search-choice">
+          <span>אתר (רשות)</span>
+          <select id="deleteListingSite">
+            <option value="">כל האתרים</option>
+            <option value="yad2">יד2</option>
+            <option value="madlan">מדלן</option>
+          </select>
+        </label>
+        <label class="search-choice">
+          <span>סטטוס מודעה (רשות)</span>
+          <select id="deleteListingStatus">
+            <option value="">כל הסטטוסים</option>
+            <option value="active">פעילה</option>
+            <option value="removed">הוסרה</option>
+            <option value="unchecked">לא נבדקה</option>
+          </select>
+        </label>
+        <label class="range-filter">
+          <span>מחיר (₪) (רשות)</span>
+          <span class="range-inputs">
+            <input data-delete-range-min="price" type="number" min="0" step="any" placeholder="מ־" aria-label="מחיר מינימלי למחיקה">
+            <input data-delete-range-max="price" type="number" min="0" step="any" placeholder="עד" aria-label="מחיר מקסימלי למחיקה">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>שטח (מ״ר) (רשות)</span>
+          <span class="range-inputs">
+            <input data-delete-range-min="sqm" type="number" min="0" step="any" placeholder="מ־" aria-label="שטח מינימלי למחיקה">
+            <input data-delete-range-max="sqm" type="number" min="0" step="any" placeholder="עד" aria-label="שטח מקסימלי למחיקה">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>חדרים (רשות)</span>
+          <span class="range-inputs">
+            <input data-delete-range-min="rooms" type="number" min="0" step="0.5" placeholder="מ־" aria-label="מספר חדרים מינימלי למחיקה">
+            <input data-delete-range-max="rooms" type="number" min="0" step="0.5" placeholder="עד" aria-label="מספר חדרים מקסימלי למחיקה">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מרחק מהרכבת (מ׳) (רשות)</span>
+          <span class="range-inputs">
+            <input data-delete-range-min="railMeters" type="number" min="0" step="any" placeholder="מ־" aria-label="מרחק מינימלי מהרכבת למחיקה">
+            <input data-delete-range-max="railMeters" type="number" min="0" step="any" placeholder="עד" aria-label="מרחק מקסימלי מהרכבת למחיקה">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מחיר למ״ר (₪) (רשות)</span>
+          <span class="range-inputs">
+            <input data-delete-range-min="pricePerSqm" type="number" min="0" step="any" placeholder="מ־" aria-label="מחיר למטר מינימלי למחיקה">
+            <input data-delete-range-max="pricePerSqm" type="number" min="0" step="any" placeholder="עד" aria-label="מחיר למטר מקסימלי למחיקה">
+          </span>
+        </label>
+        <label class="search-choice">
+          <span>תיווך (רשות)</span>
+          <select data-delete-boolean="brokerage">
+            <option value="">הכול</option>
+            <option value="false">ללא תיווך</option>
+            <option value="true">עם תיווך</option>
+            <option value="unknown">לא ידוע</option>
+          </select>
+        </label>
+        <label class="search-choice">
+          <span>מרחק מהרכבת משוער (רשות)</span>
+          <select data-delete-boolean="railApprox">
+            <option value="">הכול</option>
+            <option value="false">לא משוער</option>
+            <option value="true">משוער</option>
+            <option value="unknown">לא ידוע</option>
+          </select>
+        </label>
+        <div id="deleteAmenityFilters" class="search-amenity-filters" role="group" aria-label="מאפיינים למחיקת מודעות (כולם רשות)"></div>
+        <button id="clearListingDeleteFilters" type="button">ניקוי מסננים</button>
+      </div>
+      <p class="search-filter-hint">כשמסמנים „לא”, יימחקו רק מודעות שבהן המאפיין זוהה בוודאות כלא קיים. „לא ידוע” מאפשר לבחור בנפרד מודעות שלא ידוע אם המאפיין קיים. טווח מחיר או שטח מתאים גם לרשומה שמורה עם טווח חופף.</p>
+      <section class="delete-preview" aria-live="polite" aria-labelledby="deletePreviewTitle">
+        <h3 id="deletePreviewTitle">בדיקת התאמות לפני מחיקה</h3>
+        <p id="deletePreviewStatus">בחר מסנן אחד או יותר כדי להציג התאמות. ללא מסנן לא ניתן לבצע מחיקה.</p>
+        <ul id="deletePreviewList"></ul>
+        <button id="deleteMatchingListings" class="danger" type="button" disabled>מחיקת המודעות המתאימות</button>
+      </section>
+    </section>
 
     <section id="listingsPanel" class="tab-panel record-list" role="tabpanel" aria-labelledby="listingsTab" aria-label="טבלת מודעות ופרויקטים שמורים">
       <div class="table-wrap">

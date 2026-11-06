@@ -46,8 +46,10 @@ let currentPageLoaded = false;
 let refreshAttemptId = 0;
 let refreshSkippedCount = 0;
 let refreshRunScheduled = false;
+let deleteInProgress = false;
 let fontScale = 1;
 let showFullPriceHistory = false;
+let activeTab = "listings";
 let priceTimelineFilter = "all";
 let timelinePreferencesEnabled = false;
 let timelinePreferences = {
@@ -92,6 +94,122 @@ function initializeTimelineAmenityFilters() {
     field.append(caption, select);
     container.appendChild(field);
   }
+}
+
+function initializeSearchAmenityFilters() {
+  const container = $("searchAmenityFilters");
+  for (const [key, label] of AMENITIES) {
+    const field = document.createElement("label");
+    field.className = "search-choice";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const select = document.createElement("select");
+    select.dataset.searchAmenity = key;
+    for (const [value, text] of [["", "הכול"], ["true", "כן"], ["false", "לא"], ["unknown", "לא ידוע"]]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      select.appendChild(option);
+    }
+    field.append(caption, select);
+    container.appendChild(field);
+  }
+}
+
+function initializeDeleteAmenityFilters() {
+  const container = $("deleteAmenityFilters");
+  for (const [key, label] of AMENITIES) {
+    const field = document.createElement("label");
+    field.className = "search-choice";
+    const caption = document.createElement("span");
+    caption.textContent = `${label} (רשות)`;
+    const select = document.createElement("select");
+    select.dataset.deleteAmenity = key;
+    for (const [value, text] of [["", "לא מסנן"], ["false", "לא קיים"], ["true", "קיים"], ["unknown", "לא ידוע"]]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      select.appendChild(option);
+    }
+    field.append(caption, select);
+    container.appendChild(field);
+  }
+}
+
+function readListingDeletionFilters() {
+  const filters = {
+    query: $("deleteListingQuery").value.trim(),
+    site: $("deleteListingSite").value,
+    status: $("deleteListingStatus").value,
+    brokerage: document.querySelector('[data-delete-boolean="brokerage"]').value,
+    railApprox: document.querySelector('[data-delete-boolean="railApprox"]').value,
+    ranges: {},
+    amenities: {},
+  };
+  for (const input of document.querySelectorAll("[data-delete-range-min], [data-delete-range-max]")) {
+    const isMin = input.dataset.deleteRangeMin !== undefined;
+    const key = input.dataset.deleteRangeMin || input.dataset.deleteRangeMax;
+    if (!input.value.trim()) continue;
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || value < 0) {
+      return { filters, error: "יש להזין ערך מספרי תקין וחיובי בטווחים." };
+    }
+    const range = filters.ranges[key] || {};
+    range[isMin ? "min" : "max"] = value;
+    filters.ranges[key] = range;
+  }
+  for (const [field, range] of Object.entries(filters.ranges)) {
+    if (Number.isFinite(range.min) && Number.isFinite(range.max) && range.min > range.max) {
+      return { filters, error: "ערך „מ־” לא יכול להיות גדול מערך „עד”." };
+    }
+  }
+  for (const select of document.querySelectorAll("[data-delete-amenity]")) {
+    if (select.value) filters.amenities[select.dataset.deleteAmenity] = select.value;
+  }
+  return { filters, error: "" };
+}
+
+function renderListingDeletionPreview() {
+  const status = $("deletePreviewStatus");
+  const list = $("deletePreviewList");
+  const button = $("deleteMatchingListings");
+  button.textContent = "מחיקת המודעות המתאימות";
+  const { filters, error } = readListingDeletionFilters();
+  list.replaceChildren();
+  status.dataset.error = String(Boolean(error));
+  if (error) {
+    status.textContent = error;
+    button.disabled = true;
+    return;
+  }
+  if (!LRCacheData.hasListingDeletionFilters(filters)) {
+    status.textContent = "בחר מסנן אחד או יותר כדי להציג התאמות. ללא מסנן לא ניתן לבצע מחיקה.";
+    button.disabled = true;
+    return;
+  }
+  const matches = LRCacheData.filterListingsForDeletion(cache, filters);
+  if (!matches.length) {
+    status.textContent = "לא נמצאו מודעות שמתאימות לכל המסננים שבחרת.";
+    button.disabled = true;
+    return;
+  }
+  status.textContent = `נמצאו ${matches.length.toLocaleString("he-IL")} מודעות למחיקה. בדוק את הרשימה לפני ההמשך:`;
+  const previewLimit = 12;
+  for (const [key, record] of matches.slice(0, previewLimit)) {
+    const item = document.createElement("li");
+    const title = record.title || key;
+    const location = [record.address, record.city].filter(Boolean).join(", ");
+    const price = displayPrice(record.price);
+    item.textContent = [title, location, price].filter(Boolean).join(" · ");
+    list.appendChild(item);
+  }
+  if (matches.length > previewLimit) {
+    const more = document.createElement("li");
+    more.textContent = `ועוד ${(matches.length - previewLimit).toLocaleString("he-IL")} מודעות…`;
+    list.appendChild(more);
+  }
+  button.disabled = writing || deleteInProgress;
+  button.textContent = `מחיקת ${matches.length.toLocaleString("he-IL")} המודעות המתאימות`;
 }
 
 function readTimelinePreferences(settings) {
@@ -523,11 +641,11 @@ function rowSortValue(key, record, priceRanks) {
 
 function matchesBooleanFilter(record, filterKey, filterValue) {
   if (!filterValue) return true;
-  const actual = filterKey === "brokerage"
-    ? typeof record.brokerage === "boolean" ? String(record.brokerage) : "unknown"
-    : typeof amenityValue(record, filterKey.slice("amenity:".length)) === "boolean"
-      ? String(amenityValue(record, filterKey.slice("amenity:".length)))
-      : "unknown";
+  let value;
+  if (filterKey === "brokerage") value = record.brokerage;
+  else if (filterKey === "railApprox") value = record.railApprox;
+  else value = amenityValue(record, filterKey.slice("amenity:".length));
+  const actual = typeof value === "boolean" ? String(value) : "unknown";
   return actual === filterValue;
 }
 
@@ -563,11 +681,13 @@ function numericRangeForRecord(record, key) {
   return record[key];
 }
 
-function activeNumericRanges() {
+function activeNumericRanges(selector = "[data-range-min], [data-range-max]") {
   const ranges = new Map();
-  for (const input of document.querySelectorAll("[data-range-min], [data-range-max]")) {
-    const key = input.dataset.rangeMin || input.dataset.rangeMax;
-    const edge = input.dataset.rangeMin ? "min" : "max";
+  for (const input of document.querySelectorAll(selector)) {
+    const isMin = input.dataset.rangeMin !== undefined || input.dataset.searchRangeMin !== undefined;
+    const key = input.dataset.rangeMin || input.dataset.rangeMax ||
+      input.dataset.searchRangeMin || input.dataset.searchRangeMax;
+    const edge = isMin ? "min" : "max";
     if (input.value.trim() === "") continue;
     const value = Number(input.value);
     if (!Number.isFinite(value)) continue;
@@ -583,6 +703,26 @@ function matchesNumericFilters(record, ranges) {
     if (!LRCacheData.matchesNumericRange(numericRangeForRecord(record, key), range.min, range.max)) {
       return false;
     }
+  }
+  return true;
+}
+
+function matchesSearchDateFilters(record) {
+  for (const input of document.querySelectorAll("[data-search-date-min], [data-search-date-max]")) {
+    if (!input.value) continue;
+    const field = input.dataset.searchDateMin || input.dataset.searchDateMax;
+    const edge = input.dataset.searchDateMin ? "min" : "max";
+    const value = record[field];
+    if (value === undefined || value === null || value === "") return false;
+    let normalized = dateInputValue(value);
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const date = new Date(value < 1e12 ? value * 1000 : value);
+      normalized = Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+    }
+    const timestamp = Date.parse(normalized);
+    const boundary = Date.parse(input.value);
+    if (!Number.isFinite(timestamp) || !Number.isFinite(boundary)) return false;
+    if (edge === "min" ? timestamp < boundary : timestamp > boundary + 86400000 - 1) return false;
   }
   return true;
 }
@@ -630,24 +770,50 @@ function renderBoolean(value) {
 }
 
 function renderRows() {
-  const query = $("searchInput").value.trim().toLocaleLowerCase("he");
-  const site = $("siteFilter").value;
-  const type = $("typeFilter").value;
-  const boolFilters = [...document.querySelectorAll("[data-boolean-filter]")]
+  const searchMode = activeTab === "search";
+  const query = $(searchMode ? "listingSearchQuery" : "searchInput").value.trim().toLocaleLowerCase("he");
+  const site = $(searchMode ? "listingSearchSite" : "siteFilter").value;
+  const type = $(searchMode ? "listingSearchType" : "typeFilter").value;
+  const boolFilters = searchMode ? [] : [...document.querySelectorAll("[data-boolean-filter]")]
     .map((select) => [select.dataset.booleanFilter, select.value])
     .filter(([, value]) => value);
-  const columnFilters = [...document.querySelectorAll("[data-column-filter]")]
+  const searchBoolFilters = [...document.querySelectorAll("[data-search-boolean]")]
+    .map((select) => [select.dataset.searchBoolean, select.value])
+    .filter(([, value]) => value);
+  const amenityFilters = [...document.querySelectorAll("[data-search-amenity]")]
+    .map((select) => [select.dataset.searchAmenity, select.value])
+    .filter(([, value]) => value);
+  const columnFilters = searchMode ? [] : [...document.querySelectorAll("[data-column-filter]")]
     .map((input) => [input.dataset.columnFilter, input.value.trim().toLocaleLowerCase("he")])
     .filter(([, value]) => value);
-  const ranges = activeNumericRanges();
+  const ranges = searchMode
+    ? activeNumericRanges("[data-search-range-min], [data-search-range-max]")
+    : activeNumericRanges();
   const priceRanks = allPriceRanks(Object.entries(cache));
   visibleRecords = Object.entries(cache)
     .filter(([key, record]) => {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (site && recordSite(key) !== site) return false;
       if (type && recordType(record) !== type) return false;
+      if (searchMode && $("listingSearchStatus").value) {
+        const status = recordSite(key) !== "yad2" || recordType(record) !== "listing"
+          ? ""
+          : record.listingStatus === "active"
+            ? "active"
+            : record.listingStatus === "removed"
+              ? "removed"
+              : "unchecked";
+        if (status !== $("listingSearchStatus").value) return false;
+      }
       if (!boolFilters.every(([field, value]) => matchesBooleanFilter(record, field, value))) return false;
+      if (!searchBoolFilters.every(([field, value]) =>
+        matchesBooleanFilter(record, field, value)
+      )) return false;
+      if (!amenityFilters.every(([field, value]) =>
+        matchesBooleanFilter(record, `amenity:${field}`, value)
+      )) return false;
       if (!matchesNumericFilters(record, ranges)) return false;
+      if (searchMode && !matchesSearchDateFilters(record)) return false;
       const haystack = `${key} ${JSON.stringify(record)}`.toLocaleLowerCase("he");
       if (query && !haystack.includes(query)) return false;
       return columnFilters.every(([field, value]) =>
@@ -818,7 +984,18 @@ function renderRows() {
     }
     rows.appendChild(row);
   }
-  $("recordCount").textContent = `${visibleRecords.length.toLocaleString("he-IL")} מתוך ${Object.keys(cache).length.toLocaleString("he-IL")} רשומות`;
+  const resultCount = `${visibleRecords.length.toLocaleString("he-IL")} מתוך ${Object.keys(cache).length.toLocaleString("he-IL")} רשומות`;
+  const savedListingCount = Object.values(cache).filter(
+    (record) => record && typeof record === "object" && recordType(record) === "listing"
+  ).length;
+  $("listingsCount").textContent = savedListingCount.toLocaleString("he-IL");
+  $("listingsCount").title = `${savedListingCount.toLocaleString("he-IL")} מודעות שמורות`;
+  $("listingsTab").setAttribute(
+    "aria-label",
+    `מודעות ופרויקטים, ${savedListingCount.toLocaleString("he-IL")} מודעות שמורות`
+  );
+  $("recordCount").textContent = resultCount;
+  $("searchResultCount").textContent = resultCount;
   $("emptyState").hidden = visibleRecords.length > 0;
   $("sortSelect").value = sort.key;
   renderHeaderSortState();
@@ -950,17 +1127,33 @@ function loadTimelinePreferences() {
 }
 
 function setActiveTab(tab) {
-  const listingsActive = tab === "listings";
-  $("listingsTab").classList.toggle("active", listingsActive);
-  $("priceChangesTab").classList.toggle("active", !listingsActive);
-  $("listingsTab").setAttribute("aria-selected", String(listingsActive));
-  $("priceChangesTab").setAttribute("aria-selected", String(!listingsActive));
-  $("listingsPanel").hidden = !listingsActive;
-  $("priceChangesPanel").hidden = listingsActive;
+  activeTab = tab;
+  const tableWrap = rows.closest(".table-wrap");
+  if (tab === "search") $("searchResultsHost").appendChild(tableWrap);
+  else $("listingsPanel").appendChild(tableWrap);
+  for (const [id, name] of [
+    ["listingsTab", "listings"],
+    ["listingSearchTab", "search"],
+    ["listingDeleteTab", "delete"],
+    ["priceChangesTab", "priceChanges"],
+  ]) {
+    const active = tab === name;
+    $(id).classList.toggle("active", active);
+    $(id).setAttribute("aria-selected", String(active));
+  }
+  $("listingsPanel").hidden = tab !== "listings";
+  $("listingSearchPanel").hidden = tab !== "search";
+  $("listingDeletePanel").hidden = tab !== "delete";
+  $("priceChangesPanel").hidden = tab !== "priceChanges";
+  $("listingToolbar").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
+  $("listingAdvancedFilters").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
+  document.body.dataset.activeTab = tab;
+  if (tab === "search" || tab === "listings") renderRows();
+  if (tab === "delete") renderListingDeletionPreview();
 }
 
 function handleTabKeydown(event) {
-  const tabs = [$("listingsTab"), $("priceChangesTab")];
+  const tabs = [$("listingsTab"), $("listingSearchTab"), $("listingDeleteTab"), $("priceChangesTab")];
   const currentIndex = tabs.indexOf(event.currentTarget);
   let nextIndex;
   if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
@@ -1198,6 +1391,7 @@ async function saveRecord(event) {
     await storageSet({ [CACHE_KEY]: latest });
     cache = latest;
     openRecord(selectedKey);
+    renderListingDeletionPreview();
     status.textContent = "השינויים נשמרו";
   } catch (error) {
     console.error("[lightrail-ext] failed to edit cached record", error);
@@ -1222,10 +1416,93 @@ async function deleteRecord(key) {
     cache = latest;
     if (selectedKey === key) closeDetails();
     else renderRows();
+    renderListingDeletionPreview();
   } catch (error) {
     console.error("[lightrail-ext] failed to delete cached record", error);
     $("saveStatus").textContent = error.message || "מחיקת הרשומה נכשלה.";
     $("saveStatus").dataset.error = "true";
+  }
+}
+
+async function deleteMatchingListings() {
+  const status = $("deletePreviewStatus");
+  if (writing || deleteInProgress) return;
+  if (dirtyFields.size) {
+    status.dataset.error = "true";
+    status.textContent = "יש לשמור או לבטל שינויים פתוחים בפרטי מודעה לפני מחיקה.";
+    return;
+  }
+  if (refreshQueue.length || refreshStarting || refreshTabId !== null) {
+    status.dataset.error = "true";
+    status.textContent = "יש לעצור או להמתין לסיום הרענון לפני מחיקת מודעות.";
+    return;
+  }
+  const { filters, error } = readListingDeletionFilters();
+  if (error || !LRCacheData.hasListingDeletionFilters(filters)) {
+    renderListingDeletionPreview();
+    return;
+  }
+
+  writing = true;
+  deleteInProgress = true;
+  $("deleteMatchingListings").disabled = true;
+  status.dataset.error = "false";
+  status.textContent = "בודק מחדש את המודעות השמורות…";
+  let outcome = "";
+  let outcomeError = false;
+  try {
+    const latest = await storageGet();
+    const matches = LRCacheData.filterListingsForDeletion(latest, filters);
+    if (!matches.length) {
+      cache = latest;
+      outcome = "לא נמצאו מודעות שמתאימות למסננים במידע העדכני.";
+      renderRows();
+      return;
+    }
+    const count = matches.length.toLocaleString("he-IL");
+    const confirmed = window.confirm(
+      `למחוק לצמיתות ${count} מודעות שמורות?\n\n` +
+      "המחיקה אינה ניתנת לביטול. פרויקטים אינם מושפעים."
+    );
+    if (!confirmed) {
+      outcome = "המחיקה בוטלה. שום מודעה לא נמחקה.";
+      return;
+    }
+
+    const confirmedKeys = new Set(matches.map(([key]) => key));
+    const latestAfterConfirmation = await storageGet();
+    const latestMatches = LRCacheData.filterListingsForDeletion(latestAfterConfirmation, filters);
+    const latestKeys = new Set(latestMatches.map(([key]) => key));
+    if (
+      confirmedKeys.size !== latestKeys.size ||
+      [...confirmedKeys].some((key) => !latestKeys.has(key))
+    ) {
+      cache = latestAfterConfirmation;
+      renderRows();
+      outcome = "המידע השתנה בזמן האישור, לכן לא נמחקו מודעות. בדוק שוב את ההתאמות ואשר מחדש.";
+      outcomeError = true;
+      return;
+    }
+
+    for (const key of confirmedKeys) delete latestAfterConfirmation[key];
+    await storageSet({ [CACHE_KEY]: latestAfterConfirmation });
+    cache = latestAfterConfirmation;
+    const removedKeys = confirmedKeys;
+    if (selectedKey && removedKeys.has(selectedKey)) closeDetails();
+    else renderRows();
+    outcome = `המחיקה הושלמה. נמחקו ${count} מודעות.`;
+  } catch (error) {
+    console.error("[lightrail-ext] failed to bulk-delete cached listings", error);
+    outcome = `מחיקת המודעות נכשלה: ${error.message || "שגיאה לא ידועה"}`;
+    outcomeError = true;
+  } finally {
+    writing = false;
+    deleteInProgress = false;
+    renderListingDeletionPreview();
+    if (outcome) {
+      status.textContent = outcome;
+      status.dataset.error = String(outcomeError);
+    }
   }
 }
 
@@ -1268,6 +1545,7 @@ async function clearPriceHistories() {
     status.textContent = `היסטוריית המחירים אופסה ב־${result.clearedCount.toLocaleString("he-IL")} רשומות. המחיר האחרון ושאר הנתונים נשמרו.`;
     if (selectedKey && cache[selectedKey]) openRecord(selectedKey);
     else renderRows();
+    renderListingDeletionPreview();
   } catch (error) {
     console.error("[lightrail-ext] failed to clear cached price histories", error);
     status.textContent = error.message || "ניקוי היסטוריית המחירים נכשל.";
@@ -1426,6 +1704,7 @@ async function saveYad2ListingStatus(key, status, attemptId, index) {
     await storageSet({ [CACHE_KEY]: latest });
     cache = latest;
     renderRows();
+    renderListingDeletionPreview();
   } catch (error) {
     console.error("[lightrail-ext] failed to save Yad2 listing status", error);
     setRefreshStatus(`הדף נטען, אך סטטוס המודעה לא נשמר: ${error.message}`, true);
@@ -1727,6 +2006,7 @@ async function loadCache() {
     const storedCache = await storageGet();
     cache = await migrateEstimatedBaselineDates(storedCache);
     renderRows();
+    renderListingDeletionPreview();
     if (selectedKey && cache[selectedKey]) openRecord(selectedKey);
     else if (selectedKey) closeDetails();
   } catch (error) {
@@ -1941,6 +2221,7 @@ async function importFullBackup(file) {
     }
     cache = mergedLocal[CACHE_KEY];
     renderRows();
+    renderListingDeletionPreview();
     const scheduleResult = await new Promise((resolve) => {
       chrome.runtime.sendMessage(
         { type: "lightrail:refresh-schedule-updated" },
@@ -2004,15 +2285,52 @@ for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
   $(id).addEventListener("input", renderRows);
   $(id).addEventListener("change", renderRows);
 }
+for (const id of ["listingSearchQuery", "listingSearchSite", "listingSearchType", "listingSearchStatus"]) {
+  $(id).addEventListener("input", renderRows);
+  $(id).addEventListener("change", renderRows);
+}
 document.querySelectorAll("[data-range-min], [data-range-max]").forEach((input) => {
   input.addEventListener("input", renderRows);
 });
+document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max]").forEach((input) => {
+  input.addEventListener("input", renderRows);
+  input.addEventListener("change", renderRows);
+});
+document.querySelectorAll("[data-search-boolean]").forEach((input) => {
+  input.addEventListener("change", renderRows);
+});
+$("searchAmenityFilters").addEventListener("change", renderRows);
 $("clearAdvancedFilters").addEventListener("click", () => {
   document.querySelectorAll("[data-range-min], [data-range-max]").forEach((input) => {
     input.value = "";
   });
   renderRows();
 });
+$("clearListingSearch").addEventListener("click", () => {
+  $("listingSearchQuery").value = "";
+  $("listingSearchSite").value = "";
+  $("listingSearchType").value = "";
+  $("listingSearchStatus").value = "";
+  document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max]").forEach((input) => {
+    input.value = "";
+  });
+  document.querySelectorAll("[data-search-boolean], [data-search-amenity]").forEach((input) => {
+    input.value = "";
+  });
+  renderRows();
+});
+$("listingDeletePanel").addEventListener("input", renderListingDeletionPreview);
+$("listingDeletePanel").addEventListener("change", renderListingDeletionPreview);
+$("clearListingDeleteFilters").addEventListener("click", () => {
+  $("deleteListingQuery").value = "";
+  $("deleteListingSite").value = "";
+  $("deleteListingStatus").value = "";
+  document.querySelectorAll("[data-delete-range-min], [data-delete-range-max], [data-delete-boolean], [data-delete-amenity]").forEach((input) => {
+    input.value = "";
+  });
+  renderListingDeletionPreview();
+});
+$("deleteMatchingListings").addEventListener("click", deleteMatchingListings);
 $("decreaseFont").addEventListener("click", () => changeFontScale(-FONT_SCALE_STEP));
 $("increaseFont").addEventListener("click", () => changeFontScale(FONT_SCALE_STEP));
 $("resetFont").addEventListener("click", () => changeFontScale(1 - fontScale));
@@ -2025,8 +2343,12 @@ $("togglePriceHistory").addEventListener("click", (event) => {
   renderRows();
 });
 $("listingsTab").addEventListener("click", () => setActiveTab("listings"));
+$("listingSearchTab").addEventListener("click", () => setActiveTab("search"));
+$("listingDeleteTab").addEventListener("click", () => setActiveTab("delete"));
 $("priceChangesTab").addEventListener("click", () => setActiveTab("priceChanges"));
 $("listingsTab").addEventListener("keydown", handleTabKeydown);
+$("listingSearchTab").addEventListener("keydown", handleTabKeydown);
+$("listingDeleteTab").addEventListener("keydown", handleTabKeydown);
 $("priceChangesTab").addEventListener("keydown", handleTabKeydown);
 document.querySelectorAll("[data-price-filter]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -2161,6 +2483,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 initializeTimelineAmenityFilters();
+initializeSearchAmenityFilters();
+initializeDeleteAmenityFilters();
 renderHeader();
 loadTimelinePreferences();
 Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_KEY)])
@@ -2176,6 +2500,7 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
     if (Number.isFinite(storedFontScale)) applyFontScale(storedFontScale);
     await loadRefreshSchedule();
     renderRows();
+    renderListingDeletionPreview();
     const params = new URLSearchParams(location.search);
     if (params.get("scheduledRefresh") === "1") {
       const uncheckedOnly = params.get("uncheckedOnly") === "1";

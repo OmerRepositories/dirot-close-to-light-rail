@@ -168,6 +168,101 @@ var LRCacheData = (() => {
     );
   }
 
+  function hasListingDeletionFilters(filters) {
+    if (!filters || typeof filters !== "object") return false;
+    return Boolean(
+      (typeof filters.query === "string" && filters.query.trim()) ||
+      filters.site ||
+      filters.status ||
+      filters.brokerage ||
+      filters.railApprox ||
+      Object.values(filters.ranges || {}).some(
+        (range) => range && (Number.isFinite(range.min) || Number.isFinite(range.max))
+      ) ||
+      Object.values(filters.amenities || {}).some(Boolean)
+    );
+  }
+
+  function filterListingsForDeletion(cache, filters) {
+    if (!cache || typeof cache !== "object" || !hasListingDeletionFilters(filters)) return [];
+    const query = String(filters.query || "").trim().toLocaleLowerCase("he");
+    const ranges = filters.ranges || {};
+    const amenities = filters.amenities || {};
+    return Object.entries(cache).filter(([key, record]) => {
+      if (!record || typeof record !== "object" || Array.isArray(record) || record.recordType === "project") {
+        return false;
+      }
+      const separator = key.indexOf(":");
+      const site = separator < 0 ? "" : key.slice(0, separator);
+      if (filters.site && site !== filters.site) return false;
+      if (filters.status) {
+        if (site !== "yad2") return false;
+        const status = record.listingStatus === "active"
+          ? "active"
+          : record.listingStatus === "removed"
+            ? "removed"
+            : "unchecked";
+        if (status !== filters.status) return false;
+      }
+
+      const priceRange = Number.isFinite(record.price)
+        ? {
+            min: Math.min(record.price, Number.isFinite(record.maxPrice) ? record.maxPrice : record.price),
+            max: Math.max(record.price, Number.isFinite(record.maxPrice) ? record.maxPrice : record.price),
+          }
+        : null;
+      const areaRange = Number.isFinite(record.sqm)
+        ? {
+            min: Math.min(record.sqm, Number.isFinite(record.maxSqm) ? record.maxSqm : record.sqm),
+            max: Math.max(record.sqm, Number.isFinite(record.maxSqm) ? record.maxSqm : record.sqm),
+          }
+        : null;
+      let ppsmRange = pricePerSqm(record);
+      if (
+        Number.isFinite(record.price) &&
+        Number.isFinite(record.maxPrice) &&
+        Number.isFinite(record.sqm) &&
+        Number.isFinite(record.maxSqm) &&
+        record.sqm > 0 &&
+        record.maxSqm > 0
+      ) {
+        ppsmRange = {
+          min: Math.min(record.price, record.maxPrice) / Math.max(record.sqm, record.maxSqm),
+          max: Math.max(record.price, record.maxPrice) / Math.min(record.sqm, record.maxSqm),
+        };
+      }
+      const numericValues = {
+        price: priceRange,
+        sqm: areaRange,
+        rooms: record.rooms,
+        railMeters: record.railMeters,
+        pricePerSqm: ppsmRange,
+      };
+      for (const [field, range] of Object.entries(ranges)) {
+        if (!matchesNumericRange(numericValues[field], range.min, range.max)) return false;
+      }
+
+      for (const [field, value] of Object.entries(amenities)) {
+        if (!value) continue;
+        const actual = record.amenities && record.amenities[field];
+        if (value === "unknown" ? typeof actual === "boolean" : String(actual) !== value) return false;
+      }
+      for (const field of ["brokerage", "railApprox"]) {
+        const expected = filters[field];
+        if (!expected) continue;
+        const actual = record[field];
+        if (expected === "unknown" ? typeof actual === "boolean" : String(actual) !== expected) {
+          return false;
+        }
+      }
+
+      if (query && !`${key} ${JSON.stringify(record)}`.toLocaleLowerCase("he").includes(query)) {
+        return false;
+      }
+      return true;
+    });
+  }
+
   function dealScore(record, ppsmRank = 0.5) {
     if (!record || record.recordType === "project") return null;
     const amenities = record.amenities && typeof record.amenities === "object"
@@ -191,6 +286,8 @@ var LRCacheData = (() => {
     recordPriceObservation,
     pricePerSqm,
     matchesNumericRange,
+    hasListingDeletionFilters,
+    filterListingsForDeletion,
     dealScore,
   };
 })();
