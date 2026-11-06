@@ -74,6 +74,24 @@
     return list;
   }
 
+  // הסריקה רצה על כל שינוי בפיד; קריאת הטקסט וסיווג הפוסט חוזרים רק כשהתוכן שלו השתנה
+  const postMemo = new WeakMap();
+  function classifiedPost(article) {
+    const msg = messageEl(article);
+    const source = msg || article;
+    const content = source.textContent || "";
+    const memo = postMemo.get(article);
+    if (memo && memo.content === content) return memo;
+    const text = msg ? textOf(msg) : textOf(article, 1800);
+    const next = {
+      content,
+      text,
+      classification: text ? LR.classifyFacebookPost(text) : null,
+    };
+    postMemo.set(article, next);
+    return next;
+  }
+
   function postText(article) {
     const msg = messageEl(article);
     // אם אין אלמנט הודעה מוכר, לוקחים את תחילת הפוסט (בלי התגובות שבסופו)
@@ -109,13 +127,18 @@
     return b;
   }
 
+  // כותבים ל-DOM רק כשהערך באמת השתנה: כל כתיבה מפעילה את ה-MutationObserver ואת הסריקה
   function setBadge(b, state, val, sub, title) {
+    const cursor = b._open ? "pointer" : "default";
+    const signature = [state, val, sub || "", title || "", cursor].join("\u0001");
+    if (b._signature === signature) return;
+    b._signature = signature;
     b.dataset.state = state;
     b._v.textContent = val;
     b._s.textContent = sub || "";
     b._s.hidden = !sub;
     b.title = title || "";
-    b.style.cursor = b._open ? "pointer" : "default";
+    b.style.cursor = cursor;
   }
 
   function createEntry(article) {
@@ -159,10 +182,12 @@
       entry = { relevant: false, notice, wrap: notice };
       entries.set(article, entry);
     }
-    entry.notice.textContent =
+    const noticeText =
       type === "rent"
         ? "מודעה זו היא להשכרה, ולכן אינה רלוונטית לחיפוש רכישה."
         : "זהו פוסט חיפוש דירה/נכס, לא מודעת נכס למכירה.";
+    // כתיבה רק כשיש שינוי: כל כתיבה היא שינוי DOM שמפעיל סריקה נוספת (לולאה)
+    if (entry.notice.textContent !== noticeText) entry.notice.textContent = noticeText;
   }
 
   function renderRail(entry, res) {
@@ -348,9 +373,8 @@
     try {
       for (const art of findPosts()) {
         let entry = entries.get(art);
-        const text = postText(art);
+        const { text, classification } = classifiedPost(art);
         if (!text) continue;
-        const classification = LR.classifyFacebookPost(text);
         if (classification.type === "rent" || classification.type === "seeking") {
           showIrrelevantNotice(art, classification.type);
           continue;
@@ -432,7 +456,30 @@
     }
   }
 
-  routeObserver = new MutationObserver(onPageMutation);
+  // שינויים שהתוסף עצמו עשה (תגים והודעות שלו) לא מצדיקים סריקה חוזרת
+  function isOwnElement(node) {
+    const element = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+    return Boolean(element && element.closest && element.closest(".lr-wrap, .lr-fb-notice"));
+  }
+
+  function isOwnMutation(record) {
+    if (isOwnElement(record.target)) return true;
+    const nodes = [...record.addedNodes, ...record.removedNodes];
+    return (
+      nodes.length > 0 &&
+      nodes.every(
+        (node) =>
+          node.nodeType === Node.ELEMENT_NODE &&
+          node.classList &&
+          (node.classList.contains("lr-wrap") || node.classList.contains("lr-fb-notice"))
+      )
+    );
+  }
+
+  routeObserver = new MutationObserver((records) => {
+    if (records.every(isOwnMutation)) return;
+    onPageMutation();
+  });
   routeObserver.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("popstate", syncPageState);
 

@@ -173,6 +173,21 @@
     return out.join("\n");
   }
 
+  // textOf עובר על כל צומת טקסט ב-JS; כאן הוא רץ מחדש רק כשהתוכן של הכרטיס באמת השתנה
+  // (textContent הוא קריאה מקורית של הדפדפן ומהירה בהרבה).
+  function memoCardText(card) {
+    let lastContent = null;
+    let lastText = "";
+    return () => {
+      const content = card.textContent || "";
+      if (content !== lastContent) {
+        lastContent = content;
+        lastText = textOf(card, 3000);
+      }
+      return lastText;
+    };
+  }
+
   function highlightBrokerage(root, enabled) {
     if (!root) return;
     const existing = root.querySelectorAll(".lr-brokerage-highlight, .lr-brokerage-positive");
@@ -343,13 +358,8 @@
   function findProjectCards() {
     const byHref = new Map();
     document.querySelectorAll("a[href]").forEach((anchor) => {
-      let path;
-      try {
-        path = new URL(anchor.href, location.href).pathname;
-      } catch {
-        return;
-      }
-      if (!isProjectPath(path)) return;
+      const path = hrefPath(anchor.href);
+      if (!path || !isProjectPath(path)) return;
       if (!byHref.has(path)) byHref.set(path, anchor);
     });
 
@@ -360,12 +370,8 @@
         const parent = card.parentElement;
         if ((parent.textContent || "").length > 2500) break;
         const otherProjects = [...parent.querySelectorAll("a[href]")].some((link) => {
-          try {
-            const linkPath = new URL(link.href, location.href).pathname;
-            return linkPath !== path && isProjectPath(linkPath);
-          } catch {
-            return false;
-          }
+          const linkPath = hrefPath(link.href);
+          return Boolean(linkPath) && linkPath !== path && isProjectPath(linkPath);
         });
         if (otherProjects) break;
         card = parent;
@@ -479,41 +485,63 @@
   }
 
   // ---------- זיהוי כרטיסים ----------
+  // הסריקה רצה על כל שינוי בדף; כדי לא לפרסר שוב ושוב את אותן כתובות ולא לטפס שוב בעץ
+  // עבור כרטיסים שכבר זוהו, שומרים את התוצאות.
+  const hrefPathCache = new Map();
+  const anchorCardCache = new WeakMap();
+
+  function hrefPath(href) {
+    let path = hrefPathCache.get(href);
+    if (path === undefined) {
+      try {
+        path = new URL(href, location.href).pathname;
+      } catch {
+        path = null;
+      }
+      if (hrefPathCache.size > 5000) hrefPathCache.clear();
+      hrefPathCache.set(href, path);
+    }
+    return path;
+  }
+
   function findCards() {
     const byHref = new Map();
     const currentListingPath = LISTING_HREF.test(location.pathname)
-      ? location.pathname.replace(//+$/, "")
+      ? location.pathname.replace(/\/+$/, "")
       : null;
     document.querySelectorAll("a[href]").forEach((a) => {
-      let path;
-      try {
-        path = new URL(a.href, location.href).pathname;
-      } catch {
-        return;
-      }
-      if (!LISTING_HREF.test(path)) return;
-      if (currentListingPath && path.replace(//+$/, "") === currentListingPath) return;
+      const path = hrefPath(a.href);
+      if (!path || !LISTING_HREF.test(path)) return;
+      if (currentListingPath && path.replace(/\/+$/, "") === currentListingPath) return;
       if (!byHref.has(path)) byHref.set(path, []);
       byHref.get(path).push(a);
     });
 
     const cards = [];
     for (const [path, anchors] of byHref) {
-      let el = anchors[0];
+      const anchor = anchors[0];
+      const known = anchorCardCache.get(anchor);
+      if (known && known.isConnected && entries.has(known) && known.contains(anchor)) {
+        cards.push(known);
+        continue;
+      }
+      let el = anchor;
       // עולים עד לאב הגדול ביותר שעדיין מכיל מודעה אחת בלבד
       while (el.parentElement && el.parentElement !== document.body) {
         const parent = el.parentElement;
         if ((parent.textContent || "").length > 1500) break; // לא לטפס עד כל הרשימה
-        const others = new Set();
-        parent.querySelectorAll("a[href]").forEach((x) => {
-          try {
-            const p = new URL(x.href, location.href).pathname;
-            if (LISTING_HREF.test(p) && p !== path) others.add(p);
-          } catch {}
-        });
-        if (others.size > 0) break;
+        let hasOther = false;
+        for (const x of parent.querySelectorAll("a[href]")) {
+          const p = hrefPath(x.href);
+          if (p && p !== path && LISTING_HREF.test(p)) {
+            hasOther = true;
+            break;
+          }
+        }
+        if (hasOther) break;
         el = parent;
       }
+      anchorCardCache.set(anchor, el);
       cards.push(el);
     }
     return cards;
@@ -553,13 +581,18 @@
     return b;
   }
 
+  // כותבים ל-DOM רק כשהערך באמת השתנה
   function setBadge(b, state, val, sub, title) {
+    const cursor = b._open ? "pointer" : "default";
+    const signature = [state, val, sub || "", title || "", cursor].join("\u0001");
+    if (b._signature === signature) return;
+    b._signature = signature;
     b.dataset.state = state;
     b._v.textContent = val;
     b._s.textContent = sub || "";
     b._s.hidden = !sub;
     b.title = title || "";
-    b.style.cursor = b._open ? "pointer" : "default";
+    b.style.cursor = cursor;
   }
 
   function createEntry(card, kind) {
@@ -636,7 +669,7 @@
       cacheRefreshed: false,
       amenities: null,
       listingId: null,
-      getText: kind === "single" ? mainText : () => textOf(card, 3000),
+      getText: kind === "single" ? mainText : memoCardText(card),
       info: null,
       parsed: null,
       res: null,
@@ -1032,10 +1065,13 @@
     let count = 0;
     for (const { key, record } of fresh) {
       if (count >= LISTING_CACHE_MAX_ITEMS) break;
-      const recordBytes = JSON.stringify([key, record]).length * 2;
-      if (bytes + recordBytes > maxBytes) continue;
+      // מדידת גודל (JSON.stringify לכל רשומה) רק כשבאמת יש מגבלת בתים
+      if (maxBytes !== Infinity) {
+        const recordBytes = JSON.stringify([key, record]).length * 2;
+        if (bytes + recordBytes > maxBytes) continue;
+        bytes += recordBytes;
+      }
       trimmed[key] = record;
-      bytes += recordBytes;
       count++;
     }
     return trimmed;
@@ -1221,6 +1257,24 @@
     saveListingCache();
   }
 
+  // השוואה לפי ערך: אובייקטים כמו coordinates נוצרים מחדש בכל קריאה, והשוואת === הייתה
+  // מסמנת אותם תמיד כ"שונים" – מה שגרם לכתיבה חוזרת ונשנית של כל המטמון.
+  function sameCacheValue(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  }
+
+  function recordUnchanged(record, previous) {
+    return Object.entries(record).every(
+      ([field, value]) => field === "updatedAt" || sameCacheValue(previous[field], value)
+    );
+  }
+
   function preserveManualOverrides(record, previous) {
     if (!previous || !Array.isArray(previous.manualOverrides)) return record;
     for (const field of previous.manualOverrides) {
@@ -1243,10 +1297,7 @@
       recordType: "project",
       updatedAt: existing.updatedAt || Date.now(),
     }, existing);
-    const unchanged = Object.entries(record).every(
-      ([field, value]) => field === "updatedAt" || existing[field] === value
-    );
-    if (unchanged) return;
+    if (recordUnchanged(record, existing)) return;
     record.updatedAt = Date.now();
     listingCache[key] = record;
     saveListingCache();
@@ -1322,10 +1373,7 @@
       brokerage: hasBrokerageSignal(root),
       ...extra,
     }, previous);
-    const unchanged = Object.entries(record).every(
-      ([field, value]) => field === "updatedAt" || previous[field] === value
-    );
-    if (unchanged) return;
+    if (recordUnchanged(record, previous)) return;
     record.updatedAt = Date.now();
     listingCache[key] = record;
     saveListingCache();
@@ -1421,8 +1469,16 @@
       }
       entry.listingId = siteParser.listingId(root);
       const currentAmenities = (IS_YAD2 ? LRYad2 : LRMadlan).readAmenities(root);
-      if (entry.kind === "single" || CFG.listingIndexingMode === "encountered") {
+      if (entry.kind === "single") {
         rememberListingExportData(entry);
+      } else if (CFG.listingIndexingMode === "encountered") {
+        // כרטיס ברשימה: מנתחים ושומרים מחדש רק אם הטקסט שלו השתנה או שהרשומה חסרה במטמון
+        const cardText = entry.getText();
+        const cached = entry.listingId && listingCache[cacheKeyForListing(entry.listingId)];
+        if (cardText !== entry.lastExportText || !cached) {
+          entry.lastExportText = cardText;
+          rememberListingExportData(entry);
+        }
       }
       if (entry.kind === "single" && currentAmenities) {
         entry.amenities = currentAmenities;
@@ -1463,8 +1519,14 @@
         entry.kind === "single"
           ? document.querySelector("main") || document.body
           : entry.card;
-      highlightBrokerage(listingRoot, CFG.avoidBrokerage);
-      entry.brokerageWarning.hidden = !hasBrokerageSignal(listingRoot);
+      // בכרטיס ברשימה – רק אם הטקסט או ההגדרה השתנו מאז הפעם הקודמת
+      const highlightKey =
+        entry.kind === "list" ? `${CFG.avoidBrokerage}|${entry.getText()}` : null;
+      if (!highlightKey || highlightKey !== entry.lastHighlightKey) {
+        entry.lastHighlightKey = highlightKey;
+        highlightBrokerage(listingRoot, CFG.avoidBrokerage);
+        entry.brokerageWarning.hidden = !hasBrokerageSignal(listingRoot);
+      }
       if (entry.kind === "single") {
         const missing = CFG.requiredAmenities
           .filter((amenity) => entry.amenities && entry.amenities[amenity] === false)
@@ -1647,11 +1709,34 @@
     scanTimer = setTimeout(scan, 600);
   }
 
+  function isOwnNode(node) {
+    const element = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+    return Boolean(element && element.closest && element.closest(".lr-wrap, #lr-brokerage-filter"));
+  }
+
+  function isOwnMutation(record) {
+    if (isOwnNode(record.target)) return true;
+    const nodes = [...record.addedNodes, ...record.removedNodes];
+    return (
+      nodes.length > 0 &&
+      nodes.every(
+        (node) =>
+          node.nodeType === Node.ELEMENT_NODE &&
+          node.classList &&
+          (node.classList.contains("lr-wrap") || node.id === "lr-brokerage-filter")
+      )
+    );
+  }
+
   function start() {
     if (isRunning) return;
     isRunning = true;
     createBrokerageFilterBar();
-    pageObserver = new MutationObserver(scheduleScan);
+    pageObserver = new MutationObserver((records) => {
+      // שינויים שהתוסף עצמו עשה בתגים שלו לא מצדיקים סריקה חוזרת
+      if (records.every(isOwnMutation)) return;
+      scheduleScan();
+    });
     pageObserver.observe(document.body, {
       childList: true,
       subtree: true,
@@ -1773,7 +1858,8 @@
             if (id) cacheWriteSuppressedIds.add(cacheKeyForListing(id));
           }
         }
-        listingCache = trimListingCache(changes[LISTING_CACHE_KEY].newValue);
+        // הכותב כבר אכף את מגבלת הגודל, אין צורך למדוד שוב בכל כרטיסייה
+        listingCache = trimListingCache(changes[LISTING_CACHE_KEY].newValue, Date.now(), Infinity);
         scheduleRefresh();
         return;
       }

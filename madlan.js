@@ -41,8 +41,35 @@ var LRMadlan = (() => {
     return link ? new URL(link.href, location.href).href : null;
   }
 
+  // סריקת כל תגי ה-script בדף (מגה-בייטים של JSON) בכל רענון ולכל כרטיס הייתה יקרה מאוד.
+  // התוצאות נשמרות עד שתוכן הסקריפטים בדף משתנה (מספר הסקריפטים / האורך הכולל / הכתובת).
+  let scriptMemoSignature = "";
+  const scriptMemo = new Map();
+
+  function scriptsSignature() {
+    let total = 0;
+    for (const script of document.scripts) total += (script.textContent || "").length;
+    return `${location.href}|${document.scripts.length}|${total}`;
+  }
+
+  function memoByScripts(key, compute) {
+    const signature = scriptsSignature();
+    if (signature !== scriptMemoSignature) {
+      scriptMemoSignature = signature;
+      scriptMemo.clear();
+    }
+    if (scriptMemo.has(key)) return scriptMemo.get(key);
+    const value = compute();
+    scriptMemo.set(key, value);
+    return value;
+  }
+
   function readListingDate(id, keys) {
     if (!id) return null;
+    return memoByScripts(`date|${id}|${keys.join(",")}`, () => scanListingDate(id, keys));
+  }
+
+  function scanListingDate(id, keys) {
     const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const idMarker = new RegExp(`["']id["']\\s*:\\s*["']${escapedId}["']`, "g");
     for (const script of document.scripts) {
@@ -144,6 +171,12 @@ var LRMadlan = (() => {
   function listingData(root) {
     const id = listingId(root);
     if (!id) return null;
+    const data = memoByScripts(`data|${id}`, () => scanListingData(id));
+    // עותק, כדי שקוד שמשנה את התוצאה לא ישנה את המטמון
+    return data ? { ...data, coordinates: data.coordinates ? { ...data.coordinates } : null } : null;
+  }
+
+  function scanListingData(id) {
     const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const scripts = [...document.scripts].map((script) => script.textContent || "");
     for (const source of scripts) {
