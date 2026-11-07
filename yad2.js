@@ -262,6 +262,28 @@ var LRYad2 = (() => {
     return Number.isFinite(rooms) ? rooms : null;
   }
 
+  function numberFrom(value) {
+    const match = String(value || "").replace(/[‎‏‪-‮]/g, "").match(/\d{1,3}(?:,\d{3})+|\d+/);
+    const number = match ? Number(match[0].replace(/,/g, "")) : NaN;
+    return Number.isFinite(number) && number > 0 ? number : null;
+  }
+
+  // המחיר לפני ההורדה האחרונה בכרטיס חיפוש: מנתוני הדף (priceBeforeTag), ואם אין נתונים
+  // (עמוד 2 ואילך נטען בלי טעינה מחדש) – מחיר הכרטיס + הסכום ב"ירד ב-50,000 ₪"
+  function cardPreviousPrice(root, data) {
+    const fromData = data ? numberFrom(data.priceBeforeTag) : null;
+    if (fromData) return fromData;
+    const text = String(root.innerText || root.textContent || "");
+    const drop = text.match(/ירד\s*ב\s*[-־–]?\s*₪?\s*(\d{1,3}(?:,\d{3})+|\d{4,})/);
+    if (!drop) return null;
+    const priceElement =
+      root.querySelector('[data-testid="ad-card-price"] [data-testid="price"]') ||
+      root.querySelector('[data-testid="price"]');
+    const price = priceElement ? numberFrom(priceElement.innerText || priceElement.textContent) : null;
+    const amount = numberFrom(drop[1]);
+    return price && amount ? price + amount : null;
+  }
+
   function listingExportData(root) {
     const id = listingId(root);
     const index = id ? getPageListingsById() : null;
@@ -289,6 +311,7 @@ var LRYad2 = (() => {
       rooms:
         parseRoomCount(roomElement && roomElement.innerText) ??
         parseRoomCount(structuredRooms),
+      previousPrice: root === document ? null : cardPreviousPrice(root, data),
       listingCreatedAt:
         (createdMatch && createdMatch[0]) ||
         dateValue(["releaseDate", "createdAt", "publishedAt", "dateCreated"]),
