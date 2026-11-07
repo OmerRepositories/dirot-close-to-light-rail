@@ -71,7 +71,7 @@
 
   // בדף מודעה בודדת: מכאן והלאה זה "מודעות דומות", לא המודעה עצמה
   const SIMILAR_MARKERS =
-    /דירות דומות|מודעות דומות|נכסים דומים|נכסים נוספים|מודעות נוספות|עוד מודעות|אולי יעניין|דירות נוספות|דירות באזור|מומלצים/;
+    /דירות דומות|מודעות דומות|נכסים דומים|נכסים נוספים|מודעות נוספות|עוד מודעות|אולי יעניין|דירות נוספות|דירות באזור|מומלצים|נכסים שנמכרו|עסקאות באזור/;
 
   // ---------- מצב ----------
   const entries = new Map(); // מפתח (כרטיס / פאנל) -> entry
@@ -161,14 +161,29 @@
   // innerText לא מפריד בין אלמנטים שאין ביניהם שבירת שורה, ולכן "קומה 7" ו-"95 מ״ר" נקראו
   // כ-"קומה 795 מ״ר". כאן כל צומת טקסט נקרא בנפרד, כל אחד בשורה משלו,
   // והתגים של התוסף עצמו (.lr-wrap) לא נכללים.
+  // אזורים בעמוד מודעה ביד2 שאינם חלק מהמודעה ומכילים מחירים/שטחים של נכסים אחרים:
+  // "נכסים שנמכרו באזור", מחשבון משכנתא, "נכסים דומים למה שחיפשת", "פרויקטים חדשים באזור".
+  // הטקסט שלהם לא נקרא, כדי שמחיר, שטח או חדרים לא יילקחו מהם בטעות.
+  const UNRELATED_SECTIONS = [
+    '[data-testid="deals-history-section-section"]',
+    '[data-testid="deals-history"]',
+    '[data-testid="mortgage-calculator-section-section"]',
+    '[data-testid="recommendations-section-section"]',
+    '[data-testid="yad1-projects-in-area-section-section"]',
+    '[data-testid="nearby-education-section-section"]',
+  ].join(",");
+
   function textOf(root, limit = 8000) {
     if (!root) return "";
     const out = [];
     let len = 0;
+    // כרטיס שנמצא בעצמו בתוך אזור כזה (למשל "נכסים דומים") נקרא כרגיל
+    const skipUnrelated = !(root.closest && root.closest(UNRELATED_SECTIONS));
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(n) {
         const p = n.parentElement;
         if (!p || p.closest(".lr-wrap")) return NodeFilter.FILTER_REJECT;
+        if (skipUnrelated && p.closest(UNRELATED_SECTIONS)) return NodeFilter.FILTER_REJECT;
         const tag = p.tagName;
         if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") return NodeFilter.FILTER_REJECT;
         return n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
