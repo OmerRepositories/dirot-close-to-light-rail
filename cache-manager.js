@@ -3005,6 +3005,8 @@ $("listingDeleteTab").addEventListener("keydown", handleTabKeydown);
 $("priceChangesTab").addEventListener("keydown", handleTabKeydown);
 $("refreshTab").addEventListener("keydown", handleTabKeydown);
 $("transferTab").addEventListener("keydown", handleTabKeydown);
+$("syncTab").addEventListener("click", () => setActiveTab("sync"));
+$("syncTab").addEventListener("keydown", handleTabKeydown);
 for (const button of document.querySelectorAll("[data-settings]")) {
   button.addEventListener("click", () => setActiveTab(`settings-${button.dataset.settings}`));
   button.addEventListener("keydown", handleTabKeydown);
