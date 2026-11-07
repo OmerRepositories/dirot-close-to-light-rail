@@ -158,3 +158,36 @@ test("Madlan project cards in search are recognised and earlier misfiled records
   assert.equal(result.cache["yad2:abc"], cache["yad2:abc"]);
   assert.equal(CacheData.fixMisfiledProjects(result.cache).updatedCount, 0, "idempotent");
 });
+
+test("Madlan amenities come from the page data, derived areas included, with the checklist as fallback", () => {
+  const listing = {
+    ...LISTING,
+    parking: 1,
+    amenities: {
+      accessible: true, airConditioner: true, balcony: null, elevator: true, garden: null,
+      grating: false, pool: false, secureRoom: true, storage: null, sunBoiler: true,
+      additionalAreas: { balconyAreas: [16], gardenAreas: [88], warehouseAreas: [], storeroomArea: null },
+    },
+  };
+  const { LRMadlan, document } = madlanPage([listing]);
+  // רשימת הסימון בדף: כל האייקונים "לא קיים" – כדי לראות שהערכים באים מהנתונים
+  const checklist = { querySelector: () => ({ querySelector: () => ({ getAttribute: () => "#cccccc" }) }) };
+  document.querySelector = (selector) =>
+    selector === '[data-auto="amenities-checklist-block"]' ? checklist : null;
+  const amenities = { ...LRMadlan.readAmenities(document) };
+  assert.deepEqual(amenities, {
+    parking: true, secureRoom: true, elevator: true, storage: false, airConditioner: true,
+    accessible: true, balcony: true, sunBoiler: true, grating: false, garden: true, pool: false,
+  });
+});
+
+test("Madlan address and coordinates come from the page data index", () => {
+  const listing = {
+    ...LISTING,
+    addressDetails: { city: "פתח תקווה", streetName: "פנחס מאירי", streetNumber: "37" },
+  };
+  const { LRMadlan, document } = madlanPage([listing]);
+  const address = LRMadlan.readAddress(document, "", null, true);
+  assert.equal(address.city, "פתח תקווה");
+  assert.deepEqual({ ...address.coordinates }, { lat: 32.09, lon: 34.87 });
+});

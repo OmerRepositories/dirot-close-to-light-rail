@@ -46,10 +46,11 @@ var LRMadlan = (() => {
   let scriptMemoSignature = "";
   const scriptMemo = new Map();
 
+  // חתימה זולה: כתובת, מספר הסקריפטים ואורך הסקריפט האחרון (בלי לקרוא מגה-בייטים בכל קריאה)
   function scriptsSignature() {
-    let total = 0;
-    for (const script of document.scripts) total += (script.textContent || "").length;
-    return `${location.href}|${document.scripts.length}|${total}`;
+    const scripts = document.scripts;
+    const last = scripts.length ? scripts[scripts.length - 1] : null;
+    return `${location.href}|${scripts.length}|${last ? (last.textContent || "").length : 0}`;
   }
 
   function memoByScripts(key, compute) {
@@ -275,9 +276,25 @@ var LRMadlan = (() => {
   function listingData(root) {
     const id = listingId(root);
     if (!id) return null;
-    const data = memoByScripts(`data|${id}`, () => scanListingData(id));
+    const data = memoByScripts(`data|${id}`, () => indexedLocation(indexedListing(id)) || scanListingData(id));
     // עותק, כדי שקוד שמשנה את התוצאה לא ישנה את המטמון
     return data ? { ...data, coordinates: data.coordinates ? { ...data.coordinates } : null } : null;
+  }
+
+  function indexedLocation(listing) {
+    const point = listing && listing.locationPoint;
+    if (!point || point.lat === null || point.lng === null) return null;
+    const lat = Number(point.lat);
+    const lon = Number(point.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    const address = listing.addressDetails || {};
+    const text = (value) => (value === null || value === undefined || value === "" ? null : String(value));
+    return {
+      coordinates: { lat, lon },
+      city: text(address.city),
+      street: text(address.streetName),
+      number: text(address.streetNumber),
+    };
   }
 
   function scanListingData(id) {
@@ -451,18 +468,47 @@ var LRMadlan = (() => {
     "pool",
   ];
 
+  // מאפייני הנכס מנתוני הדף. מרפסת/גינה/מחסן/חניה מופיעים לפעמים רק כשטחים (additionalAreas)
+  // או כמספר חניות – בדיוק כמו שמדלן מציגה אותם ברשימה בעמוד.
+  function dataAmenities(listing) {
+    const amenities = listing && listing.amenities;
+    if (!amenities || typeof amenities !== "object") return null;
+    const areas = amenities.additionalAreas || {};
+    const hasAreas = (...values) =>
+      values.some((value) => (Array.isArray(value) ? value.length > 0 : Number(value) > 0));
+    const known = (value) => (typeof value === "boolean" ? value : null);
+    const derived = (value, fallback) => (typeof value === "boolean" ? value || fallback : fallback || null);
+    return {
+      parking: Number.isFinite(Number(listing.parking)) && listing.parking !== null ? Number(listing.parking) > 0 : null,
+      secureRoom: known(amenities.secureRoom),
+      elevator: known(amenities.elevator),
+      storage: derived(amenities.storage, hasAreas(areas.warehouseAreas, areas.storeroomArea)),
+      airConditioner: known(amenities.airConditioner),
+      accessible: known(amenities.accessible),
+      balcony: derived(amenities.balcony, hasAreas(areas.balconyAreas, areas.balconiesArea)),
+      sunBoiler: known(amenities.sunBoiler),
+      grating: known(amenities.grating),
+      garden: derived(amenities.garden, hasAreas(areas.gardenAreas)),
+      pool: known(amenities.pool),
+    };
+  }
+
+  function checklistAmenity(checklist, key) {
+    const item = checklist.querySelector(`[data-auto-checklist-amenity-item="${key}"]`);
+    if (!item) return false;
+    const rect = item.querySelector("svg rect");
+    return Boolean(rect && rect.getAttribute("fill") === "#018489");
+  }
+
   function readAmenities(root) {
     const checklist = root.querySelector('[data-auto="amenities-checklist-block"]');
     if (!checklist) return null;
+    // קודם נתוני הדף (לא תלויים בצבע האייקון); מה שלא ידוע שם – לפי צבע הסימון ברשימה
+    const fromData = root === document ? dataAmenities(indexedListing(listingId(root))) : null;
     const result = {};
     for (const key of AMENITY_KEYS) {
-      const item = checklist.querySelector(`[data-auto-checklist-amenity-item="${key}"]`);
-      if (!item) {
-        result[key] = false;
-        continue;
-      }
-      const rect = item.querySelector("svg rect");
-      result[key] = Boolean(rect && rect.getAttribute("fill") === "#018489");
+      const value = fromData ? fromData[key] : null;
+      result[key] = typeof value === "boolean" ? value : checklistAmenity(checklist, key);
     }
     return result;
   }
