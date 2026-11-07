@@ -459,6 +459,7 @@ tbody tr[aria-selected="true"] td { background: var(--action-soft); }
 .boolean-value { min-width: 38px; text-align: center; }
 .listing-status.active, .boolean-value.yes { color: var(--ok); background: var(--ok-soft); }
 .listing-status.removed, .boolean-value.no { color: var(--danger); background: var(--danger-soft); }
+.listing-status.irrelevant { color: var(--warn); background: var(--warn-soft); }
 .price-down { color: var(--ok); font-weight: 600; }
 .price-up { color: var(--danger); font-weight: 600; }
 

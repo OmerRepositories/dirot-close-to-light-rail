@@ -151,6 +151,18 @@
       <p class="panel-intro">בחר מאפיינים שחשוב לך למצוא בנכס.</p>
       <p class="small">מאפיין חסר יציג אזהרה בעמוד המודעה ולא יאפשר לסמן אותה כשווה.</p>
       <div id="requiredAmenities" class="amenities"></div>
+      <label class="field">
+        <span>מתי לסמן מודעה כ"לא רלוונטית"?</span>
+        <select id="irrelevantMissingPct">
+          <option value="0">אף פעם</option>
+          <option value="1">כשחסר אפילו מאפיין חובה אחד</option>
+          <option value="25">כשחסרים רבע ממאפייני החובה</option>
+          <option value="50">כשחסרים חצי ממאפייני החובה</option>
+          <option value="75">כשחסרים שלושה רבעים ממאפייני החובה</option>
+          <option value="100">רק כשכל מאפייני החובה חסרים</option>
+        </select>
+      </label>
+      <p class="small">מודעה לא רלוונטית מסומנת כך ב"סטטוס מודעה" במנהל המידע, ולא נפתחת שוב ברענונים – כך הרענון לא מבזבז זמן על אלפי מודעות שלא מתאימות. נספרים רק מאפיינים שחסרים בוודאות, לא כאלה שלא ידוע אם קיימים.</p>
     </section>
 
     <section class="tab-panel" id="panel-cache" role="tabpanel" aria-labelledby="tab-cache" data-panel="cache" hidden>

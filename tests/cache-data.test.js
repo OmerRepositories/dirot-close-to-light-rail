@@ -267,3 +267,42 @@ test("bulk deletion matches only listings that meet every selected optional filt
     ["madlan:cheap"]
   );
 });
+
+test("amenityRelevance marks a listing irrelevant at the chosen missing share", () => {
+  const required = ["sunBoiler", "storage", "parking", "pool"];
+  const record = {
+    recordType: "listing",
+    amenities: { sunBoiler: false, storage: false, parking: true, pool: null },
+  };
+  const half = CacheData.amenityRelevance(record, required, 50);
+  assert.equal(half.irrelevant, true);
+  assert.deepEqual(half.missing, ["sunBoiler", "storage"]);
+  assert.equal(CacheData.amenityRelevance(record, required, 75).irrelevant, false);
+  assert.equal(CacheData.amenityRelevance(record, required, 1).irrelevant, true);
+  assert.equal(CacheData.amenityRelevance(record, required, 0).irrelevant, false);
+});
+
+test("amenityRelevance ignores unknown amenities, projects and empty requirements", () => {
+  const unknown = { recordType: "listing", amenities: { parking: null } };
+  assert.equal(CacheData.amenityRelevance(unknown, ["parking"], 1).irrelevant, false);
+  assert.equal(CacheData.amenityRelevance({ recordType: "listing" }, ["parking"], 1).irrelevant, false);
+  const project = { recordType: "project", amenities: { parking: false } };
+  assert.equal(CacheData.amenityRelevance(project, ["parking"], 1).irrelevant, false);
+  const listing = { recordType: "listing", amenities: { parking: false } };
+  assert.equal(CacheData.amenityRelevance(listing, [], 1).irrelevant, false);
+  assert.equal(CacheData.amenityRelevance(listing, ["parking"], 100).irrelevant, true);
+});
+
+test("deletion filter can select irrelevant listings on any site", () => {
+  const cache = {
+    "yad2:a": { recordType: "listing", amenities: { parking: false } },
+    "madlan:b": { recordType: "listing", amenities: { parking: false } },
+    "yad2:c": { recordType: "listing", amenities: { parking: true } },
+  };
+  const matches = CacheData.filterListingsForDeletion(cache, {
+    status: "irrelevant",
+    requiredAmenities: ["parking"],
+    irrelevantMissingPct: 50,
+  });
+  assert.deepEqual(matches.map(([key]) => key).sort(), ["madlan:b", "yad2:a"]);
+});

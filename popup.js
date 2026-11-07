@@ -19,6 +19,7 @@ const DEFAULTS = {
   indexMinPrice: 0,
   indexMaxPrice: 0,
   requiredAmenities: ["secureRoom"],
+  irrelevantMissingPct: 50,
   hideAds: true,
   blockedStreets: [],
 };
@@ -89,6 +90,10 @@ function fill(s) {
   for (const k of boolKeys) $(k).checked = Boolean(s[k]);
   $("listingIndexingMode").value =
     s.listingIndexingMode === "opened" ? "opened" : "encountered";
+  const missingPct = String(Number.isFinite(Number(s.irrelevantMissingPct)) ? Number(s.irrelevantMissingPct) : 50);
+  $("irrelevantMissingPct").value = [...$("irrelevantMissingPct").options].some((o) => o.value === missingPct)
+    ? missingPct
+    : "50";
   const required = Array.isArray(s.requiredAmenities)
     ? s.requiredAmenities
     : DEFAULTS.requiredAmenities;
@@ -130,6 +135,7 @@ function read() {
   for (const k of boolKeys) out[k] = $(k).checked;
   out.listingIndexingMode =
     $("listingIndexingMode").value === "opened" ? "opened" : "encountered";
+  out.irrelevantMissingPct = Number($("irrelevantMissingPct").value) || 0;
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
   );
@@ -161,6 +167,7 @@ for (const k of [...numberKeys, ...boolKeys]) {
   $(k).addEventListener("change", save);
 }
 $("listingIndexingMode").addEventListener("change", save);
+$("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("indexCities").addEventListener("input", save);
 

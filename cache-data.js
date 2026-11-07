@@ -195,7 +195,11 @@ var LRCacheData = (() => {
       const separator = key.indexOf(":");
       const site = separator < 0 ? "" : key.slice(0, separator);
       if (filters.site && site !== filters.site) return false;
-      if (filters.status) {
+      if (filters.status === "irrelevant") {
+        if (!amenityRelevance(record, filters.requiredAmenities, filters.irrelevantMissingPct).irrelevant) {
+          return false;
+        }
+      } else if (filters.status) {
         if (site !== "yad2") return false;
         const status = record.listingStatus === "active"
           ? "active"
@@ -278,7 +282,28 @@ var LRCacheData = (() => {
     return Math.round(positives * 10 + railBonus + priceBonus - brokeragePenalty);
   }
 
+  // מודעה "לא רלוונטית": חסרים בה (בוודאות, לא "לא ידוע") לפחות missingPct אחוזים מהמאפיינים שהמשתמש סימן כחובה.
+  // missingPct = 0 מכבה את הסימון; 1 = מספיק שחסר מאפיין חובה אחד; 100 = כל מאפייני החובה חסרים.
+  function amenityRelevance(record, requiredAmenities, missingPct) {
+    const required = Array.isArray(requiredAmenities) ? requiredAmenities : [];
+    const amenities = record && record.amenities && typeof record.amenities === "object"
+      ? record.amenities
+      : {};
+    const missing = required.filter((amenity) => amenities[amenity] === false);
+    const threshold = Math.max(0, Math.min(100, Number(missingPct) || 0));
+    const irrelevant = Boolean(
+      record &&
+        record.recordType !== "project" &&
+        threshold > 0 &&
+        required.length > 0 &&
+        missing.length > 0 &&
+        (missing.length / required.length) * 100 >= threshold
+    );
+    return { irrelevant, missing, requiredCount: required.length };
+  }
+
   return {
+    amenityRelevance,
     hasUncertainInitialPriceBaseline,
     inferredPriceHistoryTimestamp,
     addEstimatedBaselineDates,

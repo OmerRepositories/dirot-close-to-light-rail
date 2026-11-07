@@ -1,6 +1,9 @@
 const CACHE_KEY = "yad2AmenityCache_v1";
 const REFRESH_DELAY_KEY = "cacheRefreshDelaySec";
 const REFRESH_SCHEDULE_KEY = "lightrailRefreshSchedule";
+// מתי כל מודעה נפתחה לאחרונה ברענון (בכל האתרים). נשמר בנפרד מהמטמון כדי לא להתנגש בכתיבה של עמוד המודעה.
+const REFRESH_LOG_KEY = "lightrailRefreshLog_v1";
+let refreshLog = {};
 const REFRESH_RUNTIME_KEY = "lightrailRefreshRuntime";
 const REFRESH_ALARM_NAME = "lightrail-periodic-listing-refresh";
 const FONT_SCALE_KEY = "cacheManagerFontScale";
@@ -60,7 +63,25 @@ let timelinePreferences = {
   nearM: 800,
   calculatePpsm: true,
   maxPpsm: 0,
+  irrelevantMissingPct: 50,
 };
+
+// "לא רלוונטית": חסרים בה מאפייני חובה לפי הסף שבהגדרות. מודעה כזו לא נכללת ברענונים.
+function listingRelevance(record) {
+  if (!record || recordType(record) !== "listing") return { irrelevant: false, missing: [] };
+  return LRCacheData.amenityRelevance(
+    record,
+    timelinePreferences.requiredAmenities,
+    timelinePreferences.irrelevantMissingPct
+  );
+}
+
+function irrelevantTitle(relevance) {
+  const labels = relevance.missing.map(
+    (amenity) => (AMENITIES.find(([key]) => key === amenity) || [amenity, amenity])[1]
+  );
+  return `לא רלוונטית – חסרים ${relevance.missing.length} מתוך ${relevance.requiredCount} מאפייני החובה: ${labels.join(", ")}. מודעה כזו לא נכללת ברענונים.`;
+}
 const expandedPriceHistory = new Set();
 const timelineAmenityLabels = {
   parking: "חניה",
@@ -141,6 +162,8 @@ function readListingDeletionFilters() {
     query: $("deleteListingQuery").value.trim(),
     site: $("deleteListingSite").value,
     status: $("deleteListingStatus").value,
+    requiredAmenities: timelinePreferences.requiredAmenities,
+    irrelevantMissingPct: timelinePreferences.irrelevantMissingPct,
     brokerage: document.querySelector('[data-delete-boolean="brokerage"]').value,
     railApprox: document.querySelector('[data-delete-boolean="railApprox"]').value,
     ranges: {},
@@ -223,6 +246,9 @@ function readTimelinePreferences(settings) {
     nearM: Number.isFinite(Number(settings.nearM)) ? Math.max(0, Number(settings.nearM)) : 800,
     calculatePpsm: Boolean(settings.calculatePpsm),
     maxPpsm: Number.isFinite(Number(settings.maxPpsm)) ? Math.max(0, Number(settings.maxPpsm)) : 0,
+    irrelevantMissingPct: Number.isFinite(Number(settings.irrelevantMissingPct))
+      ? Math.max(0, Math.min(100, Number(settings.irrelevantMissingPct)))
+      : 50,
   };
 }
 
@@ -736,6 +762,7 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "type") return recordType(record) === "project" ? "פרויקט" : "מודעה";
   if (key === "site") return recordSite(recordKey);
   if (key === "listingStatus") {
+    if (listingRelevance(record).irrelevant && record.listingStatus !== "removed") return "לא רלוונטית";
     const searchOnly = recordType(record) === "listing" && record.indexedFrom === "search"
       ? " מהחיפוש בלבד"
       : "";
@@ -801,7 +828,9 @@ function renderRows() {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (site && recordSite(key) !== site) return false;
       if (type && recordType(record) !== type) return false;
-      if (searchMode && $("listingSearchStatus").value) {
+      if (searchMode && $("listingSearchStatus").value === "irrelevant") {
+        if (!listingRelevance(record).irrelevant) return false;
+      } else if (searchMode && $("listingSearchStatus").value) {
         const status = recordSite(key) !== "yad2" || recordType(record) !== "listing"
           ? ""
           : record.listingStatus === "active"
@@ -864,7 +893,12 @@ function renderRows() {
         const status = document.createElement("span");
         const site = recordSite(key);
         const searchOnly = recordType(record) === "listing" && record.indexedFrom === "search";
-        if (site !== "yad2" || recordType(record) !== "listing") {
+        const relevance = listingRelevance(record);
+        if (relevance.irrelevant && record.listingStatus !== "removed") {
+          status.className = "listing-status irrelevant";
+          status.textContent = "לא רלוונטית";
+          td.title = irrelevantTitle(relevance);
+        } else if (site !== "yad2" || recordType(record) !== "listing") {
           status.className = "listing-status unknown";
           status.textContent = searchOnly ? "מהחיפוש בלבד" : "—";
           if (searchOnly) td.title = SEARCH_ONLY_TITLE;
@@ -1122,6 +1156,7 @@ function loadTimelinePreferences() {
     nearM: 800,
     calculatePpsm: true,
     maxPpsm: 0,
+    irrelevantMissingPct: 50,
   };
   chrome.storage.sync.get(defaults, (settings) => {
     const error = chrome.runtime.lastError;
@@ -1132,6 +1167,7 @@ function loadTimelinePreferences() {
     }
     readTimelinePreferences(settings || defaults);
     renderPriceTimeline();
+    renderRows();
   });
 }
 
@@ -1689,6 +1725,31 @@ async function saveRefreshSchedule() {
   }
 }
 
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today.getTime();
+}
+
+function lastRefreshedAt(key, record) {
+  const logged = Number(refreshLog[key]) || 0;
+  const checked = record && Number.isFinite(record.listingStatusCheckedAt) ? record.listingStatusCheckedAt : 0;
+  return Math.max(logged, checked);
+}
+
+// נרשם בכל טעינת דף ברענון; רשומות של מודעות שכבר לא במטמון נמחקות מהיומן
+async function logListingRefreshed(key) {
+  refreshLog[key] = Date.now();
+  for (const loggedKey of Object.keys(refreshLog)) {
+    if (!cache[loggedKey]) delete refreshLog[loggedKey];
+  }
+  try {
+    await storageSet({ [REFRESH_LOG_KEY]: refreshLog });
+  } catch (error) {
+    console.warn("[lightrail-ext] failed to save refresh log", error);
+  }
+}
+
 async function saveYad2ListingStatus(key, status, attemptId, index) {
   if (!["active", "removed"].includes(status)) return;
   if (
@@ -1847,6 +1908,7 @@ function onRefreshTabUpdated(tabId, changeInfo, tab) {
   loadTimeout = null;
   currentPageLoaded = true;
   const [key, record] = refreshQueue[refreshIndex];
+  logListingRefreshed(key);
   if (recordSite(key) === "yad2") {
     checkCurrentYad2ListingStatus(tabId, key, record);
   }
@@ -1946,21 +2008,45 @@ async function startRefresh(options = {}) {
   const sourceRecords = options.scheduled === true
     ? Object.entries(cache)
     : visibleRecords;
-  refreshQueue = sourceRecords.filter(([key, record]) =>
-    recordType(record) === "listing" &&
-    Boolean(refreshableListingUrl(key, record)) &&
-    (!uncheckedOnly ||
-      recordSite(key) === "yad2" &&
-      !["active", "removed"].includes(record.listingStatus))
+  // מודעות "לא רלוונטיות" (חסרים בהן מאפייני חובה) לא נפתחות שוב – חוסך אלפי טעינות דף
+  let irrelevantSkipped = 0;
+  refreshQueue = sourceRecords.filter(([key, record]) => {
+    if (
+      recordType(record) !== "listing" ||
+      !refreshableListingUrl(key, record) ||
+      (uncheckedOnly &&
+        (recordSite(key) !== "yad2" || ["active", "removed"].includes(record.listingStatus)))
+    ) return false;
+    if (listingRelevance(record).irrelevant) {
+      irrelevantSkipped++;
+      return false;
+    }
+    return true;
+  });
+  // קודם מודעות שלא רועננו אף פעם, אחר כך מהישנה לחדשה: עצירה והפעלה מחדש ממשיכות מאיפה שלא הגענו
+  try {
+    const storedLog = await storageGet(REFRESH_LOG_KEY);
+    refreshLog = storedLog && typeof storedLog === "object" ? storedLog : {};
+  } catch (error) {
+    console.warn("[lightrail-ext] failed to load refresh log", error);
+  }
+  refreshQueue.sort(([leftKey, left], [rightKey, right]) =>
+    lastRefreshedAt(leftKey, left) - lastRefreshedAt(rightKey, right)
   );
+  const refreshedToday = refreshQueue.filter(([key, record]) =>
+    lastRefreshedAt(key, record) >= startOfToday()
+  ).length;
   refreshIndex = 0;
   refreshSkippedCount = 0;
   refreshPaused = false;
   refreshRunScheduled = options.scheduled === true;
+  const irrelevantNote = irrelevantSkipped
+    ? ` ${irrelevantSkipped.toLocaleString("he-IL")} מודעות לא רלוונטיות לא ירועננו.`
+    : "";
   if (!refreshQueue.length) {
-    const message = uncheckedOnly
+    const message = (uncheckedOnly
       ? "אין מודעות יד2 בסטטוס „לא נבדקה” עם קישור תקין."
-      : "אין בתוצאות המסוננות מודעות עם קישור תקין.";
+      : "אין בתוצאות המסוננות מודעות עם קישור תקין.") + irrelevantNote;
     setRefreshStatus(message, true);
     refreshStarting = false;
     updateRefreshButtons();
@@ -1973,7 +2059,10 @@ async function startRefresh(options = {}) {
   refreshStarting = false;
   updateRefreshButtons();
   const scopeText = uncheckedOnly ? "מודעות יד2 שלא נבדקו" : "מודעות";
-  setRefreshStatus(`מתחיל רענון של ${refreshQueue.length} ${scopeText}; ההמתנה היא ${refreshDelaySec} שניות אחרי כל טעינה.`);
+  const todayNote = refreshedToday
+    ? ` ${refreshedToday.toLocaleString("he-IL")} שכבר רועננו היום יגיעו בסוף.`
+    : "";
+  setRefreshStatus(`מתחיל רענון של ${refreshQueue.length} ${scopeText}, קודם אלו שלא רועננו זמן רב; ההמתנה היא ${refreshDelaySec} שניות אחרי כל טעינה.${todayNote}${irrelevantNote}`);
   reportRefreshRun("lightrail:refresh-run-started", { scheduled: refreshRunScheduled });
   openNextListing();
 }
@@ -2471,12 +2560,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
       nearM: timelinePreferences.nearM,
       calculatePpsm: timelinePreferences.calculatePpsm,
       maxPpsm: timelinePreferences.maxPpsm,
+      irrelevantMissingPct: timelinePreferences.irrelevantMissingPct,
     };
     for (const key of Object.keys(updated)) {
       if (changes[key]) updated[key] = changes[key].newValue;
     }
     readTimelinePreferences(updated);
     if (timelinePreferencesEnabled) renderPriceTimeline();
+    if (changes.requiredAmenities || changes.irrelevantMissingPct) {
+      renderRows();
+      renderListingDeletionPreview();
+    }
     return;
   }
   if (area !== "local") return;

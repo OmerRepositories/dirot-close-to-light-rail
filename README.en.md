@@ -52,6 +52,8 @@ Click the extension icon in Chrome's toolbar. Settings are saved automatically a
 - The listing-status column records refresh checks for Yad2 only: the explicit “we searched everywhere but there is no such page” message marks a listing removed, and valid listing data marks it active. Pages that cannot be verified retain their previous status or remain unchecked.
 - Refresh can be limited to Yad2 listings with an unchecked status. An explicit periodic schedule can run every 1–168 hours with a 5–600 second delay between listings, refreshing all saved listings or only unchecked Yad2 listings. Scheduling stays off until saved, runs while the browser is open, and may be delayed while the computer sleeps. Refresh uses one tab, does not bypass site blocks, and can be paused/stopped; disabling the schedule prevents future cycles.
 
+- **Not-relevant listings** — in the amenities tab, choose when a listing counts as not relevant: when one required amenity is missing, a quarter, half (default), three quarters, or all of them. Only amenities confirmed missing count. Such listings show “not relevant” in the listing-status column (with the missing amenities), can be searched and deleted by that status, and are skipped by refreshes.
+- **Refresh order** — refresh starts with listings never refreshed, then oldest first; listings already refreshed today come last, so stopping and restarting continues with listings not yet checked.
 - **Readable number fields** — price, price-per-square-meter, and distance fields in settings and the cache manager show thousands separators while typing (for example `1,000,000`).
 
 All enabled criteria must be met for a listing to be highlighted as worth checking.
