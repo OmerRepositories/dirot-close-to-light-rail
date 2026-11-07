@@ -253,12 +253,12 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   border-inline-end: 1px solid var(--line);
   background: var(--surface);
 }
-.nav-group { margin: 14px 10px 6px; color: var(--faint); font-size: 13px; font-weight: 600; }
+.nav-group { margin: 10px 10px 4px; color: var(--faint); font-size: 13px; font-weight: 600; }
 .nav-group:first-child { margin-top: 2px; }
 .view-tab {
   display: flex;
   width: 100%;
-  min-height: 56px;
+  min-height: 50px;
   align-items: center;
   gap: 12px;
   padding: 8px 10px;
@@ -592,3 +592,7 @@ pre {
 @media (max-width: 950px) {
   body { min-width: 760px; }
 }
+
+/* ---------- הגדרות: הטופס של חלון ההגדרות במצב עמוד ---------- */
+.settings-panel { padding: 0; overflow: hidden !important; }
+#settingsFrame { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: transparent; color-scheme: normal; }

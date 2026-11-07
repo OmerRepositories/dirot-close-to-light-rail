@@ -39,6 +39,18 @@ const AMENITIES = [
 ];
 
 const $ = (id) => document.getElementById(id);
+
+// popup.html משמש גם כחלון קופץ קטן (תפריט פתיחה) וגם כטופס ההגדרות המלא בתוך עמוד התוסף (?page=1#<קטגוריה>)
+const PAGE_MODE = new URLSearchParams(location.search).has("page");
+document.documentElement.classList.toggle("page-mode", PAGE_MODE);
+document.documentElement.classList.toggle("popup-mode", !PAGE_MODE);
+
+for (const tile of document.querySelectorAll("[data-open]")) {
+  tile.addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL(`cache-manager.html#${tile.dataset.open}`) });
+    window.close();
+  });
+}
 const LISTING_CACHE_KEY = "yad2AmenityCache_v1";
 const LISTING_CACHE_TTL_MS = 60 * 24 * 60 * 60 * 1000;
 const tabs = [...document.querySelectorAll('[role="tab"]')];
@@ -52,6 +64,16 @@ function selectTab(tab, focus = false) {
     panel.hidden = !selected;
   }
   if (focus) tab.focus();
+}
+
+function selectFromHash() {
+  const name = location.hash.slice(1);
+  const tab = tabs.find((item) => item.getAttribute("aria-controls") === `panel-${name}`);
+  if (tab) selectTab(tab);
+}
+if (PAGE_MODE) {
+  selectFromHash();
+  window.addEventListener("hashchange", selectFromHash);
 }
 
 for (const tab of tabs) {
@@ -208,6 +230,7 @@ function updateCacheStatus() {
         now - record.updatedAt < LISTING_CACHE_TTL_MS
     );
     status.textContent = `${records.length} מודעות שמורות`;
+    $("launcherCount").textContent = `${records.length.toLocaleString("he-IL")} מודעות שמורות · חיפוש ושינויי מחירים`;
     status.dataset.error = "false";
   });
 }

@@ -1171,6 +1171,28 @@ function loadTimelinePreferences() {
   });
 }
 
+// ההגדרות הן אותו טופס של החלון הקופץ (popup.html) במצב עמוד; טוענים אותו פעם אחת ומחליפים קטגוריה לפי hash
+function showSettingsSection(section) {
+  const frame = $("settingsFrame");
+  if (!frame.getAttribute("src")) {
+    frame.src = `popup.html?page=1#${section}`;
+    return;
+  }
+  try {
+    frame.contentWindow.location.hash = section;
+  } catch (_error) {
+    frame.src = `popup.html?page=1#${section}`;
+  }
+}
+
+const VIEW_NAMES = ["listings", "search", "delete", "priceChanges", "refresh", "transfer"];
+function viewFromHash() {
+  const name = decodeURIComponent(location.hash.slice(1));
+  if (VIEW_NAMES.includes(name)) return name;
+  if (name.startsWith("settings-") && document.querySelector(`[data-settings="${name.slice(9)}"]`)) return name;
+  return "";
+}
+
 function setActiveTab(tab) {
   activeTab = tab;
   const tableWrap = rows.closest(".table-wrap");
@@ -1195,6 +1217,16 @@ function setActiveTab(tab) {
   $("priceChangesPanel").hidden = tab !== "priceChanges";
   $("refreshPanel").hidden = tab !== "refresh";
   $("transferPanel").hidden = tab !== "transfer";
+  const settingsSection = tab.startsWith("settings-") ? tab.slice("settings-".length) : "";
+  for (const button of document.querySelectorAll("[data-settings]")) {
+    const active = button.dataset.settings === settingsSection;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+  $("settingsPanel").hidden = !settingsSection;
+  if (settingsSection) showSettingsSection(settingsSection);
+  if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
   $("listingToolbar").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
   $("listingAdvancedFilters").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
   document.body.dataset.activeTab = tab;
@@ -2458,6 +2490,14 @@ $("listingDeleteTab").addEventListener("keydown", handleTabKeydown);
 $("priceChangesTab").addEventListener("keydown", handleTabKeydown);
 $("refreshTab").addEventListener("keydown", handleTabKeydown);
 $("transferTab").addEventListener("keydown", handleTabKeydown);
+for (const button of document.querySelectorAll("[data-settings]")) {
+  button.addEventListener("click", () => setActiveTab(`settings-${button.dataset.settings}`));
+  button.addEventListener("keydown", handleTabKeydown);
+}
+window.addEventListener("hashchange", () => {
+  const view = viewFromHash();
+  if (view && view !== activeTab) setActiveTab(view);
+});
 document.querySelectorAll("[data-price-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     priceTimelineFilter = button.dataset.priceFilter;
@@ -2614,6 +2654,8 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
     await loadRefreshSchedule();
     renderRows();
     renderListingDeletionPreview();
+    const initialView = viewFromHash();
+    if (initialView && initialView !== activeTab) setActiveTab(initialView);
     const params = new URLSearchParams(location.search);
     if (params.get("scheduledRefresh") === "1") {
       const uncheckedOnly = params.get("uncheckedOnly") === "1";
