@@ -59,7 +59,27 @@ var LRStreetFilter = (() => {
     return out.slice(0, 200);
   }
 
-  return { normalize, parseRules, match, parseInput };
+  // שם עיר להשוואה: מתעלם מכתיב מלא/חסר ("פתח תקוה" = "פתח תקווה") ומהמילה "עיריית"
+  function cityWords(value) {
+    return normalize(value)
+      .replace(/^עיריית\s+/, "")
+      .replace(/וו/g, "ו")
+      .replace(/יי/g, "י")
+      .split(" ")
+      .filter(Boolean);
+  }
+
+  // רשימת ערים ריקה = כל הערים. אחרת העיר צריכה להופיע ברשימה
+  // (גם "תל אביב" מתאים ל"תל אביב יפו" ולהפך)
+  function cityAllowed(cities, city) {
+    const rules = (Array.isArray(cities) ? cities : []).map(cityWords).filter((words) => words.length);
+    if (!rules.length) return true;
+    const words = cityWords(city);
+    if (!words.length) return false;
+    return rules.some((rule) => containsWords(words, rule) || containsWords(rule, words));
+  }
+
+  return { normalize, parseRules, match, parseInput, cityAllowed };
 })();
 
 if (typeof module !== "undefined") module.exports = LRStreetFilter;

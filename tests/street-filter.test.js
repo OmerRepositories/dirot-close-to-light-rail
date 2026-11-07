@@ -42,3 +42,19 @@ test("settings input is split into unique lines", () => {
     "בן גוריון, רמת גן",
   ]);
 });
+
+test("cityAllowed accepts every city when the list is empty", () => {
+  assert.equal(F.cityAllowed([], "חיפה"), true);
+  assert.equal(F.cityAllowed(undefined, ""), true);
+});
+
+test("cityAllowed matches listed cities and ignores spelling variants", () => {
+  const cities = ["פתח תקווה", "רמת גן"];
+  assert.equal(F.cityAllowed(cities, "פתח תקוה"), true);
+  assert.equal(F.cityAllowed(cities, "רמת-גן"), true);
+  assert.equal(F.cityAllowed(cities, "גבעתיים"), false);
+  assert.equal(F.cityAllowed(cities, "רמת השרון"), false);
+  assert.equal(F.cityAllowed(cities, ""), false);
+  assert.equal(F.cityAllowed(["תל אביב"], "תל אביב יפו"), true);
+  assert.equal(F.cityAllowed(["תל אביב יפו"], "תל אביב"), true);
+});

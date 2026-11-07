@@ -31,6 +31,7 @@
     disableMadlan: false,
     saveListingData: true,
     listingIndexingMode: "encountered",
+    indexCities: [], // ערים שנשמרות מתוצאות החיפוש (ריק = כל הערים)
     indexMinPrice: 0, // מחיר מינימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא)
     indexMaxPrice: 0, // מחיר מקסימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא הגבלה)
     requiredAmenities: ["secureRoom"],
@@ -1457,6 +1458,7 @@
         if (!searchCardIndexable(parser, root, stats, listingMetadata, address)) return;
         if (CFG.indexMinPrice > 0 && stats.price < CFG.indexMinPrice) return;
         if (CFG.indexMaxPrice > 0 && stats.price > CFG.indexMaxPrice) return;
+        if (!LRStreetFilter.cityAllowed(CFG.indexCities, address.city)) return;
       }
     }
     const observedPrice = Number.isFinite(stats.price) ? stats.price : null;
@@ -1981,6 +1983,8 @@
           : [...DEFAULTS.requiredAmenities];
       } else if (k === "listingIndexingMode") {
         CFG[k] = s[k] === "opened" ? "opened" : "encountered";
+      } else if (k === "indexCities") {
+        CFG[k] = Array.isArray(s[k]) ? s[k].map(String) : [];
       } else if (k === "blockedStreets") {
         CFG[k] = Array.isArray(s[k]) ? s[k].map(String) : [];
         blockedStreetRules = LRStreetFilter.parseRules(CFG[k]);

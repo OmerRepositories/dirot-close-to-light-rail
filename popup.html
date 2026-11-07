@@ -170,6 +170,11 @@
       </label>
       <div id="indexMaxPriceField">
         <label class="field">
+          <span>לשמור רק מהערים האלה</span>
+          <textarea id="indexCities" rows="2" placeholder="פתח תקווה&#10;רמת גן"></textarea>
+        </label>
+        <p class="small">עיר אחת בכל שורה. ריק = כל הערים. כתיב מלא או חסר לא משנה ("פתח תקוה" = "פתח תקווה").</p>
+        <label class="field">
           <span>מחיר מינימלי לשמירה מתוצאות החיפוש (₪)</span>
           <input type="number" data-thousands id="indexMinPrice" min="0" step="10000" placeholder="ריק = ללא מינימום">
         </label>

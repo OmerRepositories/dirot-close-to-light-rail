@@ -15,6 +15,7 @@ const DEFAULTS = {
   disableFacebook: false,
   saveListingData: true,
   listingIndexingMode: "encountered",
+  indexCities: [],
   indexMinPrice: 0,
   indexMaxPrice: 0,
   requiredAmenities: ["secureRoom"],
@@ -98,6 +99,9 @@ function fill(s) {
   if (document.activeElement !== $("blockedStreets")) {
     $("blockedStreets").value = (Array.isArray(s.blockedStreets) ? s.blockedStreets : []).join("\n");
   }
+  if (document.activeElement !== $("indexCities")) {
+    $("indexCities").value = (Array.isArray(s.indexCities) ? s.indexCities : []).join("\n");
+  }
   syncDisabled();
 }
 
@@ -111,6 +115,7 @@ function syncDisabled() {
   $("listingIndexingMode").disabled = !$("saveListingData").checked;
   $("indexMaxPriceField").hidden = $("listingIndexingMode").value !== "encountered";
   $("indexMinPrice").disabled = !$("saveListingData").checked;
+  $("indexCities").disabled = !$("saveListingData").checked;
   $("indexMaxPrice").disabled = !$("saveListingData").checked;
 }
 
@@ -129,6 +134,7 @@ function read() {
     (input) => input.dataset.amenity
   );
   out.blockedStreets = LRStreetFilter.parseInput($("blockedStreets").value);
+  out.indexCities = LRStreetFilter.parseInput($("indexCities").value);
   return out;
 }
 
@@ -156,6 +162,7 @@ for (const k of [...numberKeys, ...boolKeys]) {
 }
 $("listingIndexingMode").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
+$("indexCities").addEventListener("input", save);
 
 for (const [key, label] of AMENITIES) {
   const option = document.createElement("label");
@@ -173,7 +180,7 @@ for (const [key, label] of AMENITIES) {
 $("reset").addEventListener("click", () => {
   fill(DEFAULTS);
   chrome.storage.sync.set(
-    { ...DEFAULTS, requiredAmenities: [...DEFAULTS.requiredAmenities], blockedStreets: [] },
+    { ...DEFAULTS, requiredAmenities: [...DEFAULTS.requiredAmenities], blockedStreets: [], indexCities: [] },
     () => flash("✓ אופס")
   );
 });
