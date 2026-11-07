@@ -110,17 +110,31 @@ var LRYad2 = (() => {
 
   function extractPriceSqm(root, text) {
     const stats = LR.extractPriceSqm(text);
+    // סדר עדיפות למחיר (מהאמין ביותר): "המחיר הנוכחי" בעמוד מודעה, אלמנט המחיר בכרטיס חיפוש,
+    // המחיר המובנה מנתוני הדף, ורק אחרון – חיפוש בטקסט החופשי. הטקסט החופשי עלול לתפוס
+    // מספר אחר מהכרטיס, למשל סכום הירידה ("ירד ב־₪105,000"), ולשמור אותו בטעות כמחיר.
     const currentPriceElement =
       root &&
       root.querySelector &&
-      root.querySelector('[data-testid="current-price"] [data-testid="price"]');
+      (root.querySelector('[data-testid="current-price"] [data-testid="price"]') ||
+        root.querySelector('[data-testid="ad-card-price"] [data-testid="price"]'));
     const currentPriceText = currentPriceElement
       ? currentPriceElement.innerText || currentPriceElement.textContent || ""
       : "";
     const currentPrice = LR.extractPriceSqm(currentPriceText).price;
+    const id = Number.isFinite(currentPrice) ? null : listingId(root);
+    const index = id ? getPageListingsById() : null;
+    const dataRecord = index && index.get(id);
+    const dataPrice = dataRecord && Number.isFinite(dataRecord.price) && dataRecord.price > 0
+      ? dataRecord.price
+      : null;
     const structuredSqm = readListingBuiltArea(root);
     const structuredPricePerSqm = readListingDetailNumber(root, "price-per-squaremeter-value");
-    const price = Number.isFinite(currentPrice) ? currentPrice : stats.price;
+    const price = Number.isFinite(currentPrice)
+      ? currentPrice
+      : Number.isFinite(dataPrice)
+        ? dataPrice
+        : stats.price;
     const sqm = Number.isFinite(structuredSqm) ? structuredSqm : stats.sqm;
     const normalized = LR.extractPriceSqm(
       `${Number.isFinite(price) ? `${price} ₪ ` : ""}${Number.isFinite(sqm) ? `${sqm} מ״ר` : ""}`

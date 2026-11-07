@@ -669,3 +669,7 @@ button.stat-tile:hover { border-color: var(--line-strong); background: var(--sur
 .pressure-chip.high { color: var(--danger); background: var(--danger-soft); }
 .pressure-chip.medium { color: var(--warn); background: var(--warn-soft); }
 .pressure-chip.low { color: var(--muted); background: var(--surface-sunk); }
+
+/* הודעה על תיקון מחירים שפוענחו לא נכון */
+.price-fix-notice { margin: 0 0 12px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); border-radius: var(--r-sm); color: var(--ok); background: var(--ok-soft); font-size: 13px; }
+.price-fix-notice[hidden] { display: none; }

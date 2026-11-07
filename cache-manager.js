@@ -425,16 +425,39 @@ async function restoreStorageArea(area, snapshot, attemptedValues) {
   );
 }
 
+// תיקוני נתונים בטעינה: תאריכי בסיס משוערים + ניקוי מחירים שפוענחו לא נכון (קפיצות כמו ₪105,000).
+// קודם בודקים על המידע שכבר בידינו; קוראים שוב מהאחסון וכותבים רק אם באמת יש מה לתקן.
+function applyDataFixes(source) {
+  const baseline = LRCacheData.addEstimatedBaselineDates(source);
+  const outliers = LRCacheData.cleanPriceOutliers(baseline.cache);
+  return {
+    cache: outliers.cache,
+    baselineCount: baseline.updatedCount,
+    priceFixCount: outliers.updatedCount,
+    removedPoints: outliers.removedPoints,
+  };
+}
+
 async function migrateEstimatedBaselineDates(sourceCache) {
   let latestCache = sourceCache;
   try {
+    const probe = applyDataFixes(sourceCache);
+    if (!probe.baselineCount && !probe.priceFixCount) return sourceCache;
     latestCache = await storageGet();
-    const migration = LRCacheData.addEstimatedBaselineDates(latestCache);
-    if (!migration.updatedCount) return latestCache;
+    const migration = applyDataFixes(latestCache);
+    if (!migration.baselineCount && !migration.priceFixCount) return latestCache;
     await storageSet({ [CACHE_KEY]: migration.cache });
-    setRefreshStatus(
-      `עודכנו ${migration.updatedCount.toLocaleString("he-IL")} תאריכי בסיס משוערים בהיסטוריית המחירים.`
-    );
+    const notes = [];
+    if (migration.priceFixCount) {
+      notes.push(
+        `תוקנו מחירים שפוענחו לא נכון ב־${migration.priceFixCount.toLocaleString("he-IL")} מודעות (${migration.removedPoints.toLocaleString("he-IL")} תצפיות שגויות הוסרו מההיסטוריה)`
+      );
+    }
+    if (migration.baselineCount) {
+      notes.push(`עודכנו ${migration.baselineCount.toLocaleString("he-IL")} תאריכי בסיס משוערים בהיסטוריית המחירים`);
+    }
+    setRefreshStatus(`${notes.join("; ")}.`);
+    if (migration.priceFixCount) showPriceFixNotice(migration.priceFixCount, migration.removedPoints);
     return migration.cache;
   } catch (error) {
     console.error("[lightrail-ext] failed to save estimated price baseline dates", error);
@@ -444,6 +467,22 @@ async function migrateEstimatedBaselineDates(sourceCache) {
     );
     return latestCache;
   }
+}
+
+// הודעה קצרה בראש העמוד אחרי תיקון מחירים, כדי שהמשתמש יידע שהנתונים השתנו
+function showPriceFixNotice(fixed, removed) {
+  let notice = $("priceFixNotice");
+  if (!notice) {
+    notice = document.createElement("p");
+    notice.id = "priceFixNotice";
+    notice.className = "price-fix-notice";
+    notice.setAttribute("role", "status");
+    document.querySelector(".views").prepend(notice);
+  }
+  notice.textContent = `תוקנו מחירים שגויים ב־${fixed.toLocaleString("he-IL")} מודעות: הוסרו ${removed.toLocaleString("he-IL")} תצפיות מחיר שלא היו הגיוניות (למשל ₪105,000 לדירה של ₪2,130,000), והמחיר הנוכחי שוחזר במקרה הצורך.`;
+  notice.hidden = false;
+  clearTimeout(showPriceFixNotice.timer);
+  showPriceFixNotice.timer = setTimeout(() => { notice.hidden = true; }, 15000);
 }
 
 function displayDate(value) {

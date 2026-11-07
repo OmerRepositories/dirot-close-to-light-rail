@@ -89,7 +89,129 @@ var LRCacheData = (() => {
     return { cache: cleared, clearedCount };
   }
 
-  function recordPriceObservation(previous, price, timestamp = Date.now()) {
+  // ---- הגנה מפני מחירים שפוענחו לא נכון (למשל ₪105,000 במקום ₪2,130,000) ----
+  // מחיר דירה למכירה בישראל: 4,000–150,000 ₪ למ״ר. מחוץ לטווח – כמעט תמיד מספר אחר מהעמוד.
+  const MIN_PLAUSIBLE_PPSM = 4000;
+  const MAX_PLAUSIBLE_PPSM = 150000;
+  // שינוי מחיר אמיתי הוא אחוזים בודדים; ירידה של יותר מ־40% או עלייה של יותר מ־60% = חשוד
+  const MIN_PRICE_RATIO = 0.6;
+  const MAX_PRICE_RATIO = 1.6;
+  // מחיר חשוד מתקבל רק אם עמוד המודעה עצמו מראה אותו שוב ושוב
+  const SUSPECT_CONFIRMATIONS = 3;
+
+  function plausiblePriceForArea(price, sqm) {
+    if (!Number.isFinite(price) || price <= 0) return false;
+    if (!Number.isFinite(sqm) || sqm <= 0) return true;
+    const ppsm = price / sqm;
+    return ppsm >= MIN_PLAUSIBLE_PPSM && ppsm <= MAX_PLAUSIBLE_PPSM;
+  }
+
+  function medianPrice(prices) {
+    const sorted = [...prices].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  // מחיר ייחוס יציב: חציון של עד 5 התצפיות האחרונות (תצפית שגויה בודדת לא מזיזה אותו)
+  function referencePrice(previous) {
+    const history = (Array.isArray(previous && previous.priceHistory) ? previous.priceHistory : [])
+      .map((point) => point && point.price)
+      .filter((price) => Number.isFinite(price) && price > 0)
+      .slice(-5);
+    if (history.length) return medianPrice(history);
+    if (Number.isFinite(previous && previous.price) && previous.price > 0) return previous.price;
+    return null;
+  }
+
+  function isSuspiciousPrice(previous, price, sqm) {
+    if (!plausiblePriceForArea(price, sqm)) return true;
+    const reference = referencePrice(previous);
+    if (!reference) return false;
+    const ratio = price / reference;
+    return ratio < MIN_PRICE_RATIO || ratio > MAX_PRICE_RATIO;
+  }
+
+  // מנקה היסטוריית מחירים מתצפיות שגויות. מחזיר null אם אין מה לשנות.
+  function cleanPriceHistory(record) {
+    if (!record || record.recordType === "project" || !Array.isArray(record.priceHistory)) return null;
+    const original = record.priceHistory;
+    let points = original.filter((point) => point && Number.isFinite(point.price) && point.price > 0);
+    // 1. מחיר שלא מתאים לשטח (מחיר למ״ר בלתי אפשרי)
+    points = points.filter((point) => plausiblePriceForArea(point.price, record.sqm));
+    // 2. עם 3 תצפיות ומעלה: מה שרחוק מאוד מהחציון
+    if (points.length >= 3) {
+      const median = medianPrice(points.map((point) => point.price));
+      points = points.filter((point) => point.price / median >= 0.5 && point.price / median <= 2);
+    }
+    // 3. שתי תצפיות שאחת מהן פחות מרבע מהשנייה – הנמוכה היא כמעט תמיד מספר אחר מהעמוד
+    if (points.length === 2) {
+      const [a, b] = points;
+      if (Math.min(a.price, b.price) / Math.max(a.price, b.price) < 0.25) {
+        points = [a.price > b.price ? a : b];
+      }
+    }
+    // 4. איחוד תצפיות רצופות עם אותו מחיר (נשארו אחרי הסרת ה"קפיצה")
+    points = points.filter((point, index) => index === 0 || point.price !== points[index - 1].price);
+    const removed = original.length - points.length;
+    const last = points.length ? points[points.length - 1].price : null;
+    const priceWrong =
+      Number.isFinite(last) &&
+      Number.isFinite(record.price) &&
+      record.price !== last &&
+      !points.some((point) => point.price === record.price);
+    if (!removed && !priceWrong) return null;
+    const cleaned = { ...record, priceHistory: points };
+    if (priceWrong) cleaned.price = last;
+    if (Number.isFinite(cleaned.observedPrice) && !points.some((point) => point.price === cleaned.observedPrice)) {
+      cleaned.observedPrice = last;
+    }
+    if (priceWrong && Number.isFinite(cleaned.sqm) && cleaned.sqm > 0) {
+      cleaned.pricePerSqm = Math.round(last / cleaned.sqm);
+    }
+    return { record: cleaned, removed };
+  }
+
+  function cleanPriceOutliers(cache) {
+    const cleanedCache = { ...(cache && typeof cache === "object" ? cache : {}) };
+    let updatedCount = 0;
+    let removedPoints = 0;
+    for (const [key, record] of Object.entries(cleanedCache)) {
+      const result = cleanPriceHistory(record);
+      if (!result) continue;
+      cleanedCache[key] = result.record;
+      updatedCount++;
+      removedPoints += result.removed;
+    }
+    return { cache: cleanedCache, updatedCount, removedPoints };
+  }
+
+  // מחזיר גם accepted: false כשהמחיר נראה שגוי – אז לא מעדכנים את מחיר המודעה.
+  // options.source: "page" (עמוד המודעה) או "search" (כרטיס בתוצאות חיפוש); options.sqm לבדיקת סבירות.
+  function recordPriceObservation(previous, price, timestamp = Date.now(), options = {}) {
+    const source = options.source === "search" ? "search" : "page";
+    if (Number.isFinite(price) && isSuspiciousPrice(previous, price, options.sqm)) {
+      const sameSuspect = previous && previous.suspectPrice === price;
+      const confirmations = sameSuspect ? (previous.suspectCount || 0) + 1 : 1;
+      const confirmedByPage =
+        source === "page" &&
+        confirmations >= SUSPECT_CONFIRMATIONS &&
+        plausiblePriceForArea(price, options.sqm);
+      if (!confirmedByPage) {
+        return {
+          accepted: false,
+          observedPrice: Number.isFinite(previous && previous.observedPrice) ? previous.observedPrice : null,
+          priceHistory: Array.isArray(previous && previous.priceHistory) ? previous.priceHistory : [],
+          // עמוד המודעה שמראה שוב ושוב את אותו מחיר "חשוד" יאושר אחרי 3 פעמים (שינוי מחיר חריג אמיתי)
+          suspectPrice: source === "page" ? price : previous && previous.suspectPrice,
+          suspectCount: source === "page" ? confirmations : previous && previous.suspectCount,
+        };
+      }
+    }
+    const result = recordPriceObservationUnchecked(previous, price, timestamp, source);
+    return { accepted: true, ...result, suspectPrice: undefined, suspectCount: undefined };
+  }
+
+  function recordPriceObservationUnchecked(previous, price, timestamp, source) {
     if (!Number.isFinite(price)) {
       return {
         observedPrice: Number.isFinite(previous && previous.observedPrice)
@@ -127,6 +249,7 @@ var LRCacheData = (() => {
       history.push({
         price,
         at: timestamp,
+        src: source, // מאיפה הגיע המחיר: עמוד המודעה או כרטיס חיפוש (לאבחון תקלות)
         ...(!history.length ? { baselineKnown: true } : {}),
       });
     }
@@ -349,6 +472,9 @@ var LRCacheData = (() => {
   const PRESSURE_LABELS = { high: "גבוה", medium: "בינוני", low: "נמוך" };
 
   return {
+    cleanPriceHistory,
+    cleanPriceOutliers,
+    isSuspiciousPrice,
     sellerPressure,
     PRESSURE_LABELS,
     amenityRelevance,

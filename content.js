@@ -1317,7 +1317,19 @@
         ? existing.amenities
         : {};
     const stats = {};
+    // אותה הגנה כמו בשמירת המודעה: מחיר חשוד (שעוד לא אושר) לא דורס את המחיר השמור
+    const suspiciousPrice =
+      existing &&
+      listingStats &&
+      Number.isFinite(listingStats.price) &&
+      listingStats.price !== existing.price &&
+      LRCacheData.isSuspiciousPrice(
+        existing,
+        listingStats.price,
+        Number.isFinite(listingStats.sqm) ? listingStats.sqm : existing.sqm
+      );
     for (const field of ["price", "sqm", "pricePerSqm"]) {
+      if (suspiciousPrice && field !== "sqm") continue;
       if (manualOverrides.has(field) && existing && field in existing) {
         stats[field] = existing[field];
       } else if (listingStats && Number.isFinite(listingStats[field])) {
@@ -1326,6 +1338,7 @@
     }
     if (
       listingStats &&
+      !suspiciousPrice &&
       !manualOverrides.has("pricePerSqm") &&
       Number.isFinite(listingStats.price) &&
       Number.isFinite(listingStats.sqm) &&
@@ -1467,11 +1480,18 @@
       }
     }
     const observedPrice = Number.isFinite(stats.price) ? stats.price : null;
-    const priceObservation = LRCacheData.recordPriceObservation(
+    // מחיר שנראה כמו פענוח שגוי (קפיצה חדה או מחיר למ״ר בלתי אפשרי) לא נרשם כשינוי מחיר
+    // ולא דורס את המחיר השמור; כל תצפית שומרת גם את המקור (עמוד מודעה / כרטיס חיפוש)
+    const { accepted: priceAccepted, ...priceObservation } = LRCacheData.recordPriceObservation(
       previous,
       observedPrice,
-      Date.now()
+      Date.now(),
+      {
+        source: fromSearch ? "search" : "page",
+        sqm: Number.isFinite(stats.sqm) ? stats.sqm : previous.sqm,
+      }
     );
+    const priceUsable = Number.isFinite(stats.price) && priceAccepted;
     const listingHeading =
       root.querySelector("h1") ||
       (entry.kind === "list" ? root.querySelector('[data-testid="ad-card-title"]') : null);
@@ -1486,10 +1506,10 @@
       coordinates: LRLocation.validCoordinates(address.coordinates)
         ? address.coordinates
         : previous.coordinates,
-      price: Number.isFinite(stats.price) ? stats.price : previous.price,
+      price: priceUsable ? stats.price : previous.price,
       ...priceObservation,
       sqm: Number.isFinite(stats.sqm) ? stats.sqm : previous.sqm,
-      pricePerSqm: Number.isFinite(stats.ppsm) ? stats.ppsm : previous.pricePerSqm,
+      pricePerSqm: priceUsable && Number.isFinite(stats.ppsm) ? stats.ppsm : previous.pricePerSqm,
       rooms: Number.isFinite(listingMetadata.rooms) ? listingMetadata.rooms : previous.rooms,
       listingCreatedAt:
         (listingMetadata.listingCreatedAt &&

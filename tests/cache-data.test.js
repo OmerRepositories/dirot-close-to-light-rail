@@ -5,18 +5,17 @@ const CacheData = require("../cache-data.js");
 
 test("price history stores an initial price and each later change once", () => {
   const first = CacheData.recordPriceObservation({}, 2_500_000, 100);
-  assert.deepEqual(first, {
-    observedPrice: 2_500_000,
-    priceHistory: [{ price: 2_500_000, at: 100, baselineKnown: true }],
-  });
+  assert.equal(first.accepted, true);
+  assert.equal(first.observedPrice, 2_500_000);
+  assert.deepEqual(first.priceHistory, [{ price: 2_500_000, at: 100, src: "page", baselineKnown: true }]);
 
   const unchanged = CacheData.recordPriceObservation(first, 2_500_000, 200);
   assert.equal(unchanged.priceHistory, first.priceHistory);
 
   const reduced = CacheData.recordPriceObservation(unchanged, 2_400_000, 300);
   assert.deepEqual(reduced.priceHistory, [
-    { price: 2_500_000, at: 100, baselineKnown: true },
-    { price: 2_400_000, at: 300 },
+    { price: 2_500_000, at: 100, src: "page", baselineKnown: true },
+    { price: 2_400_000, at: 300, src: "page" },
   ]);
 });
 
@@ -28,7 +27,7 @@ test("price history uses a prior saved price as its baseline", () => {
   );
   assert.deepEqual(result.priceHistory, [
     { price: 3_000_000, at: null, baselineUnknown: true },
-    { price: 2_950_000, at: 100 },
+    { price: 2_950_000, at: 100, src: "page" },
   ]);
   assert.equal(CacheData.hasUncertainInitialPriceBaseline(result.priceHistory), true);
 
@@ -118,7 +117,7 @@ test("a newly observed current price is recorded even when it returns to an old 
   assert.deepEqual(result.priceHistory, [
     { price: 2_090_000, at: null, baselineUnknown: true },
     { price: 2_190_000, at: yesterday },
-    { price: 2_090_000, at: observedAt },
+    { price: 2_090_000, at: observedAt, src: "page" },
   ]);
 });
 
@@ -157,15 +156,15 @@ test("clearing price histories preserves listing prices and every other cached f
 
 test("price history is bounded and ignores invalid observations", () => {
   const previous = {
-    price: 100,
+    price: 2_000_000,
     priceHistory: Array.from({ length: 60 }, (_, index) => ({
-      price: 200 - index,
+      price: 2_100_000 - index * 1000,
       at: index + 1,
     })),
   };
-  const result = CacheData.recordPriceObservation(previous, 100, 1000);
+  const result = CacheData.recordPriceObservation(previous, 2_000_000, 1000);
   assert.equal(result.priceHistory.length, 50);
-  assert.equal(result.priceHistory.at(-1).price, 100);
+  assert.equal(result.priceHistory.at(-1).price, 2_000_000);
 
   const invalid = CacheData.recordPriceObservation(previous, null, 1000);
   assert.equal(invalid.observedPrice, null);
@@ -356,4 +355,64 @@ test("sellerPressure combines days on market with price drops into a 0-100 score
   // בלי גיל ובלי היסטוריה / פרויקט → אין מדד
   assert.equal(CacheData.sellerPressure({ recordType: "listing" }, now), null);
   assert.equal(CacheData.sellerPressure({ recordType: "project", listingAgeDays: 200 }, now), null);
+});
+
+test("a mis-parsed price is not recorded as a price change", () => {
+  const previous = {
+    price: 2_130_000,
+    sqm: 100,
+    priceHistory: [{ price: 2_235_000, at: 1 }, { price: 2_130_000, at: 2 }],
+  };
+  // ₪105,000 ל־100 מ״ר = 1,050 ₪ למ״ר – לא סביר; וגם ירידה של 95%
+  const wrong = CacheData.recordPriceObservation(previous, 105_000, 3, { source: "search", sqm: 100 });
+  assert.equal(wrong.accepted, false);
+  assert.equal(wrong.priceHistory, previous.priceHistory);
+  // ירידה רגילה של 4% מתקבלת
+  const real = CacheData.recordPriceObservation(previous, 2_050_000, 3, { source: "page", sqm: 100 });
+  assert.equal(real.accepted, true);
+  assert.deepEqual(real.priceHistory.at(-1), { price: 2_050_000, at: 3, src: "page" });
+});
+
+test("a large real price change is accepted after the listing page confirms it three times", () => {
+  let record = { price: 2_000_000, sqm: 100, priceHistory: [{ price: 2_000_000, at: 1 }] };
+  const results = [];
+  for (let visit = 0; visit < 3; visit++) {
+    const result = CacheData.recordPriceObservation(record, 1_100_000, 10 + visit, { source: "page", sqm: 100 });
+    results.push(result.accepted);
+    record = { ...record, ...result };
+  }
+  assert.deepEqual(results, [false, false, true]);
+  assert.equal(record.priceHistory.at(-1).price, 1_100_000);
+  // כרטיס חיפוש לבד לעולם לא מאשר מחיר חשוד
+  let fromSearch = { price: 2_000_000, sqm: 100, priceHistory: [{ price: 2_000_000, at: 1 }] };
+  for (let visit = 0; visit < 5; visit++) {
+    fromSearch = { ...fromSearch, ...CacheData.recordPriceObservation(fromSearch, 1_100_000, 10 + visit, { source: "search", sqm: 100 }) };
+  }
+  assert.equal(fromSearch.priceHistory.length, 1);
+});
+
+test("cleanPriceOutliers removes spikes and restores a wrong current price", () => {
+  const cache = {
+    // ירד ל־105,000 ועלה בחזרה – הקפיצה נמחקת ושתי התצפיות של 2,130,000 מתאחדות
+    "yad2:spike": {
+      recordType: "listing", price: 2_130_000, sqm: 90,
+      priceHistory: [
+        { price: 2_235_000, at: 1 }, { price: 2_130_000, at: 2 }, { price: 105_000, at: 3 }, { price: 2_130_000, at: 4 },
+      ],
+    },
+    // המחיר הנוכחי עצמו שגוי (96,102) – חוזר ל־2,500,000
+    "yad2:wrong-current": {
+      recordType: "listing", price: 96_102, observedPrice: 96_102,
+      priceHistory: [{ price: 2_500_000, at: 1 }, { price: 96_102, at: 2 }],
+    },
+    "yad2:fine": { recordType: "listing", price: 2_000_000, priceHistory: [{ price: 2_100_000, at: 1 }, { price: 2_000_000, at: 2 }] },
+  };
+  const result = CacheData.cleanPriceOutliers(cache);
+  assert.equal(result.updatedCount, 2);
+  assert.deepEqual(result.cache["yad2:spike"].priceHistory.map((p) => p.price), [2_235_000, 2_130_000]);
+  assert.equal(result.cache["yad2:wrong-current"].price, 2_500_000);
+  assert.equal(result.cache["yad2:wrong-current"].observedPrice, 2_500_000);
+  assert.deepEqual(result.cache["yad2:wrong-current"].priceHistory.map((p) => p.price), [2_500_000]);
+  assert.equal(result.cache["yad2:fine"], cache["yad2:fine"]);
+  assert.equal(CacheData.cleanPriceOutliers(result.cache).updatedCount, 0, "cleaning is idempotent");
 });
