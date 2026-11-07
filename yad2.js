@@ -297,11 +297,15 @@ var LRYad2 = (() => {
         (data.additionalDetails && data.additionalDetails.roomsCount));
     const createdText = createdElement ? createdElement.innerText : "";
     const createdMatch = createdText.match(/\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/);
+    // ביד2 התאריכים נמצאים תחת dates (createdAt / updatedAt); נבדק גם ברמה העליונה
     const dateValue = (keys) => {
       if (!data) return null;
-      for (const key of keys) {
-        if (data[key] !== undefined && data[key] !== null && data[key] !== "") {
-          return data[key];
+      for (const source of [data.dates, data]) {
+        if (!source || typeof source !== "object") continue;
+        for (const key of keys) {
+          if (source[key] !== undefined && source[key] !== null && source[key] !== "") {
+            return source[key];
+          }
         }
       }
       return null;
@@ -473,9 +477,40 @@ var LRYad2 = (() => {
     pool: ["pool-item", "swimming-pool-item"],
   };
 
+  // מאפייני הנכס מנתוני הדף (inProperty): יד2 מפרטת רק את מה שקיים (true), ומה שלא מופיע – לא
+  // קיים. נבדק מול רשימת המאפיינים בעמוד בכמה מודעות – זהה. גינה ובריכה לא מופיעות בנתונים.
+  const IN_PROPERTY_KEYS = {
+    parking: "includeParking",
+    secureRoom: "includeSecurityRoom",
+    elevator: "includeElevator",
+    storage: "includeWarehouse",
+    airConditioner: "includeAirconditioner",
+    accessible: "isHandicapped",
+    balcony: "includeBalcony",
+    sunBoiler: "includeBoiler",
+    grating: "includeBars",
+  };
+
+  function dataAmenities(root) {
+    if (root !== document) return null;
+    const id = listingId(root);
+    const index = id ? getPageListingsById() : null;
+    const data = index && index.get(id);
+    const inProperty = data && data.inProperty;
+    if (!inProperty || typeof inProperty !== "object") return null;
+    const details = data.additionalDetails || {};
+    const result = {};
+    for (const [key, field] of Object.entries(IN_PROPERTY_KEYS)) result[key] = inProperty[field] === true;
+    if (Number(details.parkingSpacesCount) > 0) result.parking = true;
+    if (Number(details.balconiesCount) > 0) result.balcony = true;
+    return result;
+  }
+
   function readAmenities(root) {
     const grid = root.querySelector('[data-testid="in-property-grid"]');
-    if (!grid) return null;
+    const fromData = dataAmenities(root);
+    if (!grid && !fromData) return null;
+    if (!grid) return { ...fromData, garden: false, pool: false };
     const result = {};
     for (const [key, testIds] of Object.entries(AMENITY_TEST_IDS)) {
       const item = testIds.map((id) => grid.querySelector(`[data-testid="${id}"]`)).find(Boolean);
@@ -492,7 +527,8 @@ var LRYad2 = (() => {
       result.parking = true;
     }
 
-    return result;
+    // נתוני הדף גוברים על צבע/מחלקת האייקון (מה שלא ידוע בנתונים – גינה, בריכה – נשאר מהעמוד)
+    return fromData ? { ...result, ...fromData } : result;
   }
 
   return {
