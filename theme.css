@@ -45,32 +45,62 @@
   --ease: cubic-bezier(.2, .7, .2, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --ink: #e8ecea;
-    --muted: #a7b1ad;
-    --faint: #7f8a86;
-    --line: rgba(232, 236, 234, .12);
-    --line-soft: rgba(232, 236, 234, .06);
-    --line-strong: rgba(232, 236, 234, .24);
-    --g-main: #141817;
-    --surface: #1c2120;
-    --surface-alt: #222826;
-    --surface-sunk: #181c1b;
-    --action: #3fb2a9;
-    --action-hover: #5cc4bc;
-    --action-soft: rgba(63, 178, 169, .14);
-    --on-action: #0d1a18;
-    --danger: #f08b97;
-    --danger-soft: rgba(240, 139, 151, .12);
-    --ok: #6fd3a0;
-    --ok-soft: rgba(111, 211, 160, .12);
-    --warn: #f0c46b;
-    --warn-soft: rgba(240, 196, 107, .12);
-  }
+/* מצב כהה: theme.js קובע data-theme לפי בחירת המשתמש (בהיר / כהה / לפי המחשב) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e8ecea;
+  --muted: #a7b1ad;
+  --faint: #7f8a86;
+  --line: rgba(232, 236, 234, .12);
+  --line-soft: rgba(232, 236, 234, .06);
+  --line-strong: rgba(232, 236, 234, .24);
+  --g-main: #141817;
+  --surface: #1c2120;
+  --surface-alt: #222826;
+  --surface-sunk: #181c1b;
+  --action: #3fb2a9;
+  --action-hover: #5cc4bc;
+  --action-soft: rgba(63, 178, 169, .14);
+  --on-action: #0d1a18;
+  --danger: #f08b97;
+  --danger-soft: rgba(240, 139, 151, .12);
+  --ok: #6fd3a0;
+  --ok-soft: rgba(111, 211, 160, .12);
+  --warn: #f0c46b;
+  --warn-soft: rgba(240, 196, 107, .12);
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; }
 }
+
+/* ---------- בורר ערכת צבעים (בהיר / כהה / אוטומטי) ---------- */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-alt);
+}
+.theme-switch button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.theme-switch button:hover { color: var(--ink); background: var(--surface); transform: none; }
+.theme-switch button[aria-checked="true"] { border-color: var(--line); color: var(--action); background: var(--surface); font-weight: 600; }
+.theme-switch button:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
+.theme-switch svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

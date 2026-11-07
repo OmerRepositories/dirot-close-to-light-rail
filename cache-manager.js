@@ -3069,6 +3069,9 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
     renderListingDeletionPreview();
     const initialView = viewFromHash();
     if (initialView && initialView !== activeTab) setActiveTab(initialView);
+    // אם המשתמש עבר ללוח הבקרה או לציר המחירים לפני שהמידע נטען – בונים אותם עכשיו עם המידע
+    else if (activeTab === "dashboard") renderDashboard();
+    else if (activeTab === "priceChanges") renderPriceTimeline();
     const params = new URLSearchParams(location.search);
     if (params.get("scheduledRefresh") === "1") {
       const uncheckedOnly = params.get("uncheckedOnly") === "1";

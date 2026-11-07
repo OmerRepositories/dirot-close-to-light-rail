@@ -348,3 +348,8 @@ html.page-mode .cache-actions:has(#clearListingCache) { display: grid; grid-temp
 .subhead { margin: 18px 0 2px; font-size: 15px; font-weight: 700; }
 .deal-breakers .amenity-option:has(input:checked) { border-color: var(--danger); background: var(--danger-soft); }
 .deal-breakers .amenity-option input { accent-color: var(--danger); }
+
+/* בורר ערכת הצבעים בכותרת החלון הקופץ: אייקונים בלבד כדי לחסוך מקום */
+.popup-header .theme-switch { margin-inline-start: auto; }
+.popup-header .theme-switch span { display: none; }
+.popup-header .theme-switch button { padding: 4px 7px; }
