@@ -64,6 +64,73 @@ var LRMadlan = (() => {
     return value;
   }
 
+  // מדלן שולחת את כל נתוני הדף באובייקט אחד: window.__SSR_HYDRATED_CONTEXT__={...}.
+  // מפענחים אותו פעם אחת לדף ובונים אינדקס לפי מזהה מודעה (במקום חיפוש regex לכל כרטיס).
+  // אחרי מעבר עמוד בלי טעינה מחדש הנתונים בדף נשארים של העמוד הקודם – אז מזהה לא יימצא
+  // והקוד חוזר לקריאה מהכרטיס עצמו.
+  const SSR_PREFIX = "window.__SSR_HYDRATED_CONTEXT__=";
+
+  function parseSsrContext(source) {
+    let body = source.slice(SSR_PREFIX.length).trim().replace(/;\s*$/, "");
+    try {
+      return JSON.parse(body);
+    } catch {}
+    // האובייקט הוא JavaScript ולא JSON תקין: יש בו undefined כערך
+    body = body.replace(/([:,\[])undefined(?=\s*[,}\]])/g, "$1null");
+    try {
+      return JSON.parse(body);
+    } catch {
+      return null;
+    }
+  }
+
+  function buildListingIndex(context) {
+    const index = new Map();
+    const seen = new Set();
+    const stack = [context];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node || typeof node !== "object" || seen.has(node)) continue;
+      seen.add(node);
+      if (typeof node.id === "string" && node.locationPoint && typeof node.locationPoint === "object") {
+        const existing = index.get(node.id);
+        // אותה מודעה מופיעה כמה פעמים (חיפוש, קרוסלות, עמוד המודעה) – שומרים את המלאה ביותר
+        if (!existing || Object.keys(node).length > Object.keys(existing).length) index.set(node.id, node);
+      }
+      for (const key in node) {
+        const value = node[key];
+        if (value && typeof value === "object") stack.push(value);
+      }
+    }
+    return index;
+  }
+
+  function listingIndex() {
+    return memoByScripts("index", () => {
+      for (const script of document.scripts) {
+        const source = script.textContent || "";
+        if (!source.startsWith(SSR_PREFIX)) continue;
+        const context = parseSsrContext(source);
+        return context ? buildListingIndex(context) : null;
+      }
+      return null;
+    });
+  }
+
+  function indexedListing(id) {
+    const index = id ? listingIndex() : null;
+    return index ? index.get(id) || null : null;
+  }
+
+  // היסטוריית המחירים של מדלן עצמה: [{price, at}] לפי סדר הזמן
+  function priceEvents(listing) {
+    const events = listing && Array.isArray(listing.eventsHistory) ? listing.eventsHistory : [];
+    return events
+      .map((event) => ({ price: Number(event && event.price), at: Date.parse(event && event.date) }))
+      .filter((event) => Number.isFinite(event.price) && event.price > 0 && Number.isFinite(event.at))
+      .sort((a, b) => a.at - b.at);
+  }
+
   function readListingDate(id, keys) {
     if (!id) return null;
     return memoByScripts(`date|${id}|${keys.join(",")}`, () => scanListingDate(id, keys));
@@ -103,10 +170,21 @@ var LRMadlan = (() => {
     const roomsMatch = roomsElement && roomsElement.innerText.match(/\d+(?:[.,]\d+)?/);
     const rooms = roomsMatch ? Number(roomsMatch[0].replace(",", ".")) : null;
     const id = listingId(root);
+    const listing = indexedListing(id);
+    const events = priceEvents(listing);
+    // firstTimeSeen = מתי מדלן ראתה את המודעה לראשונה; אירוע "new" בהיסטוריה כגיבוי
+    // כשהמודעה נמצאה בנתוני הדף לא מחפשים בטקסט: חיפוש כזה מוצא גם updatedAt של נתוני משקיעים
+    const createdAt = listing
+      ? listing.firstTimeSeen || (events.length ? new Date(events[0].at).toISOString() : null)
+      : readListingDate(id, ["releaseDate", "createdAt", "publishedAt"]);
+    const updatedAt = listing
+      ? listing.lastUpdated || null
+      : readListingDate(id, ["updatedAt", "lastUpdatedAt", "modifiedAt"]);
     return {
       rooms: Number.isFinite(rooms) ? rooms : null,
-      listingCreatedAt: readListingDate(id, ["releaseDate", "createdAt", "publishedAt"]),
-      listingUpdatedAt: readListingDate(id, ["updatedAt", "lastUpdatedAt", "modifiedAt"]),
+      listingCreatedAt: createdAt,
+      listingUpdatedAt: updatedAt,
+      priceEvents: events.length ? events : null,
     };
   }
 

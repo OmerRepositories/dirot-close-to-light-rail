@@ -264,6 +264,36 @@ var LRCacheData = (() => {
     };
   }
 
+  // היסטוריית מחירים מהאתר עצמו (מדלן: eventsHistory) – מקור אמין יותר מהתצפיות שלנו.
+  // התוצאה: נקודות האתר (src: "site") ואחריהן רק תצפיות שלנו מאוחרות מהאירוע האחרון באתר.
+  // מחזיר null כשאין מה לשנות.
+  function mergeSiteHistory(storedHistory, events) {
+    const site = (Array.isArray(events) ? events : [])
+      .filter((event) => event && Number.isFinite(event.price) && event.price > 0 && Number.isFinite(event.at))
+      .sort((a, b) => a.at - b.at);
+    if (!site.length) return null;
+    const stored = Array.isArray(storedHistory) ? storedHistory : [];
+    const lastSiteAt = site[site.length - 1].at;
+    const points = site.map((event, index) => ({
+      price: event.price,
+      at: event.at,
+      src: "site",
+      ...(index === 0 ? { baselineKnown: true } : {}),
+    }));
+    for (const point of stored) {
+      if (point && point.src !== "site" && Number.isFinite(point.price) && Number.isFinite(point.at) && point.at > lastSiteAt) {
+        points.push(point);
+      }
+    }
+    const merged = points
+      .filter((point, index) => index === 0 || point.price !== points[index - 1].price)
+      .slice(-50);
+    const unchanged =
+      merged.length === stored.length &&
+      merged.every((point, index) => stored[index] && stored[index].price === point.price && stored[index].at === point.at);
+    return unchanged ? null : merged;
+  }
+
   function pricePerSqm(record) {
     return Number.isFinite(record && record.price) &&
       Number.isFinite(record && record.sqm) &&
@@ -483,6 +513,7 @@ var LRCacheData = (() => {
     addEstimatedBaselineDates,
     clearPriceHistories,
     recordPriceObservation,
+    mergeSiteHistory,
     pricePerSqm,
     matchesNumericRange,
     hasListingDeletionFilters,

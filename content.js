@@ -1506,7 +1506,19 @@
         sqm: Number.isFinite(stats.sqm) ? stats.sqm : previous.sqm,
       }
     );
-    const priceUsable = Number.isFinite(stats.price) && priceAccepted;
+    // מדלן שולחת את היסטוריית המחירים המלאה עם תאריכים – היא גוברת על התצפיות שלנו
+    const siteEvents = listingMetadata.priceEvents;
+    const siteHistory = siteEvents
+      ? LRCacheData.mergeSiteHistory(priceObservation.priceHistory, siteEvents)
+      : null;
+    if (siteHistory) priceObservation.priceHistory = siteHistory;
+    const siteConfirmsPrice = Boolean(siteEvents) && siteEvents[siteEvents.length - 1].price === stats.price;
+    if (siteConfirmsPrice) {
+      priceObservation.observedPrice = stats.price;
+      priceObservation.suspectPrice = undefined;
+      priceObservation.suspectCount = undefined;
+    }
+    const priceUsable = Number.isFinite(stats.price) && (priceAccepted || siteConfirmsPrice);
     const listingHeading =
       root.querySelector("h1") ||
       (entry.kind === "list" ? root.querySelector('[data-testid="ad-card-title"]') : null);
