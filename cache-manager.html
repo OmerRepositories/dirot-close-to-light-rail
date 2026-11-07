@@ -493,13 +493,21 @@
       <div class="tool-grid">
         <section class="tool-card" data-tone="green">
           <h3><span class="card-dot"></span>רענון עכשיו</h3>
-          <p class="card-text">בודק את המודעות שמסוננות כרגע בטבלה, או רק מודעות יד2 שעוד לא נבדקו.</p>
+          <p class="card-text">בודק את המודעות שמסוננות כרגע בטבלה, או רק מודעות יד2 שעוד לא נבדקו – מכל האתרים או מאתר אחד.</p>
           <div class="tool-fields">
             <label class="refresh-scope">
         <span>אילו מודעות לרענן?</span>
         <select id="refreshScope">
           <option value="filtered">כל המודעות</option>
           <option value="unchecked">רק מודעות יד2 בסטטוס „לא נבדקה”</option>
+        </select>
+      </label>
+            <label class="refresh-scope refresh-site">
+        <span>מאיזה אתר?</span>
+        <select id="refreshSite">
+          <option value="all">כל האתרים</option>
+          <option value="yad2">רק יד2</option>
+          <option value="madlan">רק מדלן</option>
         </select>
       </label>
             <label class="delay-field">

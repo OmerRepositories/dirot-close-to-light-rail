@@ -68,6 +68,7 @@ Click the extension icon in Chrome's toolbar. Settings are saved automatically a
 - **Performance with thousands of listings** — the table renders 100 rows at a time and adds more on scroll; search shows no results until you type or pick a filter; typing is debounced; the price timeline, delete preview and dashboard are built only when shown; site writes are batched into one update.
 - **Deal breakers** — in the required-amenities tab, mark amenities a listing cannot do without. If a deal breaker is confirmed missing, the listing is marked not relevant immediately, regardless of the percentage threshold, and is skipped by refreshes. A deal breaker also counts as a required amenity.
 - **Refresh order** — refresh starts with listings never refreshed, then oldest first; listings already refreshed today come last, so stopping and restarting continues with listings not yet checked.
+- **Refresh by site** — the "Refresh now" card has a "Which site?" field: all sites, Yad2 only or Madlan only. It also applies to scheduled refreshes (saved with the schedule), and a manual choice is remembered in the browser.
 - **Readable number fields** — price, price-per-square-meter, and distance fields in settings and the cache manager show thousands separators while typing (for example `1,000,000`).
 
 All enabled criteria must be met for a listing to be highlighted as worth checking.

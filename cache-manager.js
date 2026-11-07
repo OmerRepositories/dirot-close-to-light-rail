@@ -2163,6 +2163,7 @@ async function loadRefreshSchedule() {
       $("refreshDelay").value = String(refreshDelaySec);
     }
     $("refreshScope").value = schedule && schedule.uncheckedOnly ? "unchecked" : "filtered";
+    if (schedule && schedule.enabled) $("refreshSite").value = normalizeRefreshSite(schedule.site);
     const nextRun = alarm && Number.isFinite(alarm.scheduledTime)
       ? new Date(alarm.scheduledTime).toLocaleString("he-IL")
       : "";
@@ -2181,6 +2182,12 @@ async function loadRefreshSchedule() {
     $("scheduleStatus").textContent = error.message || "טעינת התזמון נכשלה.";
     $("scheduleStatus").dataset.error = "true";
   }
+}
+
+// "אילו מודעות לרענן?" – אפשר לצמצם לאתר אחד (all / yad2 / madlan)
+const REFRESH_SITE_NAMES = { all: "", yad2: "יד2", madlan: "מדלן" };
+function normalizeRefreshSite(value) {
+  return value === "yad2" || value === "madlan" ? value : "all";
 }
 
 async function saveRefreshSchedule() {
@@ -2202,6 +2209,7 @@ async function saveRefreshSchedule() {
       everyHours: hours,
       delaySeconds,
       uncheckedOnly: $("refreshScope").value === "unchecked",
+      site: normalizeRefreshSite($("refreshSite").value),
       updatedAt: Date.now(),
     };
     await storageSet({
@@ -2221,7 +2229,8 @@ async function saveRefreshSchedule() {
     });
     await loadRefreshSchedule();
     if (enabled) {
-      $("scheduleStatus").textContent += ` · ${$("refreshScope").value === "unchecked" ? "מודעות לא נבדקו בלבד" : "כל המודעות השמורות"} · ${delaySeconds} שניות בין מודעות`;
+      const siteName = REFRESH_SITE_NAMES[normalizeRefreshSite($("refreshSite").value)];
+      $("scheduleStatus").textContent += ` · ${$("refreshScope").value === "unchecked" ? "מודעות לא נבדקו בלבד" : "כל המודעות השמורות"}${siteName ? ` · רק ${siteName}` : ""} · ${delaySeconds} שניות בין מודעות`;
     } else {
       $("scheduleStatus").textContent = "התזמון בוטל. רענון ידני עדיין זמין.";
     }
@@ -2514,6 +2523,8 @@ async function startRefresh(options = {}) {
     return;
   }
   const uncheckedOnly = options.uncheckedOnly === true || $("refreshScope").value === "unchecked";
+  const site = normalizeRefreshSite(options.site || $("refreshSite").value);
+  const siteName = REFRESH_SITE_NAMES[site];
   const sourceRecords = options.scheduled === true
     ? Object.entries(cache)
     : visibleRecords;
@@ -2523,6 +2534,7 @@ async function startRefresh(options = {}) {
     if (
       recordType(record) !== "listing" ||
       !refreshableListingUrl(key, record) ||
+      (site !== "all" && recordSite(key) !== site) ||
       (uncheckedOnly &&
         (recordSite(key) !== "yad2" || ["active", "removed"].includes(record.listingStatus)))
     ) return false;
@@ -2553,9 +2565,11 @@ async function startRefresh(options = {}) {
     ? ` ${irrelevantSkipped.toLocaleString("he-IL")} מודעות לא רלוונטיות לא ירועננו.`
     : "";
   if (!refreshQueue.length) {
-    const message = (uncheckedOnly
-      ? "אין מודעות יד2 בסטטוס „לא נבדקה” עם קישור תקין."
-      : "אין בתוצאות המסוננות מודעות עם קישור תקין.") + irrelevantNote;
+    const message = (uncheckedOnly && site === "madlan"
+      ? "„לא נבדקה” קיים רק במודעות יד2 – אין מה לרענן במדלן בבחירה הזו."
+      : uncheckedOnly
+        ? "אין מודעות יד2 בסטטוס „לא נבדקה” עם קישור תקין."
+        : `אין בתוצאות המסוננות מודעות${siteName ? ` ${siteName}` : ""} עם קישור תקין.`) + irrelevantNote;
     setRefreshStatus(message, true);
     refreshStarting = false;
     updateRefreshButtons();
@@ -2567,7 +2581,9 @@ async function startRefresh(options = {}) {
   }
   refreshStarting = false;
   updateRefreshButtons();
-  const scopeText = uncheckedOnly ? "מודעות יד2 שלא נבדקו" : "מודעות";
+  const scopeText = uncheckedOnly
+    ? "מודעות יד2 שלא נבדקו"
+    : `מודעות${siteName ? ` ${siteName}` : ""}`;
   const todayNote = refreshedToday
     ? ` ${refreshedToday.toLocaleString("he-IL")} שכבר רועננו היום יגיעו בסוף.`
     : "";
@@ -3040,6 +3056,15 @@ $("deleteRecord").addEventListener("click", () => {
   if (selectedKey) deleteRecord(selectedKey);
 });
 $("startRefresh").addEventListener("click", startRefresh);
+// בחירת האתר נזכרת בדפדפן הזה (נוחות בלבד; התזמון שומר את הבחירה שלו בנפרד)
+try {
+  $("refreshSite").value = normalizeRefreshSite(localStorage.getItem("lightrailRefreshSite"));
+} catch {}
+$("refreshSite").addEventListener("change", () => {
+  try {
+    localStorage.setItem("lightrailRefreshSite", normalizeRefreshSite($("refreshSite").value));
+  } catch {}
+});
 $("pauseRefresh").addEventListener("click", toggleRefreshPause);
 $("stopRefresh").addEventListener("click", () => stopRefresh());
 $("refreshDelay").addEventListener("change", async () => {
@@ -3173,8 +3198,11 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
       setActiveTab("refresh");
       $("refreshScope").value = uncheckedOnly ? "unchecked" : "filtered";
       const schedule = await storageGet(REFRESH_SCHEDULE_KEY);
+      // האתר נלקח מהתזמון השמור (גם תזמון ישן בלי שדה site = כל האתרים)
+      const site = normalizeRefreshSite(params.get("site") || (schedule && schedule.site));
+      $("refreshSite").value = site;
       if (schedule && schedule.enabled === true) {
-        startRefresh({ scheduled: true, uncheckedOnly });
+        startRefresh({ scheduled: true, uncheckedOnly, site });
       } else {
         const message = "התזמון בוטל לפני תחילת הרענון.";
         setRefreshStatus(message);

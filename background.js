@@ -144,7 +144,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         if (activeTab) return;
       }
       const url = chrome.runtime.getURL(
-        `cache-manager.html?scheduledRefresh=1&uncheckedOnly=${schedule.uncheckedOnly === true ? "1" : "0"}`
+        `cache-manager.html?scheduledRefresh=1&uncheckedOnly=${schedule.uncheckedOnly === true ? "1" : "0"}&site=${
+          schedule.site === "yad2" || schedule.site === "madlan" ? schedule.site : "all"
+        }`
       );
       let tab = Number.isInteger(runtime.managerTabId)
         ? await chrome.tabs.get(runtime.managerTabId).catch(() => null)
