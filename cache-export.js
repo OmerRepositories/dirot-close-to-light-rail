@@ -303,6 +303,8 @@ var LRCacheExport = (() => {
         } else if (field === "coordinates" && value && typeof value === "object") {
           lines.push(`קו רוחב: ${textValue(value.lat)}`);
           lines.push(`קו אורך: ${textValue(value.lon)}`);
+        } else if (field === "indexedFrom") {
+          lines.push(`מקור המידע: ${value === "search" ? "תוצאות חיפוש בלבד (חלקי)" : "עמוד המודעה"}`);
         } else if (field === "recordType") {
           lines.push(`סוג: ${value === "project" ? "פרויקט" : "מודעה"}`);
         } else if (field === "listingStatus") {

@@ -156,6 +156,13 @@
           <option value="opened">רק כשאני פותח/ת את עמוד המודעה</option>
         </select>
       </label>
+      <div id="indexMinPriceField">
+        <label class="field">
+          <span>מחיר מינימלי לשמירה מתוצאות החיפוש (₪)</span>
+          <input type="number" id="indexMinPrice" min="0" step="10000" placeholder="0 = ללא מינימום">
+        </label>
+        <p class="small">מודעה חדשה מהחיפוש נשמרת רק אם יש לה קישור, מחיר מעל המינימום, רחוב או עיר, ושטח או מספר חדרים. היא תסומן "לא נבדקה · מהחיפוש בלבד" עד שתפתח/י את עמוד המודעה או תרענן/י אותה.</p>
+      </div>
       <p class="small">הבחירה לא מוחקת מידע שכבר נשמר. פרויקטים יישמרו כרגיל; כיבוי השמירה עוצר שמירת מידע חדש.</p>
       <p class="small">אפשר לייצא את כל המידע ל־TXT, CSV או Excel. Excel כולל מסננים בכותרות, קישורים לחיצים וצביעה ירוקה/אדומה למאפיינים.</p>
       <div class="cache-actions">

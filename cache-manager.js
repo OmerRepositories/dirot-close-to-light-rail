@@ -278,6 +278,9 @@ function passesTimelineFilters(event) {
   return true;
 }
 
+const SEARCH_ONLY_TITLE =
+  "נשמרה מכרטיס בתוצאות החיפוש בלבד: אין עדיין מאפיינים ותאריכים מעמוד המודעה. פתיחת המודעה או רענון ישלימו את המידע.";
+
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
@@ -733,13 +736,16 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "type") return recordType(record) === "project" ? "פרויקט" : "מודעה";
   if (key === "site") return recordSite(recordKey);
   if (key === "listingStatus") {
+    const searchOnly = recordType(record) === "listing" && record.indexedFrom === "search"
+      ? " מהחיפוש בלבד"
+      : "";
     return recordSite(recordKey) === "yad2" && recordType(record) === "listing"
       ? record.listingStatus === "active"
         ? "פעילה"
         : record.listingStatus === "removed"
           ? "הוסרה"
-          : "לא נבדקה"
-      : "";
+          : `לא נבדקה${searchOnly}`
+      : searchOnly.trim();
   }
   if (key === "price") return `${record.price ?? ""} ${displayPrice(record.price)}`;
   if (key === "sqm" || key === "rooms" || key === "railMeters") return String(record[key] ?? "");
@@ -857,9 +863,11 @@ function renderRows() {
         td.className = "listing-status-cell";
         const status = document.createElement("span");
         const site = recordSite(key);
+        const searchOnly = recordType(record) === "listing" && record.indexedFrom === "search";
         if (site !== "yad2" || recordType(record) !== "listing") {
           status.className = "listing-status unknown";
-          status.textContent = "—";
+          status.textContent = searchOnly ? "מהחיפוש בלבד" : "—";
+          if (searchOnly) td.title = SEARCH_ONLY_TITLE;
         } else if (record.listingStatus === "active") {
           status.className = "listing-status active";
           status.textContent = "פעילה";
@@ -874,7 +882,8 @@ function renderRows() {
             : "";
         } else {
           status.className = "listing-status unknown";
-          status.textContent = "לא נבדקה";
+          status.textContent = searchOnly ? "לא נבדקה · מהחיפוש בלבד" : "לא נבדקה";
+          if (searchOnly) td.title = SEARCH_ONLY_TITLE;
         }
         td.appendChild(status);
       } else if (column.key === "title") {

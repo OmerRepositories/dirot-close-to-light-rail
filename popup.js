@@ -15,6 +15,7 @@ const DEFAULTS = {
   disableFacebook: false,
   saveListingData: true,
   listingIndexingMode: "encountered",
+  indexMinPrice: 100000,
   requiredAmenities: ["secureRoom"],
   hideAds: true,
   blockedStreets: [],
@@ -65,7 +66,7 @@ for (const tab of tabs) {
   });
 }
 
-const numberKeys = ["maxPpsm", "belowMedianPct", "nearM"];
+const numberKeys = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice"];
 const boolKeys = [
   "requireRail",
   "calculatePpsm",
@@ -107,6 +108,8 @@ function syncDisabled() {
   $("railSettings").disabled = !calculateRail;
   $("nearM").disabled = !$("requireRail").checked;
   $("listingIndexingMode").disabled = !$("saveListingData").checked;
+  $("indexMinPriceField").hidden = $("listingIndexingMode").value !== "encountered";
+  $("indexMinPrice").disabled = !$("saveListingData").checked;
 }
 
 function read() {

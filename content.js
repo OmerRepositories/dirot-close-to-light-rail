@@ -31,6 +31,7 @@
     disableMadlan: false,
     saveListingData: true,
     listingIndexingMode: "encountered",
+    indexMinPrice: 100000, // מחיר מינימלי לשמירת מודעה חדשה מתוצאות החיפוש (מסנן שכירות/נתונים שגויים; 0 = ללא)
     requiredAmenities: ["secureRoom"],
     hideAds: true, // להסתיר פרסומות (באנרים של Google ופרויקטים ממומנים) ביד2
     blockedStreets: [], // רחובות שמודעות עליהם לא יוצגו לעולם
@@ -1446,6 +1447,14 @@
     const stats = parser.extractPriceSqm(root, text);
     const listingMetadata = parser.listingExportData(root);
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
+    const fromSearch = entry.kind === "list";
+    if (fromSearch) {
+      // מכרטיס בתוצאות החיפוש יש מעט מידע: מחיר מתחת למינימום לא נרשם (שכירות/כרטיס שעוד נטען)
+      if (Number.isFinite(stats.price) && stats.price < CFG.indexMinPrice) stats.price = null;
+      if (!listingCache[key] && !searchCardIndexable(parser, root, stats, listingMetadata, address)) {
+        return;
+      }
+    }
     const observedPrice = Number.isFinite(stats.price) ? stats.price : null;
     const priceObservation = LRCacheData.recordPriceObservation(
       previous,
@@ -1480,12 +1489,22 @@
           normalizeListingDate(listingMetadata.listingUpdatedAt)) ||
         previous.listingUpdatedAt,
       brokerage: hasBrokerageSignal(root),
+      // "search" = נשמרה רק מכרטיס בתוצאות החיפוש (מידע חלקי); "page" = עמוד המודעה נפתח
+      indexedFrom: fromSearch ? previous.indexedFrom || "search" : "page",
       ...extra,
     }, previous);
     if (recordUnchanged(record, previous)) return;
     record.updatedAt = Date.now();
     listingCache[key] = record;
     saveListingCache();
+  }
+
+  // כללי מינימום להוספת מודעה חדשה מתוצאות החיפוש: קישור, מחיר תקין, מיקום ופרט נכס אחד לפחות
+  function searchCardIndexable(parser, root, stats, listingMetadata, address) {
+    if (!parser.listingUrl(root)) return false;
+    if (!Number.isFinite(stats.price) || stats.price <= 0) return false;
+    if (!address.street && !address.city) return false;
+    return Number.isFinite(stats.sqm) || Number.isFinite(listingMetadata.rooms);
   }
 
   function normalizeListingDate(value) {
@@ -1908,7 +1927,7 @@
   }
 
   // טוענים את ההגדרות לפני שמתחילים, ומעדכנים את הדף מיד כשהמשתמש משנה הגדרה
-  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM"];
+  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice"];
   const AMENITY_LABELS = {
     parking: "חניה",
     secureRoom: "ממ״ד",
