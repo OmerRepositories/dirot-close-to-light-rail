@@ -1,0 +1,4 @@
+# Local AI-agent skills (installed with `npx skills add`), not part of the extension
+.agents/
+.claude/
+skills-lock.json
