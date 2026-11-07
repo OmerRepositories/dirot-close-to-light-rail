@@ -353,7 +353,7 @@ function renderCloudCell(td, key, record) {
       ? `הגרסה הזו שמורה במסד הנתונים${cloudSync.lastPushAt ? ` · שליחה אחרונה: ${cloudTime(cloudSync.lastPushAt)}` : ""}`
       : cloudSync.lastError
         ? `לא נשלח: ${cloudSync.lastError}`
-        : "השתנתה במחשב הזה ותישלח בשניות הקרובות";
+        : `השתנתה במחשב הזה ונמצאת ברשימת הממתינות – תישלח ${nextSyncText()}`;
   td.appendChild(chip);
 }
 
@@ -3330,6 +3330,7 @@ async function renderSyncPanel() {
   if (!$("syncUrl").value) $("syncUrl").value = state.url;
   if (!$("syncApiKey").value) $("syncApiKey").value = state.apiKey;
   if (!$("syncEmail").value) $("syncEmail").value = state.email;
+  if (state.intervalMin) $("syncInterval").value = String(state.intervalMin);
   const badge = $("syncBadge");
   scheduleCloudIndicators(0);
   if (connected) {
@@ -3418,6 +3419,15 @@ function notifySyncDeleted(keys) {
 $("syncConnect").addEventListener("click", connectOnlineSync);
 $("syncNow").addEventListener("click", () => runOnlineSyncNow(false));
 $("syncDisconnect").addEventListener("click", disconnectOnlineSync);
+$("syncInterval").addEventListener("change", async () => {
+  const result = await sendSyncMessage("lightrail:sync-interval", { minutes: Number($("syncInterval").value) });
+  setSyncStatus(
+    "syncConnectedStatus",
+    result.ok ? `נשמר: סנכרון כל ${$("syncInterval").selectedOptions[0].textContent.replace(/^כל /, "")}` : result.error || "השמירה נכשלה.",
+    !result.ok
+  );
+  scheduleCloudIndicators(0);
+});
 $("syncCopySql").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(LRSync.SETUP_SQL);
@@ -3435,17 +3445,36 @@ $("syncPassword").addEventListener("keydown", (event) => {
 // ---------- חיווי ענן חי: עמודת "ענן", מונה ממתינים בתפריט ושורה במסך הרענון ----------
 async function loadCloudSync() {
   const stored = await new Promise((resolve) =>
-    chrome.storage.local.get([LRSync.SETTINGS_KEY, LRSync.HASHES_KEY], (result) => resolve(result || {}))
+    chrome.storage.local.get(
+      [LRSync.SETTINGS_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY],
+      (result) => resolve(result || {})
+    )
   );
+  const alarm = await new Promise((resolve) => {
+    try {
+      chrome.alarms.get("lightrail-online-sync", (value) => resolve(value || null));
+    } catch {
+      resolve(null);
+    }
+  });
   const settings = stored[LRSync.SETTINGS_KEY] || {};
   cloudSync = {
     enabled: Boolean(settings.enabled) && !settings.needsLogin,
     needsLogin: Boolean(settings.needsLogin),
     hashes: stored[LRSync.HASHES_KEY] || {},
+    pendingDeletes: Array.isArray(stored[LRSync.TOMBSTONES_KEY]) ? stored[LRSync.TOMBSTONES_KEY].length : 0,
+    nextSyncAt: alarm && alarm.scheduledTime ? alarm.scheduledTime : null,
+    intervalMin: Number(settings.intervalMin) || 5,
     lastPushAt: settings.lastPushAt || null,
     lastSyncAt: settings.lastSyncAt || null,
     lastError: settings.lastError || "",
   };
+}
+
+function nextSyncText() {
+  return cloudSync.nextSyncAt
+    ? `בסנכרון הבא (${new Date(cloudSync.nextSyncAt).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })})`
+    : "בסנכרון הבא";
 }
 
 function cloudPendingCount() {
@@ -3475,20 +3504,26 @@ function refreshCloudIndicators() {
     return;
   }
   tabState.hidden = false;
-  tabState.textContent = cloudSync.lastError ? "!" : pending ? pending.toLocaleString("he-IL") : "✓";
+  const waiting = pending + (cloudSync.pendingDeletes || 0);
+  tabState.textContent = cloudSync.lastError ? "!" : waiting ? waiting.toLocaleString("he-IL") : "✓";
   tabState.title = cloudSync.lastError
     ? `שגיאת סנכרון: ${cloudSync.lastError}`
-    : pending
-      ? `${pending.toLocaleString("he-IL")} מודעות ממתינות לשליחה לענן`
+    : waiting
+      ? `${waiting.toLocaleString("he-IL")} שינויים ברשימת הממתינות – יישלחו ${nextSyncText()}`
       : "כל המודעות שמורות בענן";
   line.hidden = false;
   line.dataset.state = cloudSync.lastError ? "error" : pending ? "pending" : "synced";
   const lastPush = cloudSync.lastPushAt ? ` · שליחה אחרונה: ${cloudTime(cloudSync.lastPushAt)}` : "";
+  const deletes = cloudSync.pendingDeletes
+    ? ` ו־${cloudSync.pendingDeletes.toLocaleString("he-IL")} מחיקות`
+    : "";
   line.textContent = cloudSync.lastError
-    ? `ענן: השליחה נכשלה (${cloudSync.lastError}) – ${pending.toLocaleString("he-IL")} ממתינות, ינסה שוב תוך דקה`
-    : pending
-      ? `ענן: ${pending.toLocaleString("he-IL")} מודעות ממתינות לשליחה…${lastPush}`
+    ? `ענן: השליחה נכשלה (${cloudSync.lastError}) – ${pending.toLocaleString("he-IL")} ממתינות, ינסה שוב ${nextSyncText()}`
+    : pending || cloudSync.pendingDeletes
+      ? `ענן: ${pending.toLocaleString("he-IL")} מודעות${deletes} ברשימת הממתינות – יישלחו ${nextSyncText()}${lastPush}`
       : `ענן: כל המודעות נשמרו במסד הנתונים ✓${lastPush}`;
+  // אותו מצב גם במסך הסנכרון
+  $("syncQueueText").textContent = line.textContent.replace(/^ענן: /, "");
 }
 
 let cloudIndicatorTimer = null;

@@ -203,9 +203,11 @@ test("two computers stay in sync through the database", async () => {
   await a.syncNow();
   assert.deepEqual(Object.keys(a.cache()).sort(), ["madlan:c", "yad2:a", "yad2:b"]);
 
-  // שינוי במחשב A נשלח מיד (בלי לחיצה) ומגיע ל-B בסנכרון הבא
+  // שינוי במחשב A לא נשלח באמצע הדפדוף – הוא נכנס לרשימת הממתינות ונשלח בסבב הסנכרון
   await a.setCache({ ...a.cache(), "yad2:a": { title: "A", price: 1_950_000, updatedAt: 500 } });
-  await wait(1800);
+  await wait(300);
+  assert.equal(server.rows.get("user-1|yad2:a").data.price, 2_000_000, "nothing is sent while browsing");
+  await a.syncNow();
   assert.equal(server.rows.get("user-1|yad2:a").data.price, 1_950_000);
   await b.syncNow();
   assert.equal(b.cache()["yad2:a"].price, 1_950_000);
@@ -215,7 +217,8 @@ test("two computers stay in sync through the database", async () => {
   delete withoutB["yad2:b"];
   await b.setCache(withoutB);
   await b.send({ type: "lightrail:sync-deleted", keys: ["yad2:b"] });
-  await wait(1800);
+  assert.equal(server.rows.get("user-1|yad2:b").deleted, false, "the deletion waits for the next round");
+  await b.syncNow();
   assert.equal(server.rows.get("user-1|yad2:b").deleted, true);
   await a.syncNow();
   assert.equal(a.cache()["yad2:b"], undefined);
@@ -224,14 +227,13 @@ test("two computers stay in sync through the database", async () => {
   const trimmed = { ...a.cache() };
   delete trimmed["madlan:c"];
   await a.setCache(trimmed);
-  await wait(1800);
+  await a.syncNow();
   assert.equal(server.rows.get("user-1|madlan:c").deleted, false);
 
   // עדכון ישן לא דורס גרסה חדשה יותר בשרת
   await b.setCache({ ...b.cache(), "madlan:c": { title: "C old edit", price: 2_400_000, updatedAt: 50 } });
-  await wait(1800);
-  assert.equal(server.rows.get("user-1|madlan:c").data.title, "C");
   await b.syncNow();
+  assert.equal(server.rows.get("user-1|madlan:c").data.title, "C");
   assert.equal(b.cache()["madlan:c"].title, "C", "the newer server version comes back");
 
   // הסיסמה לא נשמרת במחשב
@@ -280,7 +282,7 @@ test("a computer with older data that connects later never overwrites newer data
 
   // ולהפך: B מחזיק גרסה חדשה יותר ממה שבשרת – היא זו שנשמרת אצל כולם
   await b.setCache({ ...b.cache(), "yad2:x": { title: "X", price: 1_850_000, updatedAt: 3_000 } });
-  await new Promise((resolve) => setTimeout(resolve, 1800));
+  await b.syncNow();
   await a.syncNow();
   assert.equal(a.cache()["yad2:x"].price, 1_850_000);
 });

@@ -608,12 +608,23 @@
         <section id="syncConnectedCard" class="tool-card" data-tone="green" hidden>
           <h3><span class="card-dot"></span>מחובר</h3>
           <p class="card-text" id="syncConnectedText"></p>
+          <p class="card-text" id="syncQueueText"></p>
+          <div class="tool-fields sync-fields">
+            <label><span>סנכרון עם מסד הנתונים</span>
+              <select id="syncInterval">
+                <option value="1">כל דקה</option>
+                <option value="5">כל 5 דקות</option>
+                <option value="15">כל 15 דקות</option>
+                <option value="30">כל 30 דקות</option>
+              </select>
+            </label>
+          </div>
           <div class="card-actions">
             <button id="syncNow" class="primary" type="button">סנכרון עכשיו</button>
             <button id="syncDisconnect" type="button">ניתוק</button>
           </div>
           <span id="syncConnectedStatus" role="status" aria-live="polite"></span>
-          <p class="backup-note">כל שינוי במחשב הזה נשלח מיד למסד הנתונים; שינויים ממחשבים אחרים מגיעים תוך כדקה ובכל פתיחה של העמוד הזה. מחיקה שאתה מבצע (מהטבלה או ממסך המחיקה) נמחקת גם בשאר המחשבים. „ניקוי המידע השמור” בחלון הקופץ מנקה רק את המחשב הזה. ההגדרות עצמן לא מסונכרנות.</p>
+          <p class="backup-note">מודעות שהשתנו במחשב הזה נאספות לרשימת ממתינות ונשלחות יחד בכל סבב, ובאותו סבב מגיעים גם השינויים ממחשבים אחרים – כך אין עבודת סנכרון בזמן הדפדוף. „סנכרון עכשיו” ופתיחת העמוד הזה מסנכרנים מיד. מחיקה שאתה מבצע (מהטבלה או ממסך המחיקה) נמחקת גם בשאר המחשבים. „ניקוי המידע השמור” בחלון הקופץ מנקה רק את המחשב הזה. ההגדרות עצמן לא מסונכרנות.</p>
         </section>
         <section id="syncSetupCard" class="tool-card" data-tone="slate">
           <h3><span class="card-dot"></span>1. פרויקט ומשתמש ב-Supabase</h3>

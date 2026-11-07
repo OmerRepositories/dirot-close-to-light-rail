@@ -401,13 +401,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 // ---------- סנכרון אונליין (אופציונלי) ----------
-// כבוי כברירת מחדל. כשהוא מופעל: כל שינוי במטמון המקומי נשלח מיד לטבלה בפרויקט Supabase של
-// המשתמש, ושינויים ממחשבים אחרים נמשכים כל דקה ובכל פתיחה של עמוד התוסף.
-// מחיקה נשלחת לענן רק כשהמשתמש מחק בעצמו (ולא כשהתוסף מפנה מקום אוטומטית).
+// כבוי כברירת מחדל. כשהוא מופעל: מודעות שהשתנו נאספות לרשימת "ממתינות", ופעם בכמה דקות
+// (לפי בחירת המשתמש) נשלחות בבת אחת לטבלה בפרויקט Supabase שלו, יחד עם משיכת שינויים
+// ממחשבים אחרים. אין עבודת סנכרון בזמן הדפדוף בין מודעות. "סנכרון עכשיו" ופתיחת עמוד התוסף
+// מסנכרנים מיד. מחיקה נשלחת לענן רק כשהמשתמש מחק בעצמו (ולא כשהתוסף מפנה מקום אוטומטית).
 const SYNC_ALARM_NAME = "lightrail-online-sync";
-const SYNC_PUSH_DELAY_MS = 1500;
+const SYNC_INTERVALS_MIN = [1, 5, 15, 30];
+const SYNC_DEFAULT_INTERVAL_MIN = 5;
 let syncChain = Promise.resolve();
-let syncPushTimer = null;
+
+function syncIntervalMinutes(settings) {
+  const value = Number(settings && settings.intervalMin);
+  return SYNC_INTERVALS_MIN.includes(value) ? value : SYNC_DEFAULT_INTERVAL_MIN;
+}
 
 async function syncSettings() {
   const result = await chrome.storage.local.get(LRSync.SETTINGS_KEY);
@@ -491,8 +497,18 @@ async function syncPull(settings) {
   for (;;) {
     const rows = await LRSync.fetchChangesSince(settings, since);
     if (!rows.length) break;
-    const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY]);
-    const merge = LRSync.mergeRemoteRows(stored[LRSync.CACHE_KEY] || {}, rows);
+    const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
+    // מודעה שהמשתמש מחק כאן ומחיקתה עוד ממתינה לשליחה – לא מחזירים אותה מהשרת
+    // (אלא אם מחשב אחר עדכן אותה אחרי המחיקה)
+    const pendingDeletes = new Map(
+      (Array.isArray(stored[LRSync.TOMBSTONES_KEY]) ? stored[LRSync.TOMBSTONES_KEY] : [])
+        .filter((item) => item && item.key)
+        .map((item) => [item.key, item.at])
+    );
+    const relevantRows = rows.filter(
+      (row) => !pendingDeletes.has(row.key) || (Number(row.client_updated_at) || 0) > pendingDeletes.get(row.key)
+    );
+    const merge = LRSync.mergeRemoteRows(stored[LRSync.CACHE_KEY] || {}, relevantRows);
     const hashes = { ...(stored[LRSync.HASHES_KEY] || {}) };
     for (const [key, hash] of Object.entries(merge.hashUpdates)) {
       if (hash === null) delete hashes[key];
@@ -537,28 +553,22 @@ function runSync(reason) {
   });
 }
 
-function scheduleSyncPush() {
-  clearTimeout(syncPushTimer);
-  syncPushTimer = setTimeout(() => runSync("push"), SYNC_PUSH_DELAY_MS);
-}
-
-async function updateSyncAlarm() {
+// תזמון קבוע לפי המרווח שנבחר. אם ההתראה כבר קיימת באותו מרווח – לא מאפסים אותה
+// (אחרת כל הפעלה מחדש של הדפדפן הייתה דוחה את הסנכרון הבא).
+async function updateSyncAlarm(force = false) {
   const settings = await syncSettings();
-  if (settings && settings.enabled) {
-    await chrome.alarms.create(SYNC_ALARM_NAME, { periodInMinutes: 1, delayInMinutes: 0.1 });
-  } else {
+  if (!settings || !settings.enabled) {
     await chrome.alarms.clear(SYNC_ALARM_NAME);
+    return;
   }
+  const period = syncIntervalMinutes(settings);
+  const existing = await chrome.alarms.get(SYNC_ALARM_NAME);
+  if (!force && existing && existing.periodInMinutes === period) return;
+  await chrome.alarms.create(SYNC_ALARM_NAME, { periodInMinutes: period, delayInMinutes: period });
 }
 
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes[LRSync.CACHE_KEY]) return;
-  // מחיקת כל המטמון ("ניקוי המידע השמור") היא מקומית בלבד – לא נמחק דבר מהענן
-  if (!changes[LRSync.CACHE_KEY].newValue) return;
-  syncSettings().then((settings) => {
-    if (settings && settings.enabled) scheduleSyncPush();
-  });
-});
+// "ניקוי המידע השמור" (כל המטמון נמחק) הוא מקומי בלבד – הסנכרון לא שולח מחיקות בגללו,
+// כי רק מחיקות מפורשות (lightrail:sync-deleted) נשלחות לענן.
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === SYNC_ALARM_NAME) runSync("alarm");
@@ -595,6 +605,7 @@ async function connectSync(msg) {
       enabled: true,
       needsLogin: false,
       lastError: "",
+      intervalMin: syncIntervalMinutes(previous),
       // חשבון/פרויקט חדש: מתחילים מאפס – מושכים הכל ושולחים את כל המידע המקומי
       cursor: sameAccount ? previous.cursor || null : null,
     },
@@ -613,6 +624,7 @@ async function disconnectSync() {
       url: settings.url || "",
       apiKey: settings.apiKey || "",
       email: settings.email || "",
+      intervalMin: syncIntervalMinutes(settings),
       enabled: false,
     },
   });
@@ -629,6 +641,8 @@ async function syncStatus() {
     apiKey: settings.apiKey || "",
     email: settings.email || "",
     needsLogin: Boolean(settings.needsLogin),
+    intervalMin: syncIntervalMinutes(settings),
+    nextSyncAt: settings.enabled ? ((await chrome.alarms.get(SYNC_ALARM_NAME)) || {}).scheduledTime || null : null,
     lastSyncAt: settings.lastSyncAt || null,
     lastError: settings.lastError || "",
     lastPulled: settings.lastPulled || 0,
@@ -643,9 +657,17 @@ async function recordSyncDeletions(keys) {
   const list = Array.isArray(stored[LRSync.TOMBSTONES_KEY]) ? stored[LRSync.TOMBSTONES_KEY] : [];
   const at = Date.now();
   for (const key of keys) if (typeof key === "string" && key) list.push({ key, at });
+  // המחיקה נכנסת לרשימת הממתינים ותישלח בסנכרון הבא
   await chrome.storage.local.set({ [LRSync.TOMBSTONES_KEY]: list });
-  scheduleSyncPush();
   return { ok: true };
+}
+
+async function setSyncInterval(minutes) {
+  const value = Number(minutes);
+  if (!SYNC_INTERVALS_MIN.includes(value)) throw new Error("מרווח לא נתמך.");
+  await saveSyncSettings({ intervalMin: value });
+  await updateSyncAlarm(true);
+  return syncStatus();
 }
 
 // הודעות סנכרון מתקבלות רק מעמודי התוסף עצמו (לא מסקריפטים שרצים באתרים)
@@ -665,6 +687,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     "lightrail:sync-now": () => runSync("manual"),
     "lightrail:sync-status": () => syncStatus(),
     "lightrail:sync-deleted": () => recordSyncDeletions(Array.isArray(msg.keys) ? msg.keys : []),
+    "lightrail:sync-interval": () => setSyncInterval(msg.minutes),
   };
   const handler = handlers[msg.type];
   if (!handler) return false;
