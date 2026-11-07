@@ -113,15 +113,21 @@ var LRYad2 = (() => {
     // סדר עדיפות למחיר (מהאמין ביותר): "המחיר הנוכחי" בעמוד מודעה, אלמנט המחיר בכרטיס חיפוש,
     // המחיר המובנה מנתוני הדף, ורק אחרון – חיפוש בטקסט החופשי. הטקסט החופשי עלול לתפוס
     // מספר אחר מהכרטיס, למשל סכום הירידה ("ירד ב־₪105,000"), ולשמור אותו בטעות כמחיר.
+    // עמוד מודעה שלם מכיל גם מודעות אחרות (דומות/מומלצות) – בו לא מחפשים מחיר בטקסט החופשי
+    const isWholePage = Boolean(root && root.nodeType === 9);
     const currentPriceElement =
       root &&
       root.querySelector &&
       (root.querySelector('[data-testid="current-price"] [data-testid="price"]') ||
-        root.querySelector('[data-testid="ad-card-price"] [data-testid="price"]'));
+        root.querySelector('[data-testid="ad-price"] [data-testid="price"]') ||
+        root.querySelector('[data-testid="ad-card-price"] [data-testid="price"]') ||
+        (!isWholePage ? root.querySelector('[data-testid="price"]') : null));
     const currentPriceText = currentPriceElement
       ? currentPriceElement.innerText || currentPriceElement.textContent || ""
       : "";
     const currentPrice = LR.extractPriceSqm(currentPriceText).price;
+    // יש מקום למחיר אבל אין בו מספר (למשל "למידע נוסף") = המפרסם לא פרסם מחיר
+    const priceHidden = Boolean(currentPriceElement) && !Number.isFinite(currentPrice);
     const id = Number.isFinite(currentPrice) ? null : listingId(root);
     const index = id ? getPageListingsById() : null;
     const dataRecord = index && index.get(id);
@@ -134,13 +140,19 @@ var LRYad2 = (() => {
       ? currentPrice
       : Number.isFinite(dataPrice)
         ? dataPrice
-        : stats.price;
+        : priceHidden || isWholePage
+          ? null
+          : stats.price;
     const sqm = Number.isFinite(structuredSqm) ? structuredSqm : stats.sqm;
     const normalized = LR.extractPriceSqm(
       `${Number.isFinite(price) ? `${price} ₪ ` : ""}${Number.isFinite(sqm) ? `${sqm} מ״ר` : ""}`
     );
-    if (Number.isFinite(structuredPricePerSqm)) {
+    if (Number.isFinite(structuredPricePerSqm) && !priceHidden) {
       normalized.ppsm = structuredPricePerSqm;
+    }
+    if (priceHidden && !Number.isFinite(price)) {
+      normalized.priceHidden = true;
+      normalized.reason = "המחיר לא פורסם במודעה";
     }
     return normalized;
   }

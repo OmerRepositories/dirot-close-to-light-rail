@@ -1506,10 +1506,14 @@
       coordinates: LRLocation.validCoordinates(address.coordinates)
         ? address.coordinates
         : previous.coordinates,
-      price: priceUsable ? stats.price : previous.price,
+      // מחיר שלא פורסם ("למידע נוסף") מוחק מחיר שגוי שנשמר בעבר, במקום להשאיר אותו
+      price: stats.priceHidden ? null : priceUsable ? stats.price : previous.price,
       ...priceObservation,
       sqm: Number.isFinite(stats.sqm) ? stats.sqm : previous.sqm,
-      pricePerSqm: priceUsable && Number.isFinite(stats.ppsm) ? stats.ppsm : previous.pricePerSqm,
+      pricePerSqm: stats.priceHidden
+        ? null
+        : priceUsable && Number.isFinite(stats.ppsm) ? stats.ppsm : previous.pricePerSqm,
+      priceHidden: stats.priceHidden ? true : undefined,
       rooms: Number.isFinite(listingMetadata.rooms) ? listingMetadata.rooms : previous.rooms,
       listingCreatedAt:
         (listingMetadata.listingCreatedAt &&
