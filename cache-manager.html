@@ -60,6 +60,11 @@
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
         <span class="nav-text"><span class="nav-label">גיבוי וייצוא</span><span class="nav-hint">Excel והעברה בין מחשבים</span></span>
       </button>
+      <button id="syncTab" class="view-tab" data-tone="teal" type="button" role="tab" aria-selected="false" aria-controls="syncPanel" tabindex="-1" title="סנכרון אונליין">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97"/><path d="M12 12v7M9.5 16.5 12 19l2.5-2.5"/></svg></span>
+        <span class="nav-text"><span class="nav-label">סנכרון אונליין</span><span class="nav-hint">כמה מחשבים, מידע אחד</span></span>
+        <span id="syncTabState" class="tab-count" hidden></span>
+      </button>
       <p class="nav-group">ניקוי</p>
       <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
@@ -590,6 +595,56 @@
         </section>
       </div>
     </section>
+    <section id="syncPanel" class="tab-panel tool-panel" role="tabpanel" aria-labelledby="syncTab" aria-label="סנכרון אונליין" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>סנכרון אונליין</h2>
+          <p>אופציונלי: מחבר את התוסף למסד נתונים מרוחק (Supabase) כדי שכמה מחשבים יעבדו על אותו מידע. בלי חיבור התוסף עובד כרגיל, רק על המחשב הזה.</p>
+        </div>
+        <span id="syncBadge" class="record-count">לא מחובר</span>
+      </div>
+      <div class="tool-grid">
+        <section id="syncConnectedCard" class="tool-card" data-tone="green" hidden>
+          <h3><span class="card-dot"></span>מחובר</h3>
+          <p class="card-text" id="syncConnectedText"></p>
+          <div class="card-actions">
+            <button id="syncNow" class="primary" type="button">סנכרון עכשיו</button>
+            <button id="syncDisconnect" type="button">ניתוק</button>
+          </div>
+          <span id="syncConnectedStatus" role="status" aria-live="polite"></span>
+          <p class="backup-note">כל שינוי במחשב הזה נשלח מיד למסד הנתונים; שינויים ממחשבים אחרים מגיעים תוך כדקה ובכל פתיחה של העמוד הזה. מחיקה שאתה מבצע (מהטבלה או ממסך המחיקה) נמחקת גם בשאר המחשבים. „ניקוי המידע השמור” בחלון הקופץ מנקה רק את המחשב הזה. ההגדרות עצמן לא מסונכרנות.</p>
+        </section>
+        <section id="syncSetupCard" class="tool-card" data-tone="slate">
+          <h3><span class="card-dot"></span>1. פרויקט ומשתמש ב-Supabase</h3>
+          <ol class="sync-steps">
+            <li>פתח פרויקט (אפשר בחינם) ב-supabase.com.</li>
+            <li>ב-<b>Project Settings → API</b> העתק את <b>Project URL</b> ואת המפתח הציבורי (<b>publishable</b> / <b>anon</b>). לעולם לא את המפתח הסודי (secret / service_role).</li>
+            <li>ב-<b>Authentication → Users → Add user</b> צור משתמש עם אימייל וסיסמה. באותו משתמש מתחברים מכל המחשבים.</li>
+          </ol>
+          <h3 class="card-subhead">2. הקמת הטבלה (פעם אחת)</h3>
+          <p class="sync-warning" role="note"><b>שים לב:</b> הפקודה מוסיפה למסד הנתונים שלך טבלה בשם <code>lightrail_records</code>, עם הרשאות שמאפשרות לכל משתמש לראות ולשנות רק את השורות שלו. שום דבר אחר במסד הנתונים לא משתנה.</p>
+          <p class="card-text">ב-<b>SQL Editor</b> של הפרויקט הדבק את הפקודה ולחץ Run:</p>
+          <textarea id="syncSetupSql" class="sync-sql" readonly rows="6" aria-label="פקודת הקמת הטבלה"></textarea>
+          <div class="card-actions">
+            <button id="syncCopySql" type="button">העתקת הפקודה</button>
+          </div>
+        </section>
+        <section id="syncLoginCard" class="tool-card" data-tone="teal">
+          <h3><span class="card-dot"></span>3. התחברות והעברת המידע</h3>
+          <div class="tool-fields sync-fields">
+            <label><span>כתובת הפרויקט (Project URL)</span><input id="syncUrl" type="url" placeholder="https://xxxx.supabase.co" autocomplete="off" spellcheck="false" dir="ltr"></label>
+            <label><span>מפתח ציבורי (publishable / anon)</span><input id="syncApiKey" type="text" autocomplete="off" spellcheck="false" dir="ltr"></label>
+            <label><span>אימייל</span><input id="syncEmail" type="email" autocomplete="username" dir="ltr"></label>
+            <label><span>סיסמה</span><input id="syncPassword" type="password" autocomplete="current-password" dir="ltr"></label>
+          </div>
+          <div class="card-actions">
+            <button id="syncConnect" class="primary" type="button">התחברות והעברת כל המידע</button>
+          </div>
+          <span id="syncLoginStatus" role="status" aria-live="polite"></span>
+          <p class="backup-note">בהתחברות הראשונה כל המודעות שבמחשב הזה מועלות למסד הנתונים, וכל מה שכבר נמצא שם מגיע למחשב הזה (כשאותה מודעה קיימת בשניהם – הגרסה המעודכנת יותר נשמרת). הסיסמה לא נשמרת; נשמר רק אסימון כניסה במחשב הזה, והוא לא נכלל בגיבוי.</p>
+        </section>
+      </div>
+    </section>
     <section id="dashboardPanel" class="tab-panel dashboard-panel" role="tabpanel" aria-labelledby="dashboardTab" aria-label="לוח בקרה" hidden>
       <div class="panel-head">
         <div>
@@ -680,6 +735,7 @@
         </form>
     </aside>
   <script src="cache-data.js"></script>
+  <script src="sync-core.js"></script>
   <script src="cache-export.js"></script>
   <script src="number-input.js"></script>
   <script src="cache-manager.js"></script>

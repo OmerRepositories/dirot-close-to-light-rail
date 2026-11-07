@@ -1430,7 +1430,7 @@ function showSettingsSection(section) {
   }
 }
 
-const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "refresh", "transfer"];
+const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "refresh", "transfer", "sync"];
 
 // ---------- לוח בקרה ----------
 // מדד לחץ למכור (LRCacheData.sellerPressure) – נשמר בזיכרון לכל רשומה כדי שמיון וציור לא יחשבו שוב ושוב
@@ -1678,6 +1678,7 @@ function setActiveTab(tab) {
     ["priceChangesTab", "priceChanges"],
     ["refreshTab", "refresh"],
     ["transferTab", "transfer"],
+    ["syncTab", "sync"],
     ["dashboardTab", "dashboard"],
   ]) {
     const active = tab === name;
@@ -1691,6 +1692,7 @@ function setActiveTab(tab) {
   $("priceChangesPanel").hidden = tab !== "priceChanges";
   $("refreshPanel").hidden = tab !== "refresh";
   $("transferPanel").hidden = tab !== "transfer";
+  $("syncPanel").hidden = tab !== "sync";
   $("dashboardPanel").hidden = tab !== "dashboard";
   const settingsSection = tab.startsWith("settings-") ? tab.slice("settings-".length) : "";
   for (const button of document.querySelectorAll("[data-settings]")) {
@@ -1709,6 +1711,7 @@ function setActiveTab(tab) {
   if (tab === "delete") renderListingDeletionPreview();
   if (tab === "priceChanges" && timelineDirty) renderPriceTimeline();
   if (tab === "dashboard") renderDashboard();
+  if (tab === "sync") renderSyncPanel();
 }
 
 function handleTabKeydown(event) {
@@ -1973,6 +1976,7 @@ async function deleteRecord(key) {
     }
     delete latest[key];
     await storageSet({ [CACHE_KEY]: latest });
+    notifySyncDeleted([key]);
     cache = latest;
     if (selectedKey === key) closeDetails();
     else renderRows();
@@ -2046,6 +2050,7 @@ async function deleteMatchingListings() {
 
     for (const key of confirmedKeys) delete latestAfterConfirmation[key];
     await storageSet({ [CACHE_KEY]: latestAfterConfirmation });
+    notifySyncDeleted(confirmedKeys);
     cache = latestAfterConfirmation;
     const removedKeys = confirmedKeys;
     if (selectedKey && removedKeys.has(selectedKey)) closeDetails();
@@ -2703,6 +2708,8 @@ function downloadBackup(backup) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+const SYNC_LOCAL_KEYS = [LRSync.SETTINGS_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY];
+
 async function exportFullBackup() {
   const button = $("exportBackup");
   const status = $("exportStatus");
@@ -2717,6 +2724,8 @@ async function exportFullBackup() {
     local[CACHE_KEY] = local[CACHE_KEY] && typeof local[CACHE_KEY] === "object"
       ? local[CACHE_KEY]
       : {};
+    // פרטי החיבור לסנכרון (אסימון כניסה) ומצב הסנכרון לא נכנסים לקובץ גיבוי
+    for (const key of SYNC_LOCAL_KEYS) delete local[key];
     const runtime = local[REFRESH_RUNTIME_KEY] || {};
     local[REFRESH_RUNTIME_KEY] = {
       managerTabId: null,
@@ -2804,6 +2813,11 @@ async function importFullBackup(file) {
     const mergedLocal = mode === "replace"
       ? { ...backup.local }
       : { ...currentLocal, ...backup.local };
+    // ייבוא לא מחליף ולא מוחק את חיבור הסנכרון של המחשב הזה
+    for (const key of SYNC_LOCAL_KEYS) {
+      if (key in currentLocal) mergedLocal[key] = currentLocal[key];
+      else delete mergedLocal[key];
+    }
     const mergedSync = mode === "replace"
       ? { ...backup.sync }
       : { ...currentSync, ...backup.sync };
@@ -3215,3 +3229,166 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
     $("recordCount").textContent = error.message || "טעינת המטמון נכשלה";
     $("recordCount").dataset.error = "true";
   });
+
+// ---------- סנכרון אונליין ----------
+// כל העבודה מול השרת נעשית ב-background.js; העמוד רק שולח הוראות ומציג מצב.
+function sendSyncMessage(type, payload = {}) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type, ...payload }, (result) => {
+      const error = chrome.runtime.lastError;
+      if (error) resolve({ ok: false, error: error.message });
+      else resolve(result || { ok: false, error: "אין תשובה מהתוסף." });
+    });
+  });
+}
+
+// מפתח סודי (secret / service_role) עוקף את ההרשאות של הטבלה – לא מאפשרים לשמור אותו בתוסף
+function isSecretSupabaseKey(key) {
+  const text = String(key || "").trim();
+  if (/^sb_secret_/i.test(text)) return true;
+  const parts = text.split(".");
+  if (parts.length !== 3) return false;
+  try {
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload && payload.role === "service_role";
+  } catch {
+    return false;
+  }
+}
+
+function setSyncStatus(id, text, isError = false) {
+  const element = $(id);
+  element.textContent = text;
+  element.dataset.error = String(Boolean(isError));
+}
+
+function syncSummary(result) {
+  const parts = [];
+  if (result.pulled) parts.push(`${result.pulled.toLocaleString("he-IL")} התקבלו`);
+  if (result.pushed) parts.push(`${result.pushed.toLocaleString("he-IL")} נשלחו`);
+  return parts.length ? parts.join(" · ") : "הכל מעודכן";
+}
+
+let syncPanelState = null;
+async function renderSyncPanel() {
+  if (!$("syncSetupSql").value) $("syncSetupSql").value = LRSync.SETUP_SQL;
+  const state = await sendSyncMessage("lightrail:sync-status");
+  if (!state.ok) return;
+  syncPanelState = state;
+  const connected = state.enabled && !state.needsLogin;
+  $("syncConnectedCard").hidden = !connected;
+  $("syncLoginCard").hidden = connected;
+  $("syncSetupCard").hidden = connected;
+  if (!$("syncUrl").value) $("syncUrl").value = state.url;
+  if (!$("syncApiKey").value) $("syncApiKey").value = state.apiKey;
+  if (!$("syncEmail").value) $("syncEmail").value = state.email;
+  const badge = $("syncBadge");
+  const tabState = $("syncTabState");
+  if (connected) {
+    let host = "";
+    try {
+      host = new URL(state.url).host;
+    } catch {}
+    const last = state.lastSyncAt ? new Date(state.lastSyncAt).toLocaleString("he-IL") : "עדיין לא";
+    $("syncConnectedText").textContent = `מחובר כ-${state.email} לפרויקט ${host}. סנכרון אחרון: ${last}.`;
+    if (state.lastError) setSyncStatus("syncConnectedStatus", `הסנכרון האחרון נכשל: ${state.lastError}`, true);
+    badge.textContent = state.lastError ? "שגיאת סנכרון" : "מחובר";
+    badge.dataset.state = state.lastError ? "error" : "on";
+    tabState.hidden = false;
+    tabState.textContent = state.lastError ? "!" : "✓";
+  } else {
+    badge.textContent = state.needsLogin ? "נדרשת התחברות מחדש" : "לא מחובר";
+    badge.dataset.state = state.needsLogin ? "error" : "off";
+    tabState.hidden = !state.needsLogin;
+    tabState.textContent = "!";
+    if (state.needsLogin) {
+      setSyncStatus("syncLoginStatus", "פג תוקף הכניסה. הזן סיסמה והתחבר שוב – המידע לא נמחק.", true);
+    }
+  }
+}
+
+async function connectOnlineSync() {
+  const button = $("syncConnect");
+  const apiKey = $("syncApiKey").value.trim();
+  if (isSecretSupabaseKey(apiKey)) {
+    setSyncStatus("syncLoginStatus", "זה המפתח הסודי של הפרויקט. יש להזין את המפתח הציבורי (publishable / anon) בלבד.", true);
+    return;
+  }
+  button.disabled = true;
+  setSyncStatus("syncLoginStatus", "מתחבר ומעביר את המידע… (בפעם הראשונה זה יכול לקחת דקה)");
+  try {
+    const result = await sendSyncMessage("lightrail:sync-connect", {
+      url: $("syncUrl").value,
+      apiKey,
+      email: $("syncEmail").value,
+      password: $("syncPassword").value,
+    });
+    if (!result.ok) {
+      setSyncStatus("syncLoginStatus", result.error || "ההתחברות נכשלה.", true);
+      if (result.needsSetup) $("syncSetupSql").focus();
+      return;
+    }
+    $("syncPassword").value = "";
+    setSyncStatus("syncLoginStatus", "");
+    await renderSyncPanel();
+    setSyncStatus("syncConnectedStatus", `החיבור הצליח · ${syncSummary(result)}`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function runOnlineSyncNow(quiet = false) {
+  const button = $("syncNow");
+  button.disabled = true;
+  if (!quiet) setSyncStatus("syncConnectedStatus", "מסנכרן…");
+  try {
+    const result = await sendSyncMessage("lightrail:sync-now");
+    if (result.skipped) return;
+    if (!quiet || !result.ok) {
+      setSyncStatus(
+        "syncConnectedStatus",
+        result.ok ? `הסנכרון הושלם · ${syncSummary(result)}` : `הסנכרון נכשל: ${result.error}`,
+        !result.ok
+      );
+    }
+    await renderSyncPanel();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function disconnectOnlineSync() {
+  if (!window.confirm("לנתק את הסנכרון? המידע נשאר גם במחשב הזה וגם במסד הנתונים, ושינויים חדשים לא יסונכרנו עד להתחברות מחדש.")) return;
+  await sendSyncMessage("lightrail:sync-disconnect");
+  setSyncStatus("syncConnectedStatus", "");
+  setSyncStatus("syncLoginStatus", "הסנכרון נותק. המידע במחשב הזה לא השתנה.");
+  await renderSyncPanel();
+}
+
+// מחיקה שהמשתמש ביצע נשלחת גם למסד הנתונים (אם הסנכרון פעיל)
+function notifySyncDeleted(keys) {
+  const list = [...keys].filter(Boolean);
+  if (list.length) sendSyncMessage("lightrail:sync-deleted", { keys: list });
+}
+
+$("syncConnect").addEventListener("click", connectOnlineSync);
+$("syncNow").addEventListener("click", () => runOnlineSyncNow(false));
+$("syncDisconnect").addEventListener("click", disconnectOnlineSync);
+$("syncCopySql").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(LRSync.SETUP_SQL);
+    $("syncCopySql").textContent = "הועתק ✓";
+  } catch {
+    $("syncSetupSql").select();
+    $("syncCopySql").textContent = "סמן והעתק ידנית";
+  }
+  setTimeout(() => ($("syncCopySql").textContent = "העתקת הפקודה"), 2500);
+});
+$("syncPassword").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") connectOnlineSync();
+});
+
+// בפתיחת העמוד: אם הסנכרון פעיל – מושכים מיד שינויים ממחשבים אחרים
+renderSyncPanel().then(() => {
+  if (syncPanelState && syncPanelState.enabled && !syncPanelState.needsLogin) runOnlineSyncNow(true);
+});

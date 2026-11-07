@@ -673,3 +673,34 @@ button.stat-tile:hover { border-color: var(--line-strong); background: var(--sur
 /* הודעה על תיקון מחירים שפוענחו לא נכון */
 .price-fix-notice { margin: 0 0 12px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); border-radius: var(--r-sm); color: var(--ok); background: var(--ok-soft); font-size: 13px; }
 .price-fix-notice[hidden] { display: none; }
+
+/* ---------- סנכרון אונליין ---------- */
+.sync-steps { margin: 0; padding-inline-start: 20px; display: grid; gap: 6px; color: var(--ink); line-height: 1.55; }
+.sync-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--r-sm);
+  background: var(--warn-soft);
+  color: var(--ink);
+  line-height: 1.55;
+}
+.sync-warning code, .sync-steps code { font-size: 13px; }
+.sync-sql {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  direction: ltr;
+  text-align: left;
+  resize: vertical;
+}
+.sync-fields > label { display: grid; gap: 4px; flex: 1 1 220px; }
+.sync-fields span { color: var(--muted); font-size: 13px; }
+#syncLoginStatus[data-error="true"], #syncConnectedStatus[data-error="true"] { color: var(--danger); }
+#syncBadge[data-state="on"] { color: var(--ok); }
+#syncBadge[data-state="error"] { color: var(--danger); }

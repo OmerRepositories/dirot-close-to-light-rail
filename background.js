@@ -1,4 +1,6 @@
 // Service worker: גיאוקוד כתובות (Nominatim) + רשימת תחנות רכבת קלה (Overpass / OpenStreetMap)
+// + סנכרון אונליין אופציונלי (sync-core.js)
+importScripts("sync-core.js");
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_ENDPOINTS = [
@@ -396,4 +398,279 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     });
     return true;
   }
+});
+
+// ---------- סנכרון אונליין (אופציונלי) ----------
+// כבוי כברירת מחדל. כשהוא מופעל: כל שינוי במטמון המקומי נשלח מיד לטבלה בפרויקט Supabase של
+// המשתמש, ושינויים ממחשבים אחרים נמשכים כל דקה ובכל פתיחה של עמוד התוסף.
+// מחיקה נשלחת לענן רק כשהמשתמש מחק בעצמו (ולא כשהתוסף מפנה מקום אוטומטית).
+const SYNC_ALARM_NAME = "lightrail-online-sync";
+const SYNC_PUSH_DELAY_MS = 1500;
+let syncChain = Promise.resolve();
+let syncPushTimer = null;
+
+async function syncSettings() {
+  const result = await chrome.storage.local.get(LRSync.SETTINGS_KEY);
+  const settings = result[LRSync.SETTINGS_KEY];
+  return settings && typeof settings === "object" ? settings : null;
+}
+
+async function saveSyncSettings(patch) {
+  const current = (await syncSettings()) || {};
+  const next = { ...current, ...patch };
+  await chrome.storage.local.set({ [LRSync.SETTINGS_KEY]: next });
+  return next;
+}
+
+// פעולות סנכרון רצות אחת אחרי השנייה (לא במקביל)
+function queueSync(task) {
+  const run = syncChain.then(task, task);
+  syncChain = run.catch(() => {});
+  return run;
+}
+
+async function ensureSyncSession(settings) {
+  if (!settings || !settings.refreshToken) {
+    throw Object.assign(new Error("יש להתחבר מחדש במסך סנכרון אונליין."), { needsLogin: true });
+  }
+  if (settings.accessToken && settings.expiresAt - 60_000 > Date.now()) return settings;
+  try {
+    const session = await LRSync.refreshSession(settings);
+    return saveSyncSettings(session);
+  } catch (error) {
+    if (error.status === 400 || error.status === 401) {
+      await saveSyncSettings({ accessToken: null, refreshToken: null, needsLogin: true });
+      throw Object.assign(new Error("פג תוקף הכניסה – יש להתחבר מחדש במסך סנכרון אונליין."), { needsLogin: true });
+    }
+    throw error;
+  }
+}
+
+async function syncPush(settings) {
+  const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
+  const cache = stored[LRSync.CACHE_KEY] || {};
+  const hashes = { ...(stored[LRSync.HASHES_KEY] || {}) };
+  const tombstones = Array.isArray(stored[LRSync.TOMBSTONES_KEY]) ? stored[LRSync.TOMBSTONES_KEY] : [];
+  const keys = LRSync.changedKeys(cache, hashes);
+  let pushed = 0;
+  for (const part of LRSync.chunk(keys, LRSync.PUSH_CHUNK)) {
+    await LRSync.upsertRows(settings, part.map((key) => ({
+      user_id: settings.userId,
+      key,
+      data: cache[key],
+      deleted: false,
+      client_updated_at: Number.isFinite(cache[key].updatedAt) ? Math.round(cache[key].updatedAt) : Date.now(),
+    })));
+    for (const key of part) hashes[key] = LRSync.hashRecord(cache[key]);
+    pushed += part.length;
+    await chrome.storage.local.set({ [LRSync.HASHES_KEY]: hashes });
+  }
+  // מחיקות שהמשתמש ביצע (רק אם הרשומה עדיין לא קיימת מקומית)
+  const deletions = tombstones.filter((item) => item && item.key && !cache[item.key]);
+  for (const part of LRSync.chunk(deletions, LRSync.PUSH_CHUNK)) {
+    await LRSync.upsertRows(settings, part.map((item) => ({
+      user_id: settings.userId,
+      key: item.key,
+      data: null,
+      deleted: true,
+      client_updated_at: item.at,
+    })));
+    for (const item of part) delete hashes[item.key];
+    pushed += part.length;
+  }
+  await chrome.storage.local.set({ [LRSync.HASHES_KEY]: hashes, [LRSync.TOMBSTONES_KEY]: [] });
+  return pushed;
+}
+
+async function syncPull(settings) {
+  let cursor = settings.cursor || null;
+  let since = cursor
+    ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
+    : "1970-01-01T00:00:00Z";
+  let applied = 0;
+  for (;;) {
+    const rows = await LRSync.fetchChangesSince(settings, since);
+    if (!rows.length) break;
+    const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY]);
+    const merge = LRSync.mergeRemoteRows(stored[LRSync.CACHE_KEY] || {}, rows);
+    const hashes = { ...(stored[LRSync.HASHES_KEY] || {}) };
+    for (const [key, hash] of Object.entries(merge.hashUpdates)) {
+      if (hash === null) delete hashes[key];
+      else hashes[key] = hash;
+    }
+    // קודם ה-hash-ים: כך שינוי המטמון שנגרם מהמשיכה לא נשלח בחזרה לשרת
+    await chrome.storage.local.set({ [LRSync.HASHES_KEY]: hashes });
+    if (merge.cache !== stored[LRSync.CACHE_KEY]) {
+      await chrome.storage.local.set({ [LRSync.CACHE_KEY]: merge.cache });
+    }
+    applied += merge.applied;
+    const last = rows[rows.length - 1].updated_at;
+    if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
+    since = last;
+    if (rows.length < LRSync.PULL_PAGE) break;
+  }
+  if (cursor) await saveSyncSettings({ cursor });
+  return applied;
+}
+
+function runSync(reason) {
+  return queueSync(async () => {
+    let settings = await syncSettings();
+    if (!settings || !settings.enabled) return { ok: true, skipped: true };
+    try {
+      settings = await ensureSyncSession(settings);
+      const pulled = reason === "push" ? 0 : await syncPull(settings);
+      const pushed = await syncPush(settings);
+      await saveSyncSettings({
+        lastSyncAt: Date.now(),
+        lastError: "",
+        needsLogin: false,
+        ...(pulled ? { lastPulled: pulled } : {}),
+        ...(pushed ? { lastPushed: pushed } : {}),
+      });
+      return { ok: true, pulled, pushed };
+    } catch (error) {
+      console.warn("[lightrail-ext] online sync failed", error);
+      await saveSyncSettings({ lastError: error.message || "הסנכרון נכשל.", lastErrorAt: Date.now() });
+      return { ok: false, error: error.message || "הסנכרון נכשל.", needsLogin: Boolean(error.needsLogin) };
+    }
+  });
+}
+
+function scheduleSyncPush() {
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(() => runSync("push"), SYNC_PUSH_DELAY_MS);
+}
+
+async function updateSyncAlarm() {
+  const settings = await syncSettings();
+  if (settings && settings.enabled) {
+    await chrome.alarms.create(SYNC_ALARM_NAME, { periodInMinutes: 1, delayInMinutes: 0.1 });
+  } else {
+    await chrome.alarms.clear(SYNC_ALARM_NAME);
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[LRSync.CACHE_KEY]) return;
+  // מחיקת כל המטמון ("ניקוי המידע השמור") היא מקומית בלבד – לא נמחק דבר מהענן
+  if (!changes[LRSync.CACHE_KEY].newValue) return;
+  syncSettings().then((settings) => {
+    if (settings && settings.enabled) scheduleSyncPush();
+  });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === SYNC_ALARM_NAME) runSync("alarm");
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  updateSyncAlarm().catch(() => {});
+});
+chrome.runtime.onInstalled.addListener(() => {
+  updateSyncAlarm().catch(() => {});
+});
+
+async function connectSync(msg) {
+  const url = LRSync.normalizeProjectUrl(msg.url);
+  const apiKey = String(msg.apiKey || "").trim();
+  const email = String(msg.email || "").trim();
+  if (!apiKey) throw new Error("חסר המפתח הציבורי של הפרויקט.");
+  if (!email || !msg.password) throw new Error("חסרים אימייל או סיסמה.");
+  const base = { url, apiKey };
+  const session = await LRSync.signIn(base, email, String(msg.password));
+  const settings = { ...base, ...session };
+  if (!(await LRSync.checkTable(settings))) {
+    return {
+      ok: false,
+      needsSetup: true,
+      error: "הטבלה עדיין לא קיימת. יש להריץ את פקודת ההקמה ב-SQL Editor ואז להתחבר שוב.",
+    };
+  }
+  const previous = (await syncSettings()) || {};
+  const sameAccount = previous.url === url && previous.userId === session.userId;
+  await chrome.storage.local.set({
+    [LRSync.SETTINGS_KEY]: {
+      ...settings,
+      enabled: true,
+      needsLogin: false,
+      lastError: "",
+      // חשבון/פרויקט חדש: מתחילים מאפס – מושכים הכל ושולחים את כל המידע המקומי
+      cursor: sameAccount ? previous.cursor || null : null,
+    },
+    ...(sameAccount ? {} : { [LRSync.HASHES_KEY]: {}, [LRSync.TOMBSTONES_KEY]: [] }),
+  });
+  await updateSyncAlarm();
+  const result = await runSync("connect");
+  return { ...result, email: session.email };
+}
+
+async function disconnectSync() {
+  const settings = (await syncSettings()) || {};
+  // נשארים רק הכתובת, המפתח הציבורי והאימייל (כדי לא להקליד שוב); אסימוני הכניסה נמחקים
+  await chrome.storage.local.set({
+    [LRSync.SETTINGS_KEY]: {
+      url: settings.url || "",
+      apiKey: settings.apiKey || "",
+      email: settings.email || "",
+      enabled: false,
+    },
+  });
+  await updateSyncAlarm();
+  return { ok: true };
+}
+
+async function syncStatus() {
+  const settings = (await syncSettings()) || {};
+  return {
+    ok: true,
+    enabled: Boolean(settings.enabled),
+    url: settings.url || "",
+    apiKey: settings.apiKey || "",
+    email: settings.email || "",
+    needsLogin: Boolean(settings.needsLogin),
+    lastSyncAt: settings.lastSyncAt || null,
+    lastError: settings.lastError || "",
+    lastPulled: settings.lastPulled || 0,
+    lastPushed: settings.lastPushed || 0,
+  };
+}
+
+async function recordSyncDeletions(keys) {
+  const settings = await syncSettings();
+  if (!settings || !settings.enabled) return { ok: true, skipped: true };
+  const stored = await chrome.storage.local.get(LRSync.TOMBSTONES_KEY);
+  const list = Array.isArray(stored[LRSync.TOMBSTONES_KEY]) ? stored[LRSync.TOMBSTONES_KEY] : [];
+  const at = Date.now();
+  for (const key of keys) if (typeof key === "string" && key) list.push({ key, at });
+  await chrome.storage.local.set({ [LRSync.TOMBSTONES_KEY]: list });
+  scheduleSyncPush();
+  return { ok: true };
+}
+
+// הודעות סנכרון מתקבלות רק מעמודי התוסף עצמו (לא מסקריפטים שרצים באתרים)
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || typeof msg.type !== "string" || !msg.type.startsWith("lightrail:sync-")) return false;
+  const fromExtensionPage =
+    sender.id === chrome.runtime.id &&
+    typeof sender.url === "string" &&
+    sender.url.startsWith(chrome.runtime.getURL(""));
+  if (!fromExtensionPage) {
+    sendResponse({ ok: false, error: "not allowed" });
+    return false;
+  }
+  const handlers = {
+    "lightrail:sync-connect": () => connectSync(msg),
+    "lightrail:sync-disconnect": () => disconnectSync(),
+    "lightrail:sync-now": () => runSync("manual"),
+    "lightrail:sync-status": () => syncStatus(),
+    "lightrail:sync-deleted": () => recordSyncDeletions(Array.isArray(msg.keys) ? msg.keys : []),
+  };
+  const handler = handlers[msg.type];
+  if (!handler) return false;
+  Promise.resolve()
+    .then(handler)
+    .then(sendResponse)
+    .catch((error) => sendResponse({ ok: false, error: error.message || "הפעולה נכשלה." }));
+  return true;
 });
