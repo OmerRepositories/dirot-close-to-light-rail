@@ -1145,15 +1145,20 @@ function setActiveTab(tab) {
     ["listingSearchTab", "search"],
     ["listingDeleteTab", "delete"],
     ["priceChangesTab", "priceChanges"],
+    ["refreshTab", "refresh"],
+    ["transferTab", "transfer"],
   ]) {
     const active = tab === name;
     $(id).classList.toggle("active", active);
     $(id).setAttribute("aria-selected", String(active));
+    $(id).tabIndex = active ? 0 : -1;
   }
   $("listingsPanel").hidden = tab !== "listings";
   $("listingSearchPanel").hidden = tab !== "search";
   $("listingDeletePanel").hidden = tab !== "delete";
   $("priceChangesPanel").hidden = tab !== "priceChanges";
+  $("refreshPanel").hidden = tab !== "refresh";
+  $("transferPanel").hidden = tab !== "transfer";
   $("listingToolbar").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
   $("listingAdvancedFilters").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
   document.body.dataset.activeTab = tab;
@@ -1162,7 +1167,8 @@ function setActiveTab(tab) {
 }
 
 function handleTabKeydown(event) {
-  const tabs = [$("listingsTab"), $("listingSearchTab"), $("listingDeleteTab"), $("priceChangesTab")];
+  // סדר הלשוניות כפי שהן מופיעות בתפריט הצד
+  const tabs = [...document.querySelectorAll('.view-tabs [role="tab"]')];
   const currentIndex = tabs.indexOf(event.currentTarget);
   let nextIndex;
   if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
@@ -2355,10 +2361,14 @@ $("listingsTab").addEventListener("click", () => setActiveTab("listings"));
 $("listingSearchTab").addEventListener("click", () => setActiveTab("search"));
 $("listingDeleteTab").addEventListener("click", () => setActiveTab("delete"));
 $("priceChangesTab").addEventListener("click", () => setActiveTab("priceChanges"));
+$("refreshTab").addEventListener("click", () => setActiveTab("refresh"));
+$("transferTab").addEventListener("click", () => setActiveTab("transfer"));
 $("listingsTab").addEventListener("keydown", handleTabKeydown);
 $("listingSearchTab").addEventListener("keydown", handleTabKeydown);
 $("listingDeleteTab").addEventListener("keydown", handleTabKeydown);
 $("priceChangesTab").addEventListener("keydown", handleTabKeydown);
+$("refreshTab").addEventListener("keydown", handleTabKeydown);
+$("transferTab").addEventListener("keydown", handleTabKeydown);
 document.querySelectorAll("[data-price-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     priceTimelineFilter = button.dataset.priceFilter;
@@ -2514,6 +2524,7 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
     if (params.get("scheduledRefresh") === "1") {
       const uncheckedOnly = params.get("uncheckedOnly") === "1";
       history.replaceState(null, "", location.pathname);
+      setActiveTab("refresh");
       $("refreshScope").value = uncheckedOnly ? "unchecked" : "filtered";
       const schedule = await storageGet(REFRESH_SCHEDULE_KEY);
       if (schedule && schedule.enabled === true) {

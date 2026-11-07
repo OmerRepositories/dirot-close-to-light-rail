@@ -18,7 +18,7 @@
       </div>
     </div>
     <div class="header-actions">
-      <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
+      
       <div class="font-controls" role="group" aria-label="שינוי גודל הטקסט">
         <button id="decreaseFont" type="button" aria-label="הקטנת הטקסט" title="הקטנת הטקסט">א−</button>
         <span id="fontScaleValue" aria-live="polite">100%</span>
@@ -30,162 +30,45 @@
     </div>
   </header>
 
-  <main>
-    <section class="export-toolbar" aria-label="ייצוא מידע שמור">
-      <div>
-        <strong>הייצוא שלך</strong>
-        <span>קובץ גיבוי להעברת כל הנתונים וההגדרות בין מחשבים</span>
-      </div>
-      <div class="export-actions">
-        <button id="exportBackup" type="button">גיבוי מלא</button>
-        <label class="backup-import-control">
-          <span>ייבוא:</span>
-          <select id="backupImportMode" aria-label="אופן ייבוא הגיבוי">
-            <option value="merge">מיזוג עם המידע הקיים</option>
-            <option value="replace">החלפת כל המידע הקיים</option>
-          </select>
-        </label>
-        <button id="importBackup" type="button">בחירת קובץ לייבוא</button>
-        <input id="backupFile" type="file" accept=".json,application/json" hidden>
-        <button id="exportTxt" type="button">TXT</button>
-        <button id="exportCsv" type="button">CSV</button>
-        <button id="exportExcel" type="button">Excel</button>
-        <button id="clearPriceHistory" class="danger" type="button" title="מוחק רק את היסטוריית המחירים; המחיר האחרון וכל יתר פרטי המודעות נשמרים">ניקוי היסטוריית מחירים</button>
-      </div>
-      <p class="backup-note">הגיבוי כולל את המודעות, היסטוריית המחירים, ההעדפות והנתונים המקומיים. במיזוג, רשומה מהגיבוי מחליפה רשומה קיימת עם אותו מזהה; בהחלפה, נתוני התוסף וההעדפות הנוכחיים נמחקים.</p>
-      <span id="exportStatus" role="status" aria-live="polite"></span>
-    </section>
-
-    <section id="listingToolbar" class="toolbar" aria-label="חיפוש וסינון מידע שמור">
-      <label class="search-field">
-        <span>חיפוש בכל העמודות</span>
-        <input id="searchInput" type="search" placeholder="כתובת, עיר, מחיר, תכונה, מזהה…">
-      </label>
-      <label>
-        <span>אתר</span>
-        <select id="siteFilter">
-          <option value="">כל האתרים</option>
-          <option value="yad2">יד2</option>
-          <option value="madlan">מדלן</option>
-        </select>
-      </label>
-      <label>
-        <span>סוג</span>
-        <select id="typeFilter">
-          <option value="">מודעות ופרויקטים</option>
-          <option value="listing">מודעות</option>
-          <option value="project">פרויקטים</option>
-        </select>
-      </label>
-      <label>
-        <span>מיון מהיר</span>
-        <select id="sortSelect">
-          <option value="">מיון לפי כותרת הטבלה</option>
-          <option value="updatedAt">עודכנו לאחרונה</option>
-          <option value="dealScore">הכי שווה</option>
-          <option value="rooms">מספר חדרים</option>
-          <option value="price">מחיר: מהנמוך לגבוה</option>
-          <option value="pricePerSqm">מחיר למ״ר: מהנמוך לגבוה</option>
-          <option value="railMeters">קרבה לרכבת</option>
-        </select>
-      </label>
-      <span id="recordCount" class="record-count" aria-live="polite"></span>
-    </section>
-
-    <details id="listingAdvancedFilters" class="advanced-filters">
-      <summary>מסננים מתקדמים <span>אפשר לשלב כמה טווחים יחד, למשל מרחק מהרכבת ומחיר למ״ר</span></summary>
-      <div class="filter-grid">
-        <label class="range-filter">
-          <span>מחיר (₪)</span>
-          <span class="range-inputs">
-            <input data-range-min="price" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מחיר מינימלי">
-            <input data-range-max="price" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מחיר מקסימלי">
-          </span>
-        </label>
-        <label class="range-filter">
-          <span>מחיר למ״ר (₪)</span>
-          <span class="range-inputs">
-            <input data-range-min="pricePerSqm" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מחיר למטר מינימלי">
-            <input data-range-max="pricePerSqm" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מחיר למטר מקסימלי">
-          </span>
-        </label>
-        <label class="range-filter">
-          <span>מרחק מהרכבת (מ׳)</span>
-          <span class="range-inputs">
-            <input data-range-min="railMeters" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מרחק מינימלי מהרכבת">
-            <input data-range-max="railMeters" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מרחק מקסימלי מהרכבת">
-          </span>
-        </label>
-        <label class="range-filter">
-          <span>שטח (מ״ר)</span>
-          <span class="range-inputs">
-            <input data-range-min="sqm" type="number" min="0" step="any" placeholder="מ־" aria-label="שטח מינימלי">
-            <input data-range-max="sqm" type="number" min="0" step="any" placeholder="עד" aria-label="שטח מקסימלי">
-          </span>
-        </label>
-        <label class="range-filter">
-          <span>חדרים</span>
-          <span class="range-inputs">
-            <input data-range-min="rooms" type="number" min="0" step="0.5" placeholder="מ־" aria-label="מספר חדרים מינימלי">
-            <input data-range-max="rooms" type="number" min="0" step="0.5" placeholder="עד" aria-label="מספר חדרים מקסימלי">
-          </span>
-        </label>
-        <button id="clearAdvancedFilters" type="button">ניקוי טווחים</button>
-      </div>
-    </details>
-
-    <section class="refresh-toolbar" aria-label="רענון הדרגתי של מודעות">
-      <div>
-        <strong>רענון הדרגתי של מודעות שמורות</strong>
-        <p>ברענון ידני נבדקות התוצאות המסוננות; בתזמון נבדקות כל המודעות השמורות או רק מודעות יד2 שלא נבדקו. נפתח דף אחד בכל פעם בכרטיסייה יחידה.</p>
-      </div>
-      <label class="refresh-scope">
-        <span>אילו מודעות לרענן?</span>
-        <select id="refreshScope">
-          <option value="filtered">כל המודעות</option>
-          <option value="unchecked">רק מודעות יד2 בסטטוס „לא נבדקה”</option>
-        </select>
-      </label>
-      <label class="delay-field">
-        <span>המתנה אחרי טעינת דף (שניות, מינימום 5)</span>
-        <input id="refreshDelay" type="number" min="5" max="600" step="5" value="30">
-      </label>
-      <div class="refresh-actions">
-        <button id="startRefresh" class="primary" type="button">התחלת רענון</button>
-        <button id="pauseRefresh" type="button" disabled>השהיה</button>
-        <button id="stopRefresh" type="button" disabled>עצירה</button>
-      </div>
-      <p class="refresh-warning" role="note"><strong>אזהרה:</strong> השהיה של 5 שניות קצרה ועלולה להיחשב פעילות תכופה; האתרים עלולים לחסום או להגביל את הגישה. השתמשו בהשהיה קצרה רק אם אתם מודעים לסיכון. התוסף אינו עוקף חסימות.</p>
-      <div class="schedule-settings">
-        <label class="schedule-toggle">
-          <input id="refreshScheduleEnabled" type="checkbox">
-          <span>להפעיל רענון אוטומטי מתוזמן</span>
-        </label>
-        <label class="schedule-interval">
-          <span>כל כמה שעות להתחיל? (1–168)</span>
-          <input id="refreshScheduleHours" type="number" min="1" max="168" step="1" value="5">
-        </label>
-        <button id="saveRefreshSchedule" type="button">שמירת תזמון</button>
-        <p id="scheduleStatus" role="status" aria-live="polite">רענון אוטומטי כבוי.</p>
-        <p class="schedule-note">התזמון מופעל רק אחרי לחיצה על „שמירת תזמון”. הוא פועל כשהדפדפן פתוח; כל מחזור פותח את כל המודעות השמורות או רק מודעות יד2 שלא נבדקו, בכרטיסייה אחת ובהשהיה שבחרת. הרענון ייתכן שיידחה כשהמחשב ישן. אפשר לעצור או להשהות מחזור פעיל, ולבטל את התזמון כאן בכל עת.</p>
-      </div>
-      <span id="refreshStatus" role="status" aria-live="polite">רענון אוטומטי אינו פעיל.</span>
-    </section>
-
-    <nav class="view-tabs" role="tablist" aria-label="תצוגות מידע שמור">
-      <button id="listingsTab" class="view-tab active" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel">
-        מודעות ופרויקטים <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
+  <div class="app">
+    <nav class="view-tabs" role="tablist" aria-label="תצוגות מידע שמור" aria-orientation="vertical">
+      <p class="nav-group">המידע שלי</p>
+      <button id="listingsTab" class="view-tab active" data-tone="teal" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel" title="מודעות ופרויקטים">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M9 9.5v10"/></svg></span>
+        <span class="nav-text"><span class="nav-label">מודעות ופרויקטים</span><span class="nav-hint">הטבלה המלאה</span></span> <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
       </button>
-      <button id="listingSearchTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel">
-        חיפוש מודעה
+      <button id="listingSearchTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel" tabindex="-1" title="חיפוש מודעה">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span>
+        <span class="nav-text"><span class="nav-label">חיפוש מודעה</span><span class="nav-hint">לפי טווחים ומאפיינים</span></span>
       </button>
-      <button id="listingDeleteTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel">
-        מחיקת מודעות
+      <button id="priceChangesTab" class="view-tab" data-tone="amber" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel" tabindex="-1" title="שינויי מחירים">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
+        <span class="nav-text"><span class="nav-label">שינויי מחירים</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
       </button>
-      <button id="priceChangesTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel">
-        שינויי מחירים <span id="priceChangesCount" class="tab-count">0</span>
+      <p class="nav-group">כלים</p>
+      <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
+        <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
+      </button>
+      <button id="transferTab" class="view-tab" data-tone="slate" type="button" role="tab" aria-selected="false" aria-controls="transferPanel" tabindex="-1" title="גיבוי וייצוא">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
+        <span class="nav-text"><span class="nav-label">גיבוי וייצוא</span><span class="nav-hint">Excel והעברה בין מחשבים</span></span>
+      </button>
+      <p class="nav-group">ניקוי</p>
+      <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
+        <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
       </button>
     </nav>
+    <main class="views">
+    
+
+    
+
+    
+
+    
+    
 
     <section id="listingSearchPanel" class="tab-panel listing-search-panel record-list" role="tabpanel" aria-labelledby="listingSearchTab" aria-label="חיפוש מודעה במידע השמור" hidden>
       <div class="search-panel-heading">
@@ -399,6 +282,89 @@
     </section>
 
     <section id="listingsPanel" class="tab-panel record-list" role="tabpanel" aria-labelledby="listingsTab" aria-label="טבלת מודעות ופרויקטים שמורים">
+      <div class="panel-head">
+        <div>
+          <h2>מודעות ופרויקטים</h2>
+          <p>כל מה שנשמר מיד2 וממדלן. לחיצה על שורה פותחת עריכה; לחיצה על הכותרת פותחת את המודעה.</p>
+        </div>
+      </div>
+      <section id="listingToolbar" class="toolbar" aria-label="חיפוש וסינון מידע שמור">
+      <label class="search-field">
+        <span>חיפוש בכל העמודות</span>
+        <input id="searchInput" type="search" placeholder="כתובת, עיר, מחיר, תכונה, מזהה…">
+      </label>
+      <label>
+        <span>אתר</span>
+        <select id="siteFilter">
+          <option value="">כל האתרים</option>
+          <option value="yad2">יד2</option>
+          <option value="madlan">מדלן</option>
+        </select>
+      </label>
+      <label>
+        <span>סוג</span>
+        <select id="typeFilter">
+          <option value="">מודעות ופרויקטים</option>
+          <option value="listing">מודעות</option>
+          <option value="project">פרויקטים</option>
+        </select>
+      </label>
+      <label>
+        <span>מיון מהיר</span>
+        <select id="sortSelect">
+          <option value="">מיון לפי כותרת הטבלה</option>
+          <option value="updatedAt">עודכנו לאחרונה</option>
+          <option value="dealScore">הכי שווה</option>
+          <option value="rooms">מספר חדרים</option>
+          <option value="price">מחיר: מהנמוך לגבוה</option>
+          <option value="pricePerSqm">מחיר למ״ר: מהנמוך לגבוה</option>
+          <option value="railMeters">קרבה לרכבת</option>
+        </select>
+      </label>
+      <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
+      <span id="recordCount" class="record-count" aria-live="polite"></span>
+    </section>
+      <details id="listingAdvancedFilters" class="advanced-filters">
+      <summary>מסננים מתקדמים <span>אפשר לשלב כמה טווחים יחד, למשל מרחק מהרכבת ומחיר למ״ר</span></summary>
+      <div class="filter-grid">
+        <label class="range-filter">
+          <span>מחיר (₪)</span>
+          <span class="range-inputs">
+            <input data-range-min="price" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מחיר מינימלי">
+            <input data-range-max="price" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מחיר מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מחיר למ״ר (₪)</span>
+          <span class="range-inputs">
+            <input data-range-min="pricePerSqm" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מחיר למטר מינימלי">
+            <input data-range-max="pricePerSqm" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מחיר למטר מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מרחק מהרכבת (מ׳)</span>
+          <span class="range-inputs">
+            <input data-range-min="railMeters" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מרחק מינימלי מהרכבת">
+            <input data-range-max="railMeters" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מרחק מקסימלי מהרכבת">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>שטח (מ״ר)</span>
+          <span class="range-inputs">
+            <input data-range-min="sqm" type="number" min="0" step="any" placeholder="מ־" aria-label="שטח מינימלי">
+            <input data-range-max="sqm" type="number" min="0" step="any" placeholder="עד" aria-label="שטח מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>חדרים</span>
+          <span class="range-inputs">
+            <input data-range-min="rooms" type="number" min="0" step="0.5" placeholder="מ־" aria-label="מספר חדרים מינימלי">
+            <input data-range-max="rooms" type="number" min="0" step="0.5" placeholder="עד" aria-label="מספר חדרים מקסימלי">
+          </span>
+        </label>
+        <button id="clearAdvancedFilters" type="button">ניקוי טווחים</button>
+      </div>
+    </details>
       <div class="table-wrap">
         <table id="recordsTable">
           <thead id="gridHead"></thead>
@@ -472,6 +438,107 @@
       <ol id="priceTimeline" class="price-timeline"></ol>
       <p id="emptyTimeline" class="empty-state" hidden>אין אירועים בסינון הזה.</p>
     </section>
+    <section id="refreshPanel" class="tab-panel tool-panel" role="tabpanel" aria-labelledby="refreshTab" aria-label="רענון מודעות" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>רענון מודעות</h2>
+          <p>פותח את המודעות השמורות אחת אחרי השנייה בכרטיסייה אחת, מעדכן מחיר ופרטים ומסמן אם המודעה עדיין פעילה.</p>
+        </div>
+      </div>
+      <div class="tool-grid">
+        <section class="tool-card" data-tone="green">
+          <h3><span class="card-dot"></span>רענון עכשיו</h3>
+          <p class="card-text">בודק את המודעות שמסוננות כרגע בטבלה, או רק מודעות יד2 שעוד לא נבדקו.</p>
+          <div class="tool-fields">
+            <label class="refresh-scope">
+        <span>אילו מודעות לרענן?</span>
+        <select id="refreshScope">
+          <option value="filtered">כל המודעות</option>
+          <option value="unchecked">רק מודעות יד2 בסטטוס „לא נבדקה”</option>
+        </select>
+      </label>
+            <label class="delay-field">
+        <span>המתנה אחרי טעינת דף (שניות, מינימום 5)</span>
+        <input id="refreshDelay" type="number" min="5" max="600" step="5" value="30">
+      </label>
+          </div>
+          <div class="refresh-actions">
+        <button id="startRefresh" class="primary" type="button">התחלת רענון</button>
+        <button id="pauseRefresh" type="button" disabled>השהיה</button>
+        <button id="stopRefresh" type="button" disabled>עצירה</button>
+      </div>
+          <span id="refreshStatus" role="status" aria-live="polite">רענון אוטומטי אינו פעיל.</span>
+          <p class="refresh-warning" role="note"><strong>אזהרה:</strong> השהיה של 5 שניות קצרה ועלולה להיחשב פעילות תכופה; האתרים עלולים לחסום או להגביל את הגישה. השתמשו בהשהיה קצרה רק אם אתם מודעים לסיכון. התוסף אינו עוקף חסימות.</p>
+        </section>
+        <section class="tool-card" data-tone="blue">
+          <h3><span class="card-dot"></span>רענון אוטומטי</h3>
+          <p class="card-text">מריץ רענון קבוע כל כמה שעות, כל עוד הדפדפן פתוח.</p>
+          <div class="schedule-settings">
+        <label class="schedule-toggle">
+          <input id="refreshScheduleEnabled" type="checkbox">
+          <span>להפעיל רענון אוטומטי מתוזמן</span>
+        </label>
+        <label class="schedule-interval">
+          <span>כל כמה שעות להתחיל? (1–168)</span>
+          <input id="refreshScheduleHours" type="number" min="1" max="168" step="1" value="5">
+        </label>
+        <button id="saveRefreshSchedule" type="button">שמירת תזמון</button>
+        <p id="scheduleStatus" role="status" aria-live="polite">רענון אוטומטי כבוי.</p>
+        <p class="schedule-note">התזמון מופעל רק אחרי לחיצה על „שמירת תזמון”. הוא פועל כשהדפדפן פתוח; כל מחזור פותח את כל המודעות השמורות או רק מודעות יד2 שלא נבדקו, בכרטיסייה אחת ובהשהיה שבחרת. הרענון ייתכן שיידחה כשהמחשב ישן. אפשר לעצור או להשהות מחזור פעיל, ולבטל את התזמון כאן בכל עת.</p>
+      </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="transferPanel" class="tab-panel tool-panel" role="tabpanel" aria-labelledby="transferTab" aria-label="גיבוי וייצוא" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>גיבוי וייצוא</h2>
+          <p>העברת כל המידע וההגדרות בין מחשבים, או ייצוא לקובץ לצפייה ולעבודה.</p>
+        </div>
+      </div>
+      <div class="tool-grid">
+        <section class="tool-card" data-tone="slate">
+          <h3><span class="card-dot"></span>גיבוי מלא</h3>
+          <p class="card-text">קובץ JSON עם כל המודעות, היסטוריית המחירים וההעדפות. מתאים להעברה למחשב אחר.</p>
+          <div class="card-actions">
+            <button id="exportBackup" class="primary" type="button">גיבוי מלא</button>
+          </div>
+          <h3 class="card-subhead">ייבוא גיבוי</h3>
+          <div class="card-actions">
+            <label class="backup-import-control">
+          <span>ייבוא:</span>
+          <select id="backupImportMode" aria-label="אופן ייבוא הגיבוי">
+            <option value="merge">מיזוג עם המידע הקיים</option>
+            <option value="replace">החלפת כל המידע הקיים</option>
+          </select>
+        </label>
+            <button id="importBackup" type="button">בחירת קובץ לייבוא</button>
+            <input id="backupFile" type="file" accept=".json,application/json" hidden>
+          </div>
+          <p class="backup-note">הגיבוי כולל את המודעות, היסטוריית המחירים, ההעדפות והנתונים המקומיים. במיזוג, רשומה מהגיבוי מחליפה רשומה קיימת עם אותו מזהה; בהחלפה, נתוני התוסף וההעדפות הנוכחיים נמחקים.</p>
+        </section>
+        <section class="tool-card" data-tone="teal">
+          <h3><span class="card-dot"></span>ייצוא לקובץ</h3>
+          <p class="card-text">Excel כולל גיליון מודעות וגיליון היסטוריית מחירים, עם מסננים וקישורים לחיצים.</p>
+          <div class="card-actions">
+            <button id="exportExcel" type="button">Excel</button>
+            <button id="exportCsv" type="button">CSV</button>
+            <button id="exportTxt" type="button">TXT</button>
+          </div>
+          <span id="exportStatus" role="status" aria-live="polite"></span>
+        </section>
+        <section class="tool-card" data-tone="red">
+          <h3><span class="card-dot"></span>ניקוי היסטוריית מחירים</h3>
+          <p class="card-text">מוחק רק את רשימת המחירים הקודמים. המחיר האחרון וכל יתר הפרטים נשמרים.</p>
+          <div class="card-actions">
+            <button id="clearPriceHistory" class="danger" type="button" title="מוחק רק את היסטוריית המחירים; המחיר האחרון וכל יתר פרטי המודעות נשמרים">ניקוי היסטוריית מחירים</button>
+          </div>
+        </section>
+      </div>
+    </section>
+    </main>
+    </div>
 
     <div id="detailsBackdrop" class="details-backdrop" hidden></div>
     <aside id="detailsPanel" class="details-panel" aria-label="עריכת רשומה" role="dialog" aria-modal="true" hidden>
@@ -544,7 +611,6 @@
           </div>
         </form>
     </aside>
-  </main>
   <script src="cache-data.js"></script>
   <script src="cache-export.js"></script>
   <script src="number-input.js"></script>
