@@ -196,7 +196,12 @@ var LRCacheData = (() => {
       const site = separator < 0 ? "" : key.slice(0, separator);
       if (filters.site && site !== filters.site) return false;
       if (filters.status === "irrelevant") {
-        if (!amenityRelevance(record, filters.requiredAmenities, filters.irrelevantMissingPct).irrelevant) {
+        if (!amenityRelevance(
+          record,
+          filters.requiredAmenities,
+          filters.irrelevantMissingPct,
+          filters.dealBreakerAmenities
+        ).irrelevant) {
           return false;
         }
       } else if (filters.status) {
@@ -284,22 +289,27 @@ var LRCacheData = (() => {
 
   // מודעה "לא רלוונטית": חסרים בה (בוודאות, לא "לא ידוע") לפחות missingPct אחוזים מהמאפיינים שהמשתמש סימן כחובה.
   // missingPct = 0 מכבה את הסימון; 1 = מספיק שחסר מאפיין חובה אחד; 100 = כל מאפייני החובה חסרים.
-  function amenityRelevance(record, requiredAmenities, missingPct) {
-    const required = Array.isArray(requiredAmenities) ? requiredAmenities : [];
+  // dealBreakers: מאפיינים ש"שוברים את העסקה" – אם אחד מהם חסר בוודאות, המודעה לא רלוונטית מיד,
+  // בלי קשר לסף האחוזים (גם כשהסף כבוי).
+  function amenityRelevance(record, requiredAmenities, missingPct, dealBreakers = []) {
+    const breakers = Array.isArray(dealBreakers) ? dealBreakers : [];
+    const required = [
+      ...new Set([...(Array.isArray(requiredAmenities) ? requiredAmenities : []), ...breakers]),
+    ];
     const amenities = record && record.amenities && typeof record.amenities === "object"
       ? record.amenities
       : {};
     const missing = required.filter((amenity) => amenities[amenity] === false);
+    const dealBreakerMissing = breakers.filter((amenity) => amenities[amenity] === false);
     const threshold = Math.max(0, Math.min(100, Number(missingPct) || 0));
-    const irrelevant = Boolean(
-      record &&
-        record.recordType !== "project" &&
-        threshold > 0 &&
-        required.length > 0 &&
-        missing.length > 0 &&
-        (missing.length / required.length) * 100 >= threshold
-    );
-    return { irrelevant, missing, requiredCount: required.length };
+    const isListing = Boolean(record && record.recordType !== "project");
+    const overThreshold =
+      threshold > 0 &&
+      required.length > 0 &&
+      missing.length > 0 &&
+      (missing.length / required.length) * 100 >= threshold;
+    const irrelevant = isListing && (dealBreakerMissing.length > 0 || overThreshold);
+    return { irrelevant, missing, dealBreakerMissing, requiredCount: required.length };
   }
 
   return {

@@ -306,3 +306,22 @@ test("deletion filter can select irrelevant listings on any site", () => {
   });
   assert.deepEqual(matches.map(([key]) => key).sort(), ["madlan:b", "yad2:a"]);
 });
+
+test("a missing deal-breaker amenity makes a listing irrelevant regardless of the threshold", () => {
+  const record = {
+    recordType: "listing",
+    amenities: { secureRoom: false, parking: true, storage: true, elevator: true },
+  };
+  const required = ["parking", "storage", "elevator"];
+  // ממ״ד הוא דיל ברייקר: חסר → לא רלוונטית, גם כשרק 1 מתוך 4 חסר וגם כשהסף כבוי
+  const result = CacheData.amenityRelevance(record, required, 50, ["secureRoom"]);
+  assert.equal(result.irrelevant, true);
+  assert.deepEqual(result.dealBreakerMissing, ["secureRoom"]);
+  assert.equal(result.requiredCount, 4);
+  assert.equal(CacheData.amenityRelevance(record, required, 0, ["secureRoom"]).irrelevant, true);
+  // ממ״ד לא ידוע → לא נחשב חסר
+  const unknown = { recordType: "listing", amenities: { secureRoom: null } };
+  assert.equal(CacheData.amenityRelevance(unknown, [], 50, ["secureRoom"]).irrelevant, false);
+  // בלי דיל ברייקר: 1 מתוך 4 חסר < 50%
+  assert.equal(CacheData.amenityRelevance(record, [...required, "secureRoom"], 50, []).irrelevant, false);
+});

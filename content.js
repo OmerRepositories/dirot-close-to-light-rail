@@ -36,6 +36,7 @@
     indexMaxPrice: 0, // מחיר מקסימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא הגבלה)
     requiredAmenities: ["secureRoom"],
     irrelevantMissingPct: 50, // סף "לא רלוונטית" (אחוז מאפייני חובה שחסרים בוודאות; 0 = כבוי)
+    dealBreakerAmenities: [], // מאפיינים שחסרונם הופך מודעה ללא רלוונטית מיד
     hideIrrelevant: false, // להסתיר מתוצאות החיפוש מודעות שסומנו כלא רלוונטיות
     showPriceChange: true, // להציג על כרטיס בחיפוש שינוי מחיר מאז שנשמרה
     showListingAge: true, // להציג כמה זמן המודעה באוויר
@@ -1610,11 +1611,24 @@
         ? `נבדקה בעבר · חסר: ${missing.join(", ")}`
         : "נבדקה בעבר · דרישות החובה קיימות");
     }
-    const irrelevant = Boolean(
-      record &&
-        LRCacheData.amenityRelevance(record, CFG.requiredAmenities, CFG.irrelevantMissingPct).irrelevant
-    );
-    if (irrelevant && parts.length) parts[0] = `לא רלוונטית · ${parts[0].replace("נבדקה בעבר · ", "")}`;
+    const relevance = record
+      ? LRCacheData.amenityRelevance(
+          record,
+          CFG.requiredAmenities,
+          CFG.irrelevantMissingPct,
+          CFG.dealBreakerAmenities
+        )
+      : { irrelevant: false, dealBreakerMissing: [] };
+    const irrelevant = relevance.irrelevant;
+    if (irrelevant) {
+      const breakers = relevance.dealBreakerMissing.map((amenity) => AMENITY_LABELS[amenity] || amenity);
+      const reason = breakers.length
+        ? `חסר דיל ברייקר: ${breakers.join(", ")}`
+        : (parts[0] || "").replace("נבדקה בעבר · ", "");
+      if (parts.length) parts[0] = `לא רלוונטית · ${reason}`;
+      else parts.push(`לא רלוונטית · ${reason}`);
+      state = "missing";
+    }
     if (record && CFG.showPriceChange) {
       const change = priceChangeText(record);
       if (change) parts.push(change);
@@ -2038,6 +2052,10 @@
           : [...DEFAULTS.requiredAmenities];
       } else if (k === "listingIndexingMode") {
         CFG[k] = s[k] === "opened" ? "opened" : "encountered";
+      } else if (k === "dealBreakerAmenities") {
+        CFG[k] = Array.isArray(s[k])
+          ? s[k].filter((amenity) => Object.prototype.hasOwnProperty.call(AMENITY_LABELS, amenity))
+          : [];
       } else if (k === "indexCities") {
         CFG[k] = Array.isArray(s[k]) ? s[k].map(String) : [];
       } else if (k === "blockedStreets") {

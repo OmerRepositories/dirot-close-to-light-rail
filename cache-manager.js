@@ -64,23 +64,28 @@ let timelinePreferences = {
   calculatePpsm: true,
   maxPpsm: 0,
   irrelevantMissingPct: 50,
+  dealBreakerAmenities: [],
 };
 
-// "לא רלוונטית": חסרים בה מאפייני חובה לפי הסף שבהגדרות. מודעה כזו לא נכללת ברענונים.
+// "לא רלוונטית": חסר דיל ברייקר, או חסרים מאפייני חובה לפי הסף שבהגדרות. מודעה כזו לא נכללת ברענונים.
 function listingRelevance(record) {
-  if (!record || recordType(record) !== "listing") return { irrelevant: false, missing: [] };
+  if (!record || recordType(record) !== "listing") {
+    return { irrelevant: false, missing: [], dealBreakerMissing: [] };
+  }
   return LRCacheData.amenityRelevance(
     record,
     timelinePreferences.requiredAmenities,
-    timelinePreferences.irrelevantMissingPct
+    timelinePreferences.irrelevantMissingPct,
+    timelinePreferences.dealBreakerAmenities
   );
 }
 
 function irrelevantTitle(relevance) {
-  const labels = relevance.missing.map(
-    (amenity) => (AMENITIES.find(([key]) => key === amenity) || [amenity, amenity])[1]
-  );
-  return `לא רלוונטית – חסרים ${relevance.missing.length} מתוך ${relevance.requiredCount} מאפייני החובה: ${labels.join(", ")}. מודעה כזו לא נכללת ברענונים.`;
+  const label = (amenity) => (AMENITIES.find(([key]) => key === amenity) || [amenity, amenity])[1];
+  const reason = relevance.dealBreakerMissing && relevance.dealBreakerMissing.length
+    ? `חסר דיל ברייקר: ${relevance.dealBreakerMissing.map(label).join(", ")}`
+    : `חסרים ${relevance.missing.length} מתוך ${relevance.requiredCount} מאפייני החובה: ${relevance.missing.map(label).join(", ")}`;
+  return `לא רלוונטית – ${reason}. מודעה כזו לא נכללת ברענונים.`;
 }
 const expandedPriceHistory = new Set();
 const timelineAmenityLabels = {
@@ -164,6 +169,7 @@ function readListingDeletionFilters() {
     status: $("deleteListingStatus").value,
     requiredAmenities: timelinePreferences.requiredAmenities,
     irrelevantMissingPct: timelinePreferences.irrelevantMissingPct,
+    dealBreakerAmenities: timelinePreferences.dealBreakerAmenities,
     brokerage: document.querySelector('[data-delete-boolean="brokerage"]').value,
     railApprox: document.querySelector('[data-delete-boolean="railApprox"]').value,
     ranges: {},
@@ -249,6 +255,9 @@ function readTimelinePreferences(settings) {
     irrelevantMissingPct: Number.isFinite(Number(settings.irrelevantMissingPct))
       ? Math.max(0, Math.min(100, Number(settings.irrelevantMissingPct)))
       : 50,
+    dealBreakerAmenities: Array.isArray(settings.dealBreakerAmenities)
+      ? settings.dealBreakerAmenities.filter((key) => AMENITIES.some(([amenity]) => amenity === key))
+      : [],
   };
 }
 
@@ -1157,6 +1166,7 @@ function loadTimelinePreferences() {
     calculatePpsm: true,
     maxPpsm: 0,
     irrelevantMissingPct: 50,
+    dealBreakerAmenities: [],
   };
   chrome.storage.sync.get(defaults, (settings) => {
     const error = chrome.runtime.lastError;
@@ -2601,13 +2611,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
       calculatePpsm: timelinePreferences.calculatePpsm,
       maxPpsm: timelinePreferences.maxPpsm,
       irrelevantMissingPct: timelinePreferences.irrelevantMissingPct,
+      dealBreakerAmenities: timelinePreferences.dealBreakerAmenities,
     };
     for (const key of Object.keys(updated)) {
       if (changes[key]) updated[key] = changes[key].newValue;
     }
     readTimelinePreferences(updated);
     if (timelinePreferencesEnabled) renderPriceTimeline();
-    if (changes.requiredAmenities || changes.irrelevantMissingPct) {
+    if (changes.requiredAmenities || changes.irrelevantMissingPct || changes.dealBreakerAmenities) {
       renderRows();
       renderListingDeletionPreview();
     }

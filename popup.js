@@ -20,6 +20,7 @@ const DEFAULTS = {
   indexMaxPrice: 0,
   requiredAmenities: ["secureRoom"],
   irrelevantMissingPct: 50,
+  dealBreakerAmenities: [],
   hideIrrelevant: false,
   showPriceChange: true,
   showListingAge: true,
@@ -128,6 +129,10 @@ function fill(s) {
   for (const input of document.querySelectorAll("[data-amenity]")) {
     input.checked = required.includes(input.dataset.amenity);
   }
+  const breakers = Array.isArray(s.dealBreakerAmenities) ? s.dealBreakerAmenities : [];
+  for (const input of document.querySelectorAll("[data-deal-breaker]")) {
+    input.checked = breakers.includes(input.dataset.dealBreaker);
+  }
   // לא דורסים את מה שהמשתמש מקליד כרגע (השמירה האוטומטית מחזירה את הערך המנוקה)
   if (document.activeElement !== $("blockedStreets")) {
     $("blockedStreets").value = (Array.isArray(s.blockedStreets) ? s.blockedStreets : []).join("\n");
@@ -167,6 +172,9 @@ function read() {
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
   );
+  out.dealBreakerAmenities = [...document.querySelectorAll("[data-deal-breaker]:checked")].map(
+    (input) => input.dataset.dealBreaker
+  );
   out.blockedStreets = LRStreetFilter.parseInput($("blockedStreets").value);
   out.indexCities = LRStreetFilter.parseInput($("indexCities").value);
   return out;
@@ -199,23 +207,38 @@ $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("indexCities").addEventListener("input", save);
 
-for (const [key, label] of AMENITIES) {
+function amenityOption(key, label, dataKey) {
   const option = document.createElement("label");
   option.className = "amenity-option";
   const input = document.createElement("input");
   input.type = "checkbox";
-  input.dataset.amenity = key;
-  input.addEventListener("change", save);
+  input.dataset[dataKey] = key;
   const text = document.createElement("span");
   text.textContent = label;
   option.append(input, text);
-  $("requiredAmenities").appendChild(option);
+  return { option, input };
+}
+
+// דיל ברייקר תמיד גם מאפיין חובה: סימון דיל ברייקר מסמן חובה, וביטול חובה מבטל את הדיל ברייקר
+for (const [key, label] of AMENITIES) {
+  const required = amenityOption(key, label, "amenity");
+  const breaker = amenityOption(key, label, "dealBreaker");
+  required.input.addEventListener("change", () => {
+    if (!required.input.checked) breaker.input.checked = false;
+    save();
+  });
+  breaker.input.addEventListener("change", () => {
+    if (breaker.input.checked) required.input.checked = true;
+    save();
+  });
+  $("requiredAmenities").appendChild(required.option);
+  $("dealBreakerAmenities").appendChild(breaker.option);
 }
 
 $("reset").addEventListener("click", () => {
   fill(DEFAULTS);
   chrome.storage.sync.set(
-    { ...DEFAULTS, requiredAmenities: [...DEFAULTS.requiredAmenities], blockedStreets: [], indexCities: [] },
+    { ...DEFAULTS, requiredAmenities: [...DEFAULTS.requiredAmenities], dealBreakerAmenities: [], blockedStreets: [], indexCities: [] },
     () => flash("✓ אופס")
   );
 });

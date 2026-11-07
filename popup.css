@@ -343,3 +343,8 @@ html.page-mode .tab-panel h2 { font-size: 18px; }
 html.page-mode .amenities { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
 html.page-mode .actions { max-width: 820px; padding: 10px 0 0; }
 html.page-mode .cache-actions:has(#clearListingCache) { display: grid; grid-template-columns: 1fr; max-width: 260px; }
+
+/* ---------- דיל ברייקרים ---------- */
+.subhead { margin: 18px 0 2px; font-size: 15px; font-weight: 700; }
+.deal-breakers .amenity-option:has(input:checked) { border-color: var(--danger); background: var(--danger-soft); }
+.deal-breakers .amenity-option input { accent-color: var(--danger); }
