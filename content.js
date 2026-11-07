@@ -1497,8 +1497,14 @@
     const observedPrice = Number.isFinite(stats.price) ? stats.price : null;
     // מחיר שנראה כמו פענוח שגוי (קפיצה חדה או מחיר למ״ר בלתי אפשרי) לא נרשם כשינוי מחיר
     // ולא דורס את המחיר השמור; כל תצפית שומרת גם את המקור (עמוד מודעה / כרטיס חיפוש)
-    const { accepted: priceAccepted, ...priceObservation } = LRCacheData.recordPriceObservation(
+    // מדלן: המחיר הקודם שמוצג בכרטיס חיפוש (מחוק) נכנס להיסטוריה אם אין לנו אותו
+    const withPreviousPrice = LRCacheData.withCardPreviousPrice(
       previous,
+      listingMetadata.previousPrice,
+      observedPrice
+    );
+    const { accepted: priceAccepted, ...priceObservation } = LRCacheData.recordPriceObservation(
+      withPreviousPrice,
       observedPrice,
       Date.now(),
       {
@@ -1519,6 +1525,10 @@
       priceObservation.suspectCount = undefined;
     }
     const priceUsable = Number.isFinite(stats.price) && (priceAccepted || siteConfirmsPrice);
+    // מחיר נוכחי שנדחה כחשוד – גם המחיר הקודם מהכרטיס לא נכנס
+    if (!priceUsable && !siteHistory && withPreviousPrice !== previous) {
+      priceObservation.priceHistory = Array.isArray(previous.priceHistory) ? previous.priceHistory : [];
+    }
     const listingHeading =
       root.querySelector("h1") ||
       (entry.kind === "list" ? root.querySelector('[data-testid="ad-card-title"]') : null);

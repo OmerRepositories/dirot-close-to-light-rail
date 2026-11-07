@@ -182,10 +182,23 @@ var LRMadlan = (() => {
       : readListingDate(id, ["updatedAt", "lastUpdatedAt", "modifiedAt"]);
     return {
       rooms: Number.isFinite(rooms) ? rooms : null,
+      // המחיר הקודם שמוצג מחוק בכרטיס (לפני הורדת המחיר האחרונה) – חשוב כשאין נתוני דף
+      previousPrice: root === document ? null : cardPreviousPrice(root),
       listingCreatedAt: createdAt,
       listingUpdatedAt: updatedAt,
       priceEvents: events.length ? events : null,
     };
+  }
+
+  function priceFromText(value) {
+    const digits = String(value || "").replace(/[‎‏‪-‮]/g, "").match(/\d{1,3}(?:,\d{3})+|\d{5,}/);
+    const price = digits ? Number(digits[0].replace(/,/g, "")) : NaN;
+    return Number.isFinite(price) && price > 0 ? price : null;
+  }
+
+  function cardPreviousPrice(root) {
+    const element = root.querySelector && root.querySelector('[data-auto="property-prevous-price"]');
+    return element ? priceFromText(element.textContent) : null;
   }
 
   function isProjectPage(path) {
@@ -366,7 +379,16 @@ var LRMadlan = (() => {
     return { ...parsed, coordinates: data.coordinates };
   }
 
-  function extractPriceSqm(root, text) {
+  function extractPriceSqm(root, rawText) {
+    // המחיר הקודם (מחוק) בכרטיס הוא לא המחיר – מוציאים אותו מהטקסט לפני חיפוש מחיר בטקסט
+    const previousElement =
+      root !== document && root.querySelector
+        ? root.querySelector('[data-auto="property-prevous-price"]')
+        : null;
+    const previousDigits = previousElement
+      ? String(previousElement.textContent || "").match(/\d{1,3}(?:,\d{3})+|\d{5,}/)
+      : null;
+    const text = previousDigits ? String(rawText || "").split(previousDigits[0]).join(" ") : rawText;
     const areaElement =
       root === document
         ? root.querySelector('[data-auto="area"]')

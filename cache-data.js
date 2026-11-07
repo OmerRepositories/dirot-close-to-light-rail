@@ -294,6 +294,21 @@ var LRCacheData = (() => {
     return unchanged ? null : merged;
   }
 
+  // מחיר קודם שמוצג בכרטיס חיפוש (מחוק, לפני הורדת המחיר האחרונה). כשאין לנו אותו בהיסטוריה
+  // הוא נוסף בתחילתה כנקודה בלי תאריך, כך שהירידה נספרת. רק ירידה סבירה (עד 40%),
+  // ולא כשההיסטוריה כבר באה מהאתר עצמו. מחזיר את הרשומה (אותו אובייקט אם אין שינוי).
+  function withCardPreviousPrice(record, previousPrice, currentPrice) {
+    const base = record && typeof record === "object" ? record : {};
+    if (!Number.isFinite(previousPrice) || !Number.isFinite(currentPrice)) return base;
+    if (!(previousPrice > currentPrice) || currentPrice / previousPrice < MIN_PRICE_RATIO) return base;
+    const history = Array.isArray(base.priceHistory) ? base.priceHistory : [];
+    if (history.some((point) => point && (point.src === "site" || point.price === previousPrice))) return base;
+    return {
+      ...base,
+      priceHistory: [{ price: previousPrice, at: null, baselineUnknown: true, src: "card" }, ...history],
+    };
+  }
+
   function pricePerSqm(record) {
     return Number.isFinite(record && record.price) &&
       Number.isFinite(record && record.sqm) &&
@@ -514,6 +529,7 @@ var LRCacheData = (() => {
     clearPriceHistories,
     recordPriceObservation,
     mergeSiteHistory,
+    withCardPreviousPrice,
     pricePerSqm,
     matchesNumericRange,
     hasListingDeletionFilters,

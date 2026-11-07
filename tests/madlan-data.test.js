@@ -87,3 +87,38 @@ test("site history replaces older own observations and keeps newer ones", () => 
   assert.equal(pressure.drops, 3);
   assert.equal(pressure.level, "high");
 });
+
+test("the crossed-out previous price on a Madlan card is added to the price history once", () => {
+  const record = CacheData.withCardPreviousPrice({}, 3_700_000, 3_590_000);
+  const observed = CacheData.recordPriceObservation(record, 3_590_000, 1000, { source: "search", sqm: 100 });
+  assert.equal(observed.accepted, true);
+  assert.deepEqual(observed.priceHistory, [
+    { price: 3_700_000, at: null, baselineUnknown: true, src: "card" },
+    { price: 3_590_000, at: 1000, src: "search" },
+  ]);
+  const again = CacheData.withCardPreviousPrice({ ...record, ...observed }, 3_700_000, 3_590_000);
+  assert.equal(again.priceHistory, observed.priceHistory, "not added twice");
+  assert.equal(CacheData.sellerPressure({ priceHistory: observed.priceHistory }).drops, 1);
+  // לא נוסף: מחיר קודם נמוך מהנוכחי, ירידה לא סבירה, או היסטוריה שכבר באה מהאתר
+  const base = { priceHistory: [] };
+  assert.equal(CacheData.withCardPreviousPrice(base, 2_000_000, 2_100_000), base);
+  assert.equal(CacheData.withCardPreviousPrice(base, 5_000_000, 2_000_000), base);
+  const fromSite = { priceHistory: [{ price: 3_590_000, at: 5, src: "site" }] };
+  assert.equal(CacheData.withCardPreviousPrice(fromSite, 3_700_000, 3_590_000), fromSite);
+});
+
+test("the previous price on a Madlan card is read separately and not taken as the price", () => {
+  const { LRMadlan } = madlanPage([]);
+  const element = (text) => ({ textContent: text, innerText: text });
+  const card = {
+    closest: () => null,
+    querySelector(selector) {
+      if (selector === '[data-auto="property-prevous-price"]') return element("\u200F3,700,000 \u200F₪");
+      return null;
+    },
+    querySelectorAll: () => [],
+  };
+  assert.equal(LRMadlan.listingExportData(card).previousPrice, 3_700_000);
+  const stats = LRMadlan.extractPriceSqm(card, "\u200F3,700,000 \u200F₪\n\u200F3,590,000 \u200F₪\n4 חד׳\n95 מ״ר");
+  assert.equal(stats.price, 3_590_000);
+});
