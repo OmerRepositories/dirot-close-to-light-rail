@@ -31,6 +31,7 @@
     disableMadlan: false,
     saveListingData: true,
     listingIndexingMode: "encountered",
+    indexMinPrice: 0, // מחיר מינימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא)
     indexMaxPrice: 0, // מחיר מקסימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא הגבלה)
     requiredAmenities: ["secureRoom"],
     hideAds: true, // להסתיר פרסומות (באנרים של Google ופרויקטים ממומנים) ביד2
@@ -1438,6 +1439,7 @@
     ) return;
     const parser = IS_YAD2 ? LRYad2 : LRMadlan;
     const root = entry.kind === "single" ? document : entry.card;
+    if (isRentalListing(entry)) return;
     const id = parser.listingId(root);
     if (!id) return;
     const key = cacheKeyForListing(id);
@@ -1453,6 +1455,7 @@
       if (Number.isFinite(stats.price) && stats.price < SEARCH_INDEX_MIN_PRICE) stats.price = null;
       if (!listingCache[key]) {
         if (!searchCardIndexable(parser, root, stats, listingMetadata, address)) return;
+        if (CFG.indexMinPrice > 0 && stats.price < CFG.indexMinPrice) return;
         if (CFG.indexMaxPrice > 0 && stats.price > CFG.indexMaxPrice) return;
       }
     }
@@ -1498,6 +1501,31 @@
     record.updatedAt = Date.now();
     listingCache[key] = record;
     saveListingCache();
+  }
+
+  // מודעות שכירות לא נשמרות במטמון (התוסף מיועד לחיפוש רכישה)
+  const RENTAL_WORD = /(?:^|[\s:|,–-])(?:להשכרה|השכרה|לשכירות|שכירות)(?=$|[\s:|,–-])/;
+  function isRentalListing(entry) {
+    if (/\/(?:realestate\/rent|for-rent|rent)(?:\/|$|\?)/i.test(location.pathname)) return true;
+    const root = entry.kind === "single" ? document : entry.card;
+    if (!root || !root.querySelector) return false;
+    const text = entry.getText();
+    if (entry.rentalText === text) return entry.rental;
+    const label = (selector) => {
+      const node = root.querySelector(selector);
+      return node ? node.textContent.trim() : "";
+    };
+    // יד2: "סוג העסקה: השכרה" בפרטים נוספים; מדלן: "דירה להשכרה" מתחת לכתובת
+    const dealType = label('[data-testid="deal-type-value"]');
+    // כותרת הדף, למשל "דירה להשכרה: הרב ניימן 10, ... | מדלן" (רק בעמוד מודעה)
+    const heading = entry.kind === "single" ? String(document.title || "").split(/[:|]/)[0] : "";
+    let rental;
+    if (dealType) rental = RENTAL_WORD.test(` ${dealType}`);
+    else if (/למכירה|להשכרה|לשכירות/.test(heading)) rental = RENTAL_WORD.test(` ${heading}`);
+    else rental = RENTAL_WORD.test(` ${label('[data-auto="secondary_address"]')}`);
+    entry.rentalText = text;
+    entry.rental = rental;
+    return rental;
   }
 
   // כללי מינימום להוספת מודעה חדשה מתוצאות החיפוש: קישור, מחיר תקין, מיקום ופרט נכס אחד לפחות
@@ -1622,7 +1650,7 @@
         const cachedListing = entry.listingId
           ? listingCache[cacheKeyForListing(entry.listingId)]
           : null;
-        rememberListingAmenities(
+        if (!isRentalListing(entry)) rememberListingAmenities(
           entry.listingId,
           currentAmenities,
           !entry.cacheRefreshed ||
@@ -1928,7 +1956,7 @@
   }
 
   // טוענים את ההגדרות לפני שמתחילים, ומעדכנים את הדף מיד כשהמשתמש משנה הגדרה
-  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMaxPrice"];
+  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice"];
   // רצפת שפיות קבועה למחיר מכרטיס חיפוש: מסננת שכירות וכרטיסים שעוד נטענים
   const SEARCH_INDEX_MIN_PRICE = 100000;
   const AMENITY_LABELS = {
