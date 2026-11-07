@@ -1,0 +1,76 @@
+/* מערכת העיצוב המשותפת לחלון ההגדרות ולמנהל המידע השמור:
+   שחור חם לטקסט, צבע הדגשה אחד (טורקיז הרכבת), סולם רדיוסים אחד, מצב כהה לפי המערכת */
+
+@font-face {
+  font-family: "Heebo";
+  src: url("fonts/heebo-hebrew-wght-normal.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
+}
+@font-face {
+  font-family: "Heebo";
+  src: url("fonts/heebo-latin-wght-normal.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: light;
+  --font: "Heebo", system-ui, "Segoe UI", Arial, sans-serif;
+  --ink: #1d2321;
+  --muted: #5c6662;
+  --faint: #8a938f;
+  --line: rgba(29, 35, 33, .12);
+  --line-soft: rgba(29, 35, 33, .07);
+  --line-strong: rgba(29, 35, 33, .22);
+  --g-main: #f4f5f3;
+  --surface: #ffffff;
+  --surface-alt: #f8f9f8;
+  --surface-sunk: #eef0ee;
+  --action: #0b6e69;
+  --action-hover: #095c58;
+  --action-soft: #e5f2f0;
+  --on-action: #ffffff;
+  --danger: #a3313f;
+  --danger-soft: #fbeef0;
+  --ok: #19744a;
+  --ok-soft: #e6f3ec;
+  --warn: #7a4f0a;
+  --warn-soft: #fbf1dd;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ink: #e8ecea;
+    --muted: #a7b1ad;
+    --faint: #7f8a86;
+    --line: rgba(232, 236, 234, .12);
+    --line-soft: rgba(232, 236, 234, .06);
+    --line-strong: rgba(232, 236, 234, .24);
+    --g-main: #141817;
+    --surface: #1c2120;
+    --surface-alt: #222826;
+    --surface-sunk: #181c1b;
+    --action: #3fb2a9;
+    --action-hover: #5cc4bc;
+    --action-soft: rgba(63, 178, 169, .14);
+    --on-action: #0d1a18;
+    --danger: #f08b97;
+    --danger-soft: rgba(240, 139, 151, .12);
+    --ok: #6fd3a0;
+    --ok-soft: rgba(111, 211, 160, .12);
+    --warn: #f0c46b;
+    --warn-soft: rgba(240, 196, 107, .12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; }
+}

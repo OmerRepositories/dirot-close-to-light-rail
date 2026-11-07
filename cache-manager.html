@@ -4,17 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>מידע שמור</title>
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="cache-manager.css">
 </head>
 <body>
   <header class="page-header">
-    <div>
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="12" fill="var(--action)"/><path d="M9 27 C15 27 16 13 22 13 S29 20 31 20" fill="none" stroke="var(--on-action)" stroke-width="2.6" stroke-linecap="round"/><circle cx="22" cy="13" r="3.4" fill="var(--on-action)"/><circle cx="9" cy="27" r="2.2" fill="var(--on-action)"/><circle cx="31" cy="20" r="2.2" fill="var(--on-action)"/></svg>
+      <div>
       <p class="eyebrow">קרבה לרכבת הקלה</p>
       <h1>מידע שמור</h1>
       <p class="intro">צפייה ועריכה של מודעות ופרויקטים שנשמרו במכשיר הזה.</p>
+      </div>
     </div>
     <div class="header-actions">
-      <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">⤢ הצג היסטוריה מלאה</button>
+      <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
       <div class="font-controls" role="group" aria-label="שינוי גודל הטקסט">
         <button id="decreaseFont" type="button" aria-label="הקטנת הטקסט" title="הקטנת הטקסט">א−</button>
         <span id="fontScaleValue" aria-live="polite">100%</span>
@@ -29,11 +33,11 @@
   <main>
     <section class="export-toolbar" aria-label="ייצוא מידע שמור">
       <div>
-        <strong>📦 הייצוא שלך</strong>
+        <strong>הייצוא שלך</strong>
         <span>קובץ גיבוי להעברת כל הנתונים וההגדרות בין מחשבים</span>
       </div>
       <div class="export-actions">
-        <button id="exportBackup" type="button">💾 גיבוי מלא</button>
+        <button id="exportBackup" type="button">גיבוי מלא</button>
         <label class="backup-import-control">
           <span>ייבוא:</span>
           <select id="backupImportMode" aria-label="אופן ייבוא הגיבוי">
@@ -41,12 +45,12 @@
             <option value="replace">החלפת כל המידע הקיים</option>
           </select>
         </label>
-        <button id="importBackup" type="button">📥 בחירת קובץ לייבוא</button>
+        <button id="importBackup" type="button">בחירת קובץ לייבוא</button>
         <input id="backupFile" type="file" accept=".json,application/json" hidden>
-        <button id="exportTxt" type="button">📄 TXT</button>
-        <button id="exportCsv" type="button">🧾 CSV</button>
-        <button id="exportExcel" type="button">📊 Excel</button>
-        <button id="clearPriceHistory" class="danger" type="button" title="מוחק רק את היסטוריית המחירים; המחיר האחרון וכל יתר פרטי המודעות נשמרים">🧹 ניקוי היסטוריית מחירים</button>
+        <button id="exportTxt" type="button">TXT</button>
+        <button id="exportCsv" type="button">CSV</button>
+        <button id="exportExcel" type="button">Excel</button>
+        <button id="clearPriceHistory" class="danger" type="button" title="מוחק רק את היסטוריית המחירים; המחיר האחרון וכל יתר פרטי המודעות נשמרים">ניקוי היסטוריית מחירים</button>
       </div>
       <p class="backup-note">הגיבוי כולל את המודעות, היסטוריית המחירים, ההעדפות והנתונים המקומיים. במיזוג, רשומה מהגיבוי מחליפה רשומה קיימת עם אותו מזהה; בהחלפה, נתוני התוסף וההעדפות הנוכחיים נמחקים.</p>
       <span id="exportStatus" role="status" aria-live="polite"></span>
@@ -170,23 +174,23 @@
 
     <nav class="view-tabs" role="tablist" aria-label="תצוגות מידע שמור">
       <button id="listingsTab" class="view-tab active" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel">
-        🏠 מודעות ופרויקטים <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
+        מודעות ופרויקטים <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
       </button>
       <button id="listingSearchTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel">
-        🔎 חיפוש מודעה
+        חיפוש מודעה
       </button>
       <button id="listingDeleteTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel">
-        🗑️ מחיקת מודעות
+        מחיקת מודעות
       </button>
       <button id="priceChangesTab" class="view-tab" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel">
-        📉 שינויי מחירים <span id="priceChangesCount" class="tab-count">0</span>
+        שינויי מחירים <span id="priceChangesCount" class="tab-count">0</span>
       </button>
     </nav>
 
     <section id="listingSearchPanel" class="tab-panel listing-search-panel record-list" role="tabpanel" aria-labelledby="listingSearchTab" aria-label="חיפוש מודעה במידע השמור" hidden>
       <div class="search-panel-heading">
         <div>
-          <h2>🔎 חיפוש מודעה</h2>
+          <h2>חיפוש מודעה</h2>
           <p>חיפוש וסינון של מודעות שכבר נשמרו בתוסף. אפשר לשלב טווחים, מאפיינים ומילות חיפוש; הסינון לא משנה את המידע במאגר.</p>
         </div>
         <span id="searchResultCount" class="record-count" aria-live="polite"></span>
@@ -298,7 +302,7 @@
     <section id="listingDeletePanel" class="tab-panel listing-delete-panel record-list" role="tabpanel" aria-labelledby="listingDeleteTab" aria-label="מחיקת מודעות שמורות" hidden>
       <div class="search-panel-heading">
         <div>
-          <h2>🗑️ מחיקת מודעות שמורות</h2>
+          <h2>מחיקת מודעות שמורות</h2>
           <p>כל המסננים לבחירתך ואפשר להשאיר את כולם ריקים. בחר מסנן אחד או יותר כדי לראות אילו מודעות יימחקו.</p>
         </div>
       </div>
@@ -407,7 +411,7 @@
     <section id="priceChangesPanel" class="tab-panel price-timeline-panel" role="tabpanel" aria-labelledby="priceChangesTab" aria-label="ציר זמן של שינויי מחירים" hidden>
       <div class="timeline-heading">
         <div>
-          <h2>📉 ציר זמן — שינויי מחירים</h2>
+          <h2>ציר זמן — שינויי מחירים</h2>
           <p>כל שינויי המחיר מכל המודעות, ללא תלות בסינון הטבלה. אפשר לסנן לפי מחיר, רכבת ומאפיינים, או להציג לפי ההעדפות שלך מההגדרות. הסינון משנה רק את התצוגה ולא את המידע השמור.</p>
         </div>
         <div class="timeline-controls">

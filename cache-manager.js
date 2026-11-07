@@ -2347,7 +2347,7 @@ $("togglePriceHistory").addEventListener("click", (event) => {
   showFullPriceHistory = !showFullPriceHistory;
   expandedPriceHistory.clear();
   const button = event.currentTarget;
-  button.textContent = showFullPriceHistory ? "⌃ הצג עד 3 בכל שורה" : "⤢ הצג היסטוריה מלאה";
+  button.textContent = showFullPriceHistory ? "הצג עד 3 בכל שורה" : "הצג היסטוריה מלאה";
   button.setAttribute("aria-pressed", String(showFullPriceHistory));
   renderRows();
 });
