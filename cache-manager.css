@@ -704,3 +704,21 @@ button.stat-tile:hover { border-color: var(--line-strong); background: var(--sur
 #syncLoginStatus[data-error="true"], #syncConnectedStatus[data-error="true"] { color: var(--danger); }
 #syncBadge[data-state="on"] { color: var(--ok); }
 #syncBadge[data-state="error"] { color: var(--danger); }
+
+/* חיווי ענן: עמודה, מונה ושורת מצב */
+body:not([data-cloud="on"]) .cloud-col { display: none; }
+.cloud-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cloud-chip.synced { background: var(--ok-soft); color: var(--ok); }
+.cloud-chip.pending { background: var(--warn-soft); color: var(--ink); }
+.cloud-chip.error { background: var(--danger-soft); color: var(--danger); }
+.cloud-status { flex: 1 1 100%; font-size: 13px; color: var(--muted); }
+.cloud-status[data-state="synced"] { color: var(--ok); }
+.cloud-status[data-state="error"] { color: var(--danger); }

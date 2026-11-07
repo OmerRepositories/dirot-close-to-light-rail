@@ -526,7 +526,7 @@ function runSync(reason) {
         lastError: "",
         needsLogin: false,
         ...(pulled ? { lastPulled: pulled } : {}),
-        ...(pushed ? { lastPushed: pushed } : {}),
+        ...(pushed ? { lastPushed: pushed, lastPushAt: Date.now() } : {}),
       });
       return { ok: true, pulled, pushed };
     } catch (error) {

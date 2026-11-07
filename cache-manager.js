@@ -318,12 +318,52 @@ function passesTimelineFilters(event) {
 const SEARCH_ONLY_TITLE =
   "נשמרה מכרטיס בתוצאות החיפוש בלבד: אין עדיין מאפיינים ותאריכים מעמוד המודעה. פתיחת המודעה או רענון ישלימו את המידע.";
 
+// ---------- מצב ענן לכל רשומה (סנכרון אונליין) ----------
+// "synced" = הגרסה המקומית זהה למה שנשלח למסד הנתונים; "pending" = שונתה ועוד לא נשלחה.
+// ההשוואה לפי אותו hash שהסנכרון ב-background.js שומר אחרי כל שליחה מוצלחת.
+let cloudSync = { enabled: false, needsLogin: false, hashes: {}, lastPushAt: null, lastSyncAt: null, lastError: "" };
+const cloudHashCache = new WeakMap();
+const CLOUD_LABELS = { synced: "✓ בענן", pending: "⏳ ממתין" };
+
+function cloudState(key, record) {
+  if (!cloudSync.enabled || !record || typeof record !== "object") return "";
+  let hash = cloudHashCache.get(record);
+  if (!hash) {
+    hash = LRSync.hashRecord(record);
+    cloudHashCache.set(record, hash);
+  }
+  return cloudSync.hashes[key] === hash ? "synced" : "pending";
+}
+
+function cloudTime(timestamp) {
+  return timestamp
+    ? new Date(timestamp).toLocaleString("he-IL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "";
+}
+
+function renderCloudCell(td, key, record) {
+  const state = cloudState(key, record);
+  td.replaceChildren();
+  if (!state) return;
+  const chip = document.createElement("span");
+  chip.className = `cloud-chip ${state}${state === "pending" && cloudSync.lastError ? " error" : ""}`;
+  chip.textContent = state === "pending" && cloudSync.lastError ? "⚠ לא נשלח" : CLOUD_LABELS[state];
+  td.title =
+    state === "synced"
+      ? `הגרסה הזו שמורה במסד הנתונים${cloudSync.lastPushAt ? ` · שליחה אחרונה: ${cloudTime(cloudSync.lastPushAt)}` : ""}`
+      : cloudSync.lastError
+        ? `לא נשלח: ${cloudSync.lastError}`
+        : "השתנתה במחשב הזה ותישלח בשניות הקרובות";
+  td.appendChild(chip);
+}
+
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
   { key: "type", label: "סוג", sortKey: "recordType" },
   { key: "site", label: "אתר", sortKey: "site" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
+  { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
   { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
   { key: "listingAgeDays", label: "גיל מודעה (ימים)", sortKey: "listingAgeDays", title: "כמה ימים המודעה באוויר; מחושב ונשמר בכל שמירה או רענון של המודעה" },
   { key: "sellerPressure", label: "לחץ למכור", sortKey: "sellerPressure", title: "מדד 0–100: ימים באוויר (עד 60 נק׳), ירידת מחיר מהשיא (עד 30) ומספר הורדות (עד 10)" },
@@ -678,6 +718,7 @@ function renderHeader() {
   for (const column of columns) {
     appendHeaderCell(titles, column);
     const empty = document.createElement("th");
+    if (column.key === "cloud") empty.className = "cloud-col";
     if (column.boolean) {
       const filter = document.createElement("select");
       filter.className = "column-filter";
@@ -732,6 +773,7 @@ function rowSortValue(key, record, priceRanks) {
     const pressure = sellerPressure(record);
     return pressure ? pressure.score : null;
   }
+  if (sort.key === "cloud") return cloudState(key, record) || null;
   return record[sort.key];
 }
 
@@ -845,6 +887,7 @@ function columnFilterText(key, record, recordKey, priceRanks) {
           : `לא נבדקה${searchOnly}`
       : searchOnly.trim();
   }
+  if (key === "cloud") return CLOUD_LABELS[cloudState(recordKey, record)] || "";
   if (key === "price") return `${record.price ?? ""} ${displayPrice(record.price)}`;
   if (key === "sqm" || key === "rooms" || key === "railMeters" || key === "listingAgeDays") {
     return String(record[key] ?? "");
@@ -973,6 +1016,9 @@ function renderRows() {
       } else if (column.key === "site") {
         const siteName = recordSite(key);
         td.textContent = siteName === "yad2" ? "יד2" : siteName === "madlan" ? "מדלן" : siteName;
+      } else if (column.key === "cloud") {
+        td.className = "cloud-col";
+        renderCloudCell(td, key, record);
       } else if (column.key === "listingStatus") {
         td.className = "listing-status-cell";
         const status = document.createElement("span");
@@ -3285,7 +3331,7 @@ async function renderSyncPanel() {
   if (!$("syncApiKey").value) $("syncApiKey").value = state.apiKey;
   if (!$("syncEmail").value) $("syncEmail").value = state.email;
   const badge = $("syncBadge");
-  const tabState = $("syncTabState");
+  scheduleCloudIndicators(0);
   if (connected) {
     let host = "";
     try {
@@ -3296,13 +3342,9 @@ async function renderSyncPanel() {
     if (state.lastError) setSyncStatus("syncConnectedStatus", `הסנכרון האחרון נכשל: ${state.lastError}`, true);
     badge.textContent = state.lastError ? "שגיאת סנכרון" : "מחובר";
     badge.dataset.state = state.lastError ? "error" : "on";
-    tabState.hidden = false;
-    tabState.textContent = state.lastError ? "!" : "✓";
   } else {
     badge.textContent = state.needsLogin ? "נדרשת התחברות מחדש" : "לא מחובר";
     badge.dataset.state = state.needsLogin ? "error" : "off";
-    tabState.hidden = !state.needsLogin;
-    tabState.textContent = "!";
     if (state.needsLogin) {
       setSyncStatus("syncLoginStatus", "פג תוקף הכניסה. הזן סיסמה והתחבר שוב – המידע לא נמחק.", true);
     }
@@ -3389,6 +3431,82 @@ $("syncCopySql").addEventListener("click", async () => {
 $("syncPassword").addEventListener("keydown", (event) => {
   if (event.key === "Enter") connectOnlineSync();
 });
+
+// ---------- חיווי ענן חי: עמודת "ענן", מונה ממתינים בתפריט ושורה במסך הרענון ----------
+async function loadCloudSync() {
+  const stored = await new Promise((resolve) =>
+    chrome.storage.local.get([LRSync.SETTINGS_KEY, LRSync.HASHES_KEY], (result) => resolve(result || {}))
+  );
+  const settings = stored[LRSync.SETTINGS_KEY] || {};
+  cloudSync = {
+    enabled: Boolean(settings.enabled) && !settings.needsLogin,
+    needsLogin: Boolean(settings.needsLogin),
+    hashes: stored[LRSync.HASHES_KEY] || {},
+    lastPushAt: settings.lastPushAt || null,
+    lastSyncAt: settings.lastSyncAt || null,
+    lastError: settings.lastError || "",
+  };
+}
+
+function cloudPendingCount() {
+  let pending = 0;
+  for (const [key, record] of Object.entries(cache || {})) {
+    if (cloudState(key, record) === "pending") pending++;
+  }
+  return pending;
+}
+
+function refreshCloudIndicators() {
+  document.body.dataset.cloud = cloudSync.enabled ? "on" : "off";
+  // תאי "ענן" בשורות שכבר מוצגות – בלי לבנות את הטבלה מחדש
+  for (const row of rows.querySelectorAll("tr[data-key]")) {
+    const td = row.querySelector("td.cloud-col");
+    const record = cache[row.dataset.key];
+    if (td && record) renderCloudCell(td, row.dataset.key, record);
+  }
+  const pending = cloudSync.enabled ? cloudPendingCount() : 0;
+  const tabState = $("syncTabState");
+  const line = $("refreshCloudStatus");
+  if (!cloudSync.enabled) {
+    tabState.hidden = !cloudSync.needsLogin;
+    tabState.textContent = "!";
+    tabState.title = cloudSync.needsLogin ? "נדרשת התחברות מחדש לסנכרון" : "";
+    line.hidden = true;
+    return;
+  }
+  tabState.hidden = false;
+  tabState.textContent = cloudSync.lastError ? "!" : pending ? pending.toLocaleString("he-IL") : "✓";
+  tabState.title = cloudSync.lastError
+    ? `שגיאת סנכרון: ${cloudSync.lastError}`
+    : pending
+      ? `${pending.toLocaleString("he-IL")} מודעות ממתינות לשליחה לענן`
+      : "כל המודעות שמורות בענן";
+  line.hidden = false;
+  line.dataset.state = cloudSync.lastError ? "error" : pending ? "pending" : "synced";
+  const lastPush = cloudSync.lastPushAt ? ` · שליחה אחרונה: ${cloudTime(cloudSync.lastPushAt)}` : "";
+  line.textContent = cloudSync.lastError
+    ? `ענן: השליחה נכשלה (${cloudSync.lastError}) – ${pending.toLocaleString("he-IL")} ממתינות, ינסה שוב תוך דקה`
+    : pending
+      ? `ענן: ${pending.toLocaleString("he-IL")} מודעות ממתינות לשליחה…${lastPush}`
+      : `ענן: כל המודעות נשמרו במסד הנתונים ✓${lastPush}`;
+}
+
+let cloudIndicatorTimer = null;
+function scheduleCloudIndicators(delay = 300) {
+  clearTimeout(cloudIndicatorTimer);
+  cloudIndicatorTimer = setTimeout(() => {
+    loadCloudSync().then(refreshCloudIndicators).catch(() => {});
+  }, delay);
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes[LRSync.SETTINGS_KEY] || changes[LRSync.HASHES_KEY]) scheduleCloudIndicators(300);
+  // שינוי במטמון מגיע לטבלה אחרי עיכוב קצר – מעדכנים את החיווי אחריו
+  else if (changes[CACHE_KEY]) scheduleCloudIndicators(1500);
+});
+
+loadCloudSync().then(refreshCloudIndicators).catch(() => {});
 
 // בפתיחת העמוד: אם הסנכרון פעיל – מושכים מיד שינויים ממחשבים אחרים
 renderSyncPanel().then(() => {
