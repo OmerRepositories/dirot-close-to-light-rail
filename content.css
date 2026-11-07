@@ -116,13 +116,19 @@
   background: #fdecec;
   color: #a12727;
 }
+.lr-cache-note[data-state="info"] {
+  border-color: #cfd8e3;
+  background: #f3f6f9;
+  color: #3d4f63;
+}
 .lr-cache-note[hidden] { display: none; }
 .lr-cache-missing { outline: 2px solid #d64545 !important; }
 
 .lr-brokerage-removed,
 .lr-project-removed,
 .lr-not-near-rail,
-.lr-street-removed { display: none !important; }
+.lr-street-removed,
+.lr-irrelevant-removed { display: none !important; }
 
 /* פרסומות ביד2 (Google Ad Manager / DFP ופרויקטים ממומנים). פעיל רק כש-<html> מסומן
    ב-lr-hide-ads, כלומר ביד2 כשההגדרה "להסתיר פרסומות" דלוקה. שים לב: ad-card ביד2 הוא

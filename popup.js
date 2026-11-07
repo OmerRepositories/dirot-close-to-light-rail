@@ -20,6 +20,9 @@ const DEFAULTS = {
   indexMaxPrice: 0,
   requiredAmenities: ["secureRoom"],
   irrelevantMissingPct: 50,
+  hideIrrelevant: false,
+  showPriceChange: true,
+  showListingAge: true,
   hideAds: true,
   blockedStreets: [],
 };
@@ -105,6 +108,9 @@ const boolKeys = [
   "disableFacebook",
   "saveListingData",
   "hideAds",
+  "hideIrrelevant",
+  "showPriceChange",
+  "showListingAge",
 ];
 
 function fill(s) {

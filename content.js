@@ -35,6 +35,10 @@
     indexMinPrice: 0, // מחיר מינימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא)
     indexMaxPrice: 0, // מחיר מקסימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא הגבלה)
     requiredAmenities: ["secureRoom"],
+    irrelevantMissingPct: 50, // סף "לא רלוונטית" (אחוז מאפייני חובה שחסרים בוודאות; 0 = כבוי)
+    hideIrrelevant: false, // להסתיר מתוצאות החיפוש מודעות שסומנו כלא רלוונטיות
+    showPriceChange: true, // להציג על כרטיס בחיפוש שינוי מחיר מאז שנשמרה
+    showListingAge: true, // להציג כמה זמן המודעה באוויר
     hideAds: true, // להסתיר פרסומות (באנרים של Google ופרויקטים ממומנים) ביד2
     blockedStreets: [], // רחובות שמודעות עליהם לא יוצגו לעולם
   };
@@ -1560,30 +1564,80 @@
     return Number.isFinite(timestamp) ? new Date(timestamp).toISOString().slice(0, 10) : "";
   }
 
+  // שינוי המחיר מאז התצפית הראשונה במטמון, למשל "↓ ירד ב־₪50,000 (3%) מאז 12.10"
+  function priceChangeText(record) {
+    const history = Array.isArray(record && record.priceHistory)
+      ? record.priceHistory.filter((point) => point && Number.isFinite(point.price) && point.price > 0)
+      : [];
+    if (history.length < 2) return "";
+    const first = history[0];
+    const last = history[history.length - 1];
+    const diff = last.price - first.price;
+    if (!diff) return "";
+    const pct = Math.round((Math.abs(diff) / first.price) * 100);
+    const since = Number.isFinite(first.at)
+      ? ` מאז ${new Date(first.at).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" })}`
+      : "";
+    const amount = `₪${Math.abs(diff).toLocaleString("he-IL")}`;
+    return diff < 0
+      ? `↓ ירד ב־${amount}${pct ? ` (${pct}%)` : ""}${since}`
+      : `↑ עלה ב־${amount}${pct ? ` (${pct}%)` : ""}${since}`;
+  }
+
+  // כמה זמן המודעה באוויר לפי תאריך היצירה שנשמר
+  function listingAgeText(record) {
+    const created = record && record.listingCreatedAt ? Date.parse(record.listingCreatedAt) : NaN;
+    if (!Number.isFinite(created)) return "";
+    const days = Math.floor((Date.now() - created) / 86400000);
+    if (days < 0) return "";
+    if (days === 0) return "פורסמה היום";
+    if (days === 1) return "באוויר יום אחד";
+    return `באוויר ${days.toLocaleString("he-IL")} ימים`;
+  }
+
   function renderCachedAmenities(entry) {
     if (entry.kind !== "list" || !entry.cacheNote) return;
     const record = entry.listingId ? listingCache[cacheKeyForListing(entry.listingId)] : null;
-    if (!validCachedAmenities(record) || CFG.requiredAmenities.length === 0) {
+    const parts = [];
+    let state = "info";
+    let missing = [];
+    if (validCachedAmenities(record) && CFG.requiredAmenities.length > 0) {
+      missing = CFG.requiredAmenities
+        .filter((amenity) => record.amenities[amenity] !== true)
+        .map((amenity) => AMENITY_LABELS[amenity] || amenity);
+      state = missing.length ? "missing" : "matches";
+      parts.push(missing.length
+        ? `נבדקה בעבר · חסר: ${missing.join(", ")}`
+        : "נבדקה בעבר · דרישות החובה קיימות");
+    }
+    const irrelevant = Boolean(
+      record &&
+        LRCacheData.amenityRelevance(record, CFG.requiredAmenities, CFG.irrelevantMissingPct).irrelevant
+    );
+    if (irrelevant && parts.length) parts[0] = `לא רלוונטית · ${parts[0].replace("נבדקה בעבר · ", "")}`;
+    if (record && CFG.showPriceChange) {
+      const change = priceChangeText(record);
+      if (change) parts.push(change);
+    }
+    if (record && CFG.showListingAge) {
+      const age = listingAgeText(record);
+      if (age) parts.push(age);
+    }
+    entry.card.classList.toggle("lr-irrelevant-removed", irrelevant && CFG.hideIrrelevant);
+    entry.card.classList.toggle("lr-cache-missing", missing.length > 0);
+    if (!parts.length) {
       if (!entry.cacheNote.hidden) entry.cacheNote.hidden = true;
-      entry.card.classList.remove("lr-cache-missing");
       return;
     }
-    const missing = CFG.requiredAmenities
-      .filter((amenity) => record.amenities[amenity] !== true)
-      .map((amenity) => AMENITY_LABELS[amenity] || amenity);
-    const state = missing.length ? "missing" : "matches";
-    const text = missing.length
-      ? `נבדקה בעבר · חסר: ${missing.join(", ")}`
-      : "נבדקה בעבר · דרישות החובה קיימות";
+    const text = parts.join(" · ");
     const signature = `${record.updatedAt}|${state}|${text}`;
     if (entry.cacheNote.dataset.signature !== signature) {
       entry.cacheNote.dataset.signature = signature;
       entry.cacheNote.dataset.state = state;
       entry.cacheNote.textContent = text;
-      entry.cacheNote.title = `המאפיינים נבדקו בתאריך ${new Date(record.updatedAt).toLocaleDateString("he-IL")}`;
+      entry.cacheNote.title = `נשמר לאחרונה בתאריך ${new Date(record.updatedAt).toLocaleDateString("he-IL")}`;
     }
     if (entry.cacheNote.hidden) entry.cacheNote.hidden = false;
-    entry.card.classList.toggle("lr-cache-missing", missing.length > 0);
   }
 
   function refreshAll() {
@@ -1922,7 +1976,8 @@
           "lr-deal-card",
           "lr-project-removed",
           "lr-not-near-rail",
-          "lr-street-removed"
+          "lr-street-removed",
+          "lr-irrelevant-removed"
         );
         highlightBrokerage(entry.card, false);
       }
@@ -1958,7 +2013,7 @@
   }
 
   // טוענים את ההגדרות לפני שמתחילים, ומעדכנים את הדף מיד כשהמשתמש משנה הגדרה
-  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice"];
+  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "irrelevantMissingPct"];
   // רצפת שפיות קבועה למחיר מכרטיס חיפוש: מסננת שכירות וכרטיסים שעוד נטענים
   const SEARCH_INDEX_MIN_PRICE = 100000;
   const AMENITY_LABELS = {
