@@ -516,12 +516,13 @@ var LRCacheExport = (() => {
     { key: "pricePerSqm", label: "מחיר למ״ר (₪)", width: 18 },
     // עמודות ניתוח: חלקן נוסחאות Excel חיות (הגיל מתעדכן כל יום שפותחים את הקובץ)
     { key: "listingAgeDays", label: "גיל המודעה (ימים)", width: 16, analysis: true, style: 10 },
-    { key: "sellerPressure", label: "לחץ למכור", width: 14, analysis: true },
+    { key: "sellerPressure", label: "מדד לחץ למכור (0–100)", width: 18, analysis: true },
     { key: "firstPrice", label: "מחיר ראשון שנצפה (₪)", width: 20, analysis: true },
     { key: "priceChange", label: "שינוי מחיר (₪)", width: 16, analysis: true, style: 5 },
     { key: "priceChangePct", label: "שינוי מחיר (%)", width: 14, analysis: true, style: 11 },
     { key: "ppsmVsCity", label: "מחיר למ״ר מול חציון העיר", width: 22, analysis: true, style: 11 },
     { key: "dealScore", label: "ציון שווה", width: 12, analysis: true },
+    { key: "pressureLevel", label: "רמת לחץ למכור", width: 14, analysis: true },
     { key: "observedPrice", label: "מחיר שנמדד באתר (₪)", width: 21 },
     { key: "priceHistoryCount", label: "תצפיות מחיר", width: 14 },
     { key: "rooms", label: "חדרים", width: 12 },
@@ -669,9 +670,6 @@ var LRCacheExport = (() => {
       }
       if (key === "priceChange") return `IF(OR(${price}="",${first}=""),"",${price}-${first})`;
       if (key === "priceChangePct") return `IF(OR(${change}="",N(${first})=0),"",${change}/${first})`;
-      if (key === "sellerPressure") {
-        return `IF(AND(${age}="",${pct}=""),"",IF(OR(N(${age})>=90,N(${pct})<=-0.05),"גבוהה",IF(OR(N(${age})>=45,N(${pct})<0),"בינונית","נמוכה")))`;
-      }
       return "";
     };
     const historyColumns = [
@@ -692,6 +690,7 @@ var LRCacheExport = (() => {
       const { site, listingId } = parseCacheKey(key);
       const coordinates = record.coordinates || {};
       const history = validPriceHistory(record);
+      const pressure = LRCacheData.sellerPressure(record, now);
       const timestamp = Number.isFinite(record.updatedAt)
         ? new Date(record.updatedAt).toISOString()
         : "";
@@ -728,6 +727,8 @@ var LRCacheExport = (() => {
             ? ppsmOf(record) / cityMedian.get(record.city) - 1
             : undefined,
         dealScore: LRCacheData.dealScore(record) ?? undefined,
+        sellerPressure: pressure ? pressure.score : undefined,
+        pressureLevel: pressure ? LRCacheData.PRESSURE_LABELS[pressure.level] : undefined,
       };
       for (const column of columns) {
         if (column.amenity) values[column.key] = record.amenities?.[column.amenity];
@@ -889,7 +890,8 @@ var LRCacheExport = (() => {
       ["מחיר למ״ר חציוני (₪)", `IFERROR(MEDIAN(${range("pricePerSqm")}),"")`, 5],
       ["גיל מודעה ממוצע (ימים)", `IFERROR(AVERAGE(${range("listingAgeDays")}),"")`, 10],
       ["מודעות שירדו במחיר", `COUNTIF(${range("priceChange")},"<0")`, 10],
-      ["מודעות עם לחץ גבוה למכור", `COUNTIF(${range("sellerPressure")},"גבוהה")`, 10],
+      ["מודעות עם לחץ גבוה למכור", `COUNTIF(${range("pressureLevel")},"גבוה")`, 10],
+      ["מדד לחץ למכור ממוצע", `IFERROR(AVERAGE(${range("sellerPressure")}),"")`, 10],
       ["מודעות תיווך", `COUNTIF(${range("brokerage")},"כן")`, 10],
       ["מרחק ממוצע מהרכבת (מ׳)", `IFERROR(AVERAGE(${range("railMeters")}),"")`, 10],
     ];
@@ -919,11 +921,11 @@ var LRCacheExport = (() => {
         ppsmValues ? `<c r="D${row}" s="5" t="n"><v>${Math.round(median(ppsmValues))}</v></c>` : `<c r="D${row}"/>`,
         formulaCell(`E${row}`, `IFERROR(AVERAGEIFS(${range("listingAgeDays")},${cityRange},${cityRef}),"")`, 10),
         formulaCell(`F${row}`, `COUNTIFS(${cityRange},${cityRef},${range("priceChange")},"<0")`, 10),
-        formulaCell(`G${row}`, `COUNTIFS(${cityRange},${cityRef},${range("sellerPressure")},"גבוהה")`, 10),
+        formulaCell(`G${row}`, `COUNTIFS(${cityRange},${cityRef},${range("pressureLevel")},"גבוה")`, 10),
       ].join("")}</row>`);
     });
     const summaryNote = cityHeaderRow + cityCounts.size + 3;
-    summaryRows.push(`<row r="${summaryNote}">${textCell(`A${summaryNote}`, "לחץ למכור: גבוה = 90 יום ומעלה באוויר או ירידת מחיר של 5% ומעלה; בינוני = 45 יום ומעלה או ירידה כלשהי. גיל המודעה מחושב מחדש בכל פתיחה של הקובץ.", 9)}</row>`);
+    summaryRows.push(`<row r="${summaryNote}">${textCell(`A${summaryNote}`, "מדד לחץ למכור (0–100): ימים באוויר עד 60 נק׳ (מלא ב־120 יום), ירידת מחיר מהשיא עד 30 נק׳ (מלא ב־10%), מספר הורדות עד 10 נק׳ (מלא ב־3). גבוה = 60 ומעלה, בינוני = 30 ומעלה. גיל המודעה מחושב מחדש בכל פתיחה של הקובץ.", 9)}</row>`);
     const summarySheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0" rightToLeft="1" tabSelected="1"/></sheetViews><cols><col min="1" max="1" width="30" customWidth="1"/><col min="2" max="7" width="20" customWidth="1"/></cols><sheetData>${summaryRows.join("")}</sheetData></worksheet>`;
 
     const relationships = [

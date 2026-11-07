@@ -189,7 +189,7 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
   assert.ok(files.has("[Content_Types].xml"));
-  assert.ok(sheet.includes('<autoFilter ref="A1:AR2"/>'));
+  assert.ok(sheet.includes('<autoFilter ref="A1:AS2"/>'));
   assert.ok(sheet.includes('rightToLeft="1"'));
   assert.ok(sheet.includes("מזהה מודעה/פרויקט"));
   assert.ok(sheet.includes("מחיר / החל מ׳ (₪)"));
@@ -206,8 +206,8 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
   assert.ok(sheet.includes("<v>420</v>"));
   assert.ok(sheet.includes("<t>תחנת שטמפפר</t>"));
   assert.ok(sheet.includes("תיווך?"));
-  assert.ok(sheet.includes('<c r="AG2" s="3" t="inlineStr"><is><t>כן</t>'));
-  assert.ok(sheet.includes('<c r="AE2" t="inlineStr"><is><t>כן</t>'));
+  assert.ok(sheet.includes('<c r="AH2" s="3" t="inlineStr"><is><t>כן</t>'));
+  assert.ok(sheet.includes('<c r="AF2" t="inlineStr"><is><t>כן</t>'));
   assert.ok(sheet.includes("<v>1790000</v>"));
   assert.ok(sheet.includes("<v>100</v>"));
   assert.ok(sheet.includes("<v>25000</v>"));
@@ -475,7 +475,8 @@ test("Excel export adds analysis formulas, city comparison and a summary sheet",
   const summary = files.get("xl/worksheets/sheet3.xml");
   const book = files.get("xl/workbook.xml");
   assert.ok(sheet.includes("גיל המודעה (ימים)"));
-  assert.ok(sheet.includes("לחץ למכור"));
+  assert.ok(sheet.includes("מדד לחץ למכור (0–100)"));
+  assert.ok(sheet.includes("רמת לחץ למכור"));
   assert.ok(sheet.includes("TODAY()-DATE(VALUE(LEFT(K2,4))"), "age is a live formula");
   assert.ok(sheet.includes("<v>2100000</v>"), "first observed price");
   assert.ok(sheet.includes("<f>IF(OR(M2=&quot;&quot;,T2=&quot;&quot;),&quot;&quot;,M2-T2)</f>"), "price change formula");

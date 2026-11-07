@@ -171,6 +171,13 @@
             <input data-search-range-max="listingAgeDays" type="number" min="0" step="1" placeholder="עד" aria-label="גיל מודעה מקסימלי בימים">
           </span>
         </label>
+        <label class="range-filter" title="מדד 0–100 מימים באוויר והורדות מחיר. 60 ומעלה = לחץ גבוה">
+          <span>לחץ למכור (0–100)</span>
+          <span class="range-inputs">
+            <input data-search-range-min="sellerPressure" type="number" min="0" max="100" step="1" placeholder="מ־" aria-label="מדד לחץ למכור מינימלי">
+            <input data-search-range-max="sellerPressure" type="number" min="0" max="100" step="1" placeholder="עד" aria-label="מדד לחץ למכור מקסימלי">
+          </span>
+        </label>
         <label class="range-filter">
           <span>מחיר למ״ר (₪)</span>
           <span class="range-inputs">
@@ -356,6 +363,7 @@
           <option value="pricePerSqm">מחיר למ״ר: מהנמוך לגבוה</option>
           <option value="railMeters">קרבה לרכבת</option>
           <option value="listingAgeDays">גיל מודעה: הוותיקות קודם</option>
+          <option value="sellerPressure">לחץ למכור: הגבוה קודם</option>
         </select>
       </label>
       <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>

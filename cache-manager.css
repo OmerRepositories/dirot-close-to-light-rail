@@ -663,3 +663,9 @@ button.stat-tile:hover { border-color: var(--line-strong); background: var(--sur
 .city-bar { flex: 1 1 auto; height: 10px; border-radius: 4px; background: var(--surface-sunk); }
 .city-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--action); }
 .city-bar-value { min-width: 40px; font-variant-numeric: tabular-nums; }
+
+/* ---------- מדד לחץ למכור ---------- */
+.pressure-chip { display: inline-block; min-width: 76px; padding: 1px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pressure-chip.high { color: var(--danger); background: var(--danger-soft); }
+.pressure-chip.medium { color: var(--warn); background: var(--warn-soft); }
+.pressure-chip.low { color: var(--muted); background: var(--surface-sunk); }

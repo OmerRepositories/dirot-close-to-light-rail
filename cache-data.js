@@ -312,7 +312,45 @@ var LRCacheData = (() => {
     return { irrelevant, missing, dealBreakerMissing, requiredCount: required.length };
   }
 
+  // מדד לחץ למכור (0–100): כמה זמן המודעה באוויר + כמה ובכמה פעמים המחיר ירד.
+  //   ימים באוויר  – עד 60 נק׳ (לינארי, מלא ב־120 יום)
+  //   ירידת מחיר   – עד 30 נק׳ (מהמחיר הגבוה שנצפה למחיר הנוכחי, מלא בירידה של 10%)
+  //   מספר הורדות  – עד 10 נק׳ (מלא ב־3 הורדות)
+  // רמה: גבוה ≥ 60, בינוני ≥ 30, אחרת נמוך. null כשאין גיל וגם אין היסטוריית מחירים.
+  const PRESSURE_FULL_AGE_DAYS = 120;
+  const PRESSURE_FULL_DROP = 0.1;
+  const PRESSURE_FULL_DROPS = 3;
+  function sellerPressure(record, now = Date.now()) {
+    if (!record || record.recordType === "project") return null;
+    let ageDays = Number.isFinite(record.listingAgeDays) ? record.listingAgeDays : null;
+    if (ageDays === null && record.listingCreatedAt) {
+      const created = Date.parse(record.listingCreatedAt);
+      if (Number.isFinite(created)) ageDays = Math.max(0, Math.floor((now - created) / 86400000));
+    }
+    const prices = (Array.isArray(record.priceHistory) ? record.priceHistory : [])
+      .map((point) => point && point.price)
+      .filter((price) => Number.isFinite(price) && price > 0);
+    if (ageDays === null && prices.length < 2) return null;
+    let drops = 0;
+    for (let index = 1; index < prices.length; index++) {
+      if (prices[index] < prices[index - 1]) drops++;
+    }
+    const peak = prices.length ? Math.max(...prices) : 0;
+    const current = prices.length ? prices[prices.length - 1] : 0;
+    const dropPct = peak > 0 && current < peak ? (peak - current) / peak : 0;
+    const ageScore = ageDays === null ? 0 : Math.min(ageDays / PRESSURE_FULL_AGE_DAYS, 1) * 60;
+    const dropScore = Math.min(dropPct / PRESSURE_FULL_DROP, 1) * 30;
+    const countScore = Math.min(drops / PRESSURE_FULL_DROPS, 1) * 10;
+    const score = Math.round(ageScore + dropScore + countScore);
+    const level = score >= 60 ? "high" : score >= 30 ? "medium" : "low";
+    return { score, level, ageDays, dropPct, drops };
+  }
+
+  const PRESSURE_LABELS = { high: "גבוה", medium: "בינוני", low: "נמוך" };
+
   return {
+    sellerPressure,
+    PRESSURE_LABELS,
     amenityRelevance,
     hasUncertainInitialPriceBaseline,
     inferredPriceHistoryTimestamp,

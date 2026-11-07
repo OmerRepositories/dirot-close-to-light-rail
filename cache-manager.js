@@ -326,6 +326,7 @@ const columns = [
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
   { key: "listingAgeDays", label: "גיל מודעה (ימים)", sortKey: "listingAgeDays", title: "כמה ימים המודעה באוויר; מחושב ונשמר בכל שמירה או רענון של המודעה" },
+  { key: "sellerPressure", label: "לחץ למכור", sortKey: "sellerPressure", title: "מדד 0–100: ימים באוויר (עד 60 נק׳), ירידת מחיר מהשיא (עד 30) ומספר הורדות (עד 10)" },
   { key: "price", label: "מחיר", sortKey: "price" },
   { key: "sqm", label: "מ״ר", sortKey: "sqm" },
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
@@ -677,6 +678,10 @@ function rowSortValue(key, record, priceRanks) {
   if (sort.key === "priceHistory") {
     return validPriceHistory(record).length;
   }
+  if (sort.key === "sellerPressure") {
+    const pressure = sellerPressure(record);
+    return pressure ? pressure.score : null;
+  }
   return record[sort.key];
 }
 
@@ -718,6 +723,10 @@ function numericRangeForRecord(record, key) {
       };
     }
     return LRCacheData.pricePerSqm(record);
+  }
+  if (key === "sellerPressure") {
+    const pressure = sellerPressure(record);
+    return pressure ? pressure.score : null;
   }
   return record[key];
 }
@@ -789,6 +798,10 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "price") return `${record.price ?? ""} ${displayPrice(record.price)}`;
   if (key === "sqm" || key === "rooms" || key === "railMeters" || key === "listingAgeDays") {
     return String(record[key] ?? "");
+  }
+  if (key === "sellerPressure") {
+    const pressure = sellerPressure(record);
+    return pressure ? `${pressure.score} ${LRCacheData.PRESSURE_LABELS[pressure.level]}` : "";
   }
   if (key === "pricePerSqm") return `${LRCacheData.pricePerSqm(record) ?? ""} ${displayPrice(LRCacheData.pricePerSqm(record))}`;
   if (key === "brokerage") return booleanText(record.brokerage)[0];
@@ -984,6 +997,15 @@ function renderRows() {
         td.title = record.railApprox === true ? "המרחק משוער" : "המרחק בקו אווירי";
       } else if (column.key === "rooms") {
         td.textContent = Number.isFinite(record.rooms) ? String(record.rooms) : "";
+      } else if (column.key === "sellerPressure") {
+        const pressure = sellerPressure(record);
+        td.title = pressureTitle(pressure);
+        if (pressure) {
+          const chip = document.createElement("span");
+          chip.className = `pressure-chip ${pressure.level}`;
+          chip.textContent = `${pressure.score} · ${LRCacheData.PRESSURE_LABELS[pressure.level]}`;
+          td.appendChild(chip);
+        }
       } else if (column.key === "listingAgeDays") {
         // מחושב ונשמר בזמן שמירה/רענון של המודעה – לא מחשבים כאן בכל ציור
         td.textContent = Number.isFinite(record.listingAgeDays) ? record.listingAgeDays.toLocaleString("he-IL") : "";
@@ -1361,16 +1383,28 @@ function showSettingsSection(section) {
 const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "refresh", "transfer"];
 
 // ---------- לוח בקרה ----------
+// מדד לחץ למכור (LRCacheData.sellerPressure) – נשמר בזיכרון לכל רשומה כדי שמיון וציור לא יחשבו שוב ושוב
+const pressureCache = new WeakMap();
 function sellerPressure(record) {
-  const history = validPriceHistory(record);
-  const change = history.length >= 2 && history[0].price > 0
-    ? (history[history.length - 1].price - history[0].price) / history[0].price
-    : 0;
-  const age = Number.isFinite(record.listingAgeDays) ? record.listingAgeDays : null;
-  if (age === null && !change) return "";
-  if ((age ?? 0) >= 90 || change <= -0.05) return "high";
-  if ((age ?? 0) >= 45 || change < 0) return "medium";
-  return "low";
+  if (!record || typeof record !== "object") return null;
+  if (!pressureCache.has(record)) pressureCache.set(record, LRCacheData.sellerPressure(record));
+  return pressureCache.get(record);
+}
+
+function sortByPressure() {
+  sort.key = "sellerPressure";
+  sort.direction = -1;
+  renderRows();
+}
+
+function pressureTitle(pressure) {
+  if (!pressure) return "אין מספיק מידע: חסרים גיל מודעה והיסטוריית מחירים";
+  const parts = [
+    Number.isFinite(pressure.ageDays) ? `${pressure.ageDays} ימים באוויר` : "גיל לא ידוע",
+    pressure.drops ? `${pressure.drops} הורדות מחיר` : "בלי הורדות מחיר",
+  ];
+  if (pressure.dropPct) parts.push(`ירידה של ${Math.round(pressure.dropPct * 100)}% מהשיא`);
+  return `מדד לחץ למכור ${pressure.score}/100 (${LRCacheData.PRESSURE_LABELS[pressure.level]}): ${parts.join(" · ")}`;
 }
 
 function medianOf(values) {
@@ -1409,6 +1443,7 @@ async function renderDashboard() {
     refreshedToday: 0, refreshedWeek: 0, neverRefreshed: 0,
     drops: 0, rises: 0, brokerage: 0, nearRail: 0,
     pressure: { high: 0, medium: 0, low: 0 },
+    pressureScores: [],
     prices: [], ppsm: [], ages: [],
   };
   const cities = new Map();
@@ -1443,7 +1478,10 @@ async function renderDashboard() {
       stats.nearRail++;
     }
     const pressure = sellerPressure(record);
-    if (pressure) stats.pressure[pressure]++;
+    if (pressure) {
+      stats.pressure[pressure.level]++;
+      stats.pressureScores.push(pressure.score);
+    }
     const ppsm = LRCacheData.pricePerSqm(record);
     if (Number.isFinite(record.price)) stats.prices.push(record.price);
     if (Number.isFinite(ppsm)) stats.ppsm.push(ppsm);
@@ -1492,7 +1530,13 @@ function drawDashboard(stats, cities) {
     tile("מודעות שמורות", number(stats.listings), `יד2 ${number(stats.yad2)} · מדלן ${number(stats.madlan)} · ${number(stats.projects)} פרויקטים`, () => openSearchWith({}), "teal"),
     tile("לא רלוונטיות", number(stats.irrelevant), `${pct(stats.irrelevant, stats.listings)} מהמודעות · לא נכללות ברענון`, () => openSearchWith({ status: "irrelevant" }), "amber"),
     tile("ירדו במחיר", number(stats.drops), `${number(stats.rises)} עלו במחיר`, () => setActiveTab("priceChanges"), "green"),
-    tile("לחץ גבוה למכור", number(stats.pressure.high), "90+ ימים באוויר או ירידה של 5%+", null, "red"),
+    tile(
+      "לחץ גבוה למכור",
+      number(stats.pressure.high),
+      `מדד 60+ מתוך 100 · חציון המדד: ${number(medianOf(stats.pressureScores))}`,
+      () => { openSearchWith({}); sortByPressure(); },
+      "red"
+    ),
   );
   root.appendChild(heroes);
 
@@ -1533,7 +1577,7 @@ function drawDashboard(stats, cities) {
   prices.append(
     tile("מחיר חציוני", `₪${number(medianOf(stats.prices))}`),
     tile("מחיר למ״ר חציוני", `₪${number(medianOf(stats.ppsm))}`),
-    tile("גיל מודעה חציוני", `${number(medianOf(stats.ages))} ימים`, `לחץ בינוני: ${number(stats.pressure.medium)} · נמוך: ${number(stats.pressure.low)}`),
+    tile("גיל מודעה חציוני", `${number(medianOf(stats.ages))} ימים`, `לחץ למכור – בינוני: ${number(stats.pressure.medium)} · נמוך: ${number(stats.pressure.low)}`),
     tile("קרובות לרכבת", number(stats.nearRail), `עד ${number(timelinePreferences.nearM)} מ׳ · תיווך: ${number(stats.brokerage)}`),
   );
   section("מחירים ומיקום").appendChild(prices);
@@ -2923,7 +2967,7 @@ $("clearPriceHistory").addEventListener("click", clearPriceHistories);
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;
-  sort.direction = ["updatedAt", "dealScore", "listingAgeDays"].includes(sort.key) ? -1 : 1;
+  sort.direction = ["updatedAt", "dealScore", "listingAgeDays", "sellerPressure"].includes(sort.key) ? -1 : 1;
   renderRows();
 });
 form.addEventListener("input", (event) => {

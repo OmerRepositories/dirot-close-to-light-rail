@@ -1651,6 +1651,11 @@
     if (record && CFG.showListingAge) {
       const age = listingAgeText(record);
       if (age) parts.push(age);
+      // מדד לחץ למכור (ימים באוויר + הורדות מחיר); מוצג רק כשהוא בינוני או גבוה
+      const pressure = LRCacheData.sellerPressure(record);
+      if (pressure && pressure.level !== "low") {
+        parts.push(`לחץ למכור ${pressure.score}/100 (${LRCacheData.PRESSURE_LABELS[pressure.level]})`);
+      }
     }
     entry.card.classList.toggle("lr-irrelevant-removed", irrelevant && CFG.hideIrrelevant);
     entry.card.classList.toggle("lr-cache-missing", missing.length > 0);

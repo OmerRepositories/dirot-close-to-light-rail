@@ -325,3 +325,35 @@ test("a missing deal-breaker amenity makes a listing irrelevant regardless of th
   // בלי דיל ברייקר: 1 מתוך 4 חסר < 50%
   assert.equal(CacheData.amenityRelevance(record, [...required, "secureRoom"], 50, []).irrelevant, false);
 });
+
+test("sellerPressure combines days on market with price drops into a 0-100 score", () => {
+  const now = Date.UTC(2026, 10, 7);
+  // 60 יום = 30 נק׳; ירידה של 5% מהשיא = 15 נק׳; 2 הורדות = 6.67 נק׳ → 52 → בינוני
+  const medium = CacheData.sellerPressure({
+    recordType: "listing",
+    listingAgeDays: 60,
+    priceHistory: [{ price: 2_000_000 }, { price: 1_950_000 }, { price: 1_900_000 }],
+  }, now);
+  assert.deepEqual(
+    { score: medium.score, level: medium.level, drops: medium.drops },
+    { score: 52, level: "medium", drops: 2 }
+  );
+  assert.ok(Math.abs(medium.dropPct - 0.05) < 1e-9);
+  // 150 יום (מלא) + ירידה של 12% (מלא) + 3 הורדות (מלא) = 100 → גבוה
+  const high = CacheData.sellerPressure({
+    recordType: "listing",
+    listingCreatedAt: new Date(now - 150 * 86400000).toISOString().slice(0, 10),
+    priceHistory: [{ price: 1_000_000 }, { price: 960_000 }, { price: 920_000 }, { price: 880_000 }],
+  }, now);
+  assert.deepEqual({ score: high.score, level: high.level }, { score: 100, level: "high" });
+  // עלייה במחיר אינה לחץ; מודעה חדשה = נמוך
+  const fresh = CacheData.sellerPressure({
+    recordType: "listing",
+    listingAgeDays: 6,
+    priceHistory: [{ price: 1_000_000 }, { price: 1_100_000 }],
+  }, now);
+  assert.deepEqual({ score: fresh.score, level: fresh.level, drops: fresh.drops }, { score: 3, level: "low", drops: 0 });
+  // בלי גיל ובלי היסטוריה / פרויקט → אין מדד
+  assert.equal(CacheData.sellerPressure({ recordType: "listing" }, now), null);
+  assert.equal(CacheData.sellerPressure({ recordType: "project", listingAgeDays: 200 }, now), null);
+});
