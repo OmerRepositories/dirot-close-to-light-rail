@@ -201,6 +201,19 @@ var LRMadlan = (() => {
     return element ? priceFromText(element.textContent) : null;
   }
 
+  // כרטיס פרויקט בתוצאות חיפוש: מקשר ל־‎/projects/‎ ומציג "החל מ־" (property-min-price)
+  function isProjectCard(root) {
+    if (!root || root === document || !root.querySelector) return false;
+    if (root.querySelector('[data-auto="property-min-price"]')) return true;
+    const link = root.querySelector('a[data-auto="listed-bulletin-clickable"][href]');
+    if (!link) return false;
+    try {
+      return /^\/projects\//i.test(new URL(link.href, location.href).pathname);
+    } catch {
+      return false;
+    }
+  }
+
   function isProjectPage(path) {
     return (
       /^\/projects\/[^/]+\/?$/.test(path) ||
@@ -463,6 +476,7 @@ var LRMadlan = (() => {
     projectExportData,
     extractPriceSqm,
     readAmenities,
+    isProjectCard,
     isProjectPage,
     isProjectListingPage,
   };

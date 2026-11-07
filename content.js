@@ -1474,6 +1474,8 @@
     const parser = IS_YAD2 ? LRYad2 : LRMadlan;
     const root = entry.kind === "single" ? document : entry.card;
     if (isRentalListing(entry)) return;
+    // מדלן: כרטיס פרויקט בחיפוש ("החל מ־...") הוא לא מודעה – לא נשמר כמודעה
+    if (entry.kind === "list" && !IS_YAD2 && LRMadlan.isProjectCard(root)) return;
     const id = parser.listingId(root);
     if (!id) return;
     const key = cacheKeyForListing(id);

@@ -122,3 +122,39 @@ test("the previous price on a Madlan card is read separately and not taken as th
   const stats = LRMadlan.extractPriceSqm(card, "\u200F3,700,000 \u200F₪\n\u200F3,590,000 \u200F₪\n4 חד׳\n95 מ״ר");
   assert.equal(stats.price, 3_590_000);
 });
+
+test("Madlan project cards in search are recognised and earlier misfiled records become projects", () => {
+  const { LRMadlan } = madlanPage([], "/for-sale/x");
+  const card = (selectors) => ({
+    querySelector: (selector) => selectors[selector] || null,
+  });
+  assert.equal(
+    LRMadlan.isProjectCard(card({ '[data-auto="property-min-price"]': { textContent: "החל מ - 2,290,000 ₪" } })),
+    true
+  );
+  assert.equal(
+    LRMadlan.isProjectCard(card({ 'a[data-auto="listed-bulletin-clickable"][href]': { href: "/projects/KISH_18" } })),
+    true
+  );
+  assert.equal(
+    LRMadlan.isProjectCard(card({ 'a[data-auto="listed-bulletin-clickable"][href]': { href: "/listings/AbC123" } })),
+    false
+  );
+
+  const cache = {
+    "madlan:KISH_18": {
+      recordType: "listing", url: "https://www.madlan.co.il/projects/KISH_18", price: 2_290_000,
+      priceHistory: [{ price: 2_290_000, at: 1 }], observedPrice: 2_290_000,
+    },
+    "madlan:AbC123": { recordType: "listing", url: "https://www.madlan.co.il/listings/AbC123" },
+    "yad2:abc": { recordType: "listing", url: "https://www.yad2.co.il/projects/abc" },
+  };
+  const result = CacheData.fixMisfiledProjects(cache);
+  assert.equal(result.updatedCount, 1);
+  assert.equal(result.cache["madlan:KISH_18"].recordType, "project");
+  assert.equal(result.cache["madlan:KISH_18"].priceHistory, undefined);
+  assert.equal(result.cache["madlan:KISH_18"].price, 2_290_000);
+  assert.equal(result.cache["madlan:AbC123"], cache["madlan:AbC123"]);
+  assert.equal(result.cache["yad2:abc"], cache["yad2:abc"]);
+  assert.equal(CacheData.fixMisfiledProjects(result.cache).updatedCount, 0, "idempotent");
+});

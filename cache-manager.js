@@ -429,25 +429,36 @@ async function restoreStorageArea(area, snapshot, attemptedValues) {
 // קודם בודקים על המידע שכבר בידינו; קוראים שוב מהאחסון וכותבים רק אם באמת יש מה לתקן.
 function applyDataFixes(source) {
   const baseline = LRCacheData.addEstimatedBaselineDates(source);
-  const outliers = LRCacheData.cleanPriceOutliers(baseline.cache);
+  const projects = LRCacheData.fixMisfiledProjects(baseline.cache);
+  const outliers = LRCacheData.cleanPriceOutliers(projects.cache);
   return {
     cache: outliers.cache,
     baselineCount: baseline.updatedCount,
+    projectFixCount: projects.updatedCount,
     priceFixCount: outliers.updatedCount,
     removedPoints: outliers.removedPoints,
   };
+}
+
+function dataFixCount(fixes) {
+  return fixes.baselineCount + fixes.priceFixCount + fixes.projectFixCount;
 }
 
 async function migrateEstimatedBaselineDates(sourceCache) {
   let latestCache = sourceCache;
   try {
     const probe = applyDataFixes(sourceCache);
-    if (!probe.baselineCount && !probe.priceFixCount) return sourceCache;
+    if (!dataFixCount(probe)) return sourceCache;
     latestCache = await storageGet();
     const migration = applyDataFixes(latestCache);
-    if (!migration.baselineCount && !migration.priceFixCount) return latestCache;
+    if (!dataFixCount(migration)) return latestCache;
     await storageSet({ [CACHE_KEY]: migration.cache });
     const notes = [];
+    if (migration.projectFixCount) {
+      notes.push(
+        `${migration.projectFixCount.toLocaleString("he-IL")} כרטיסי פרויקט ממדלן שנשמרו כמודעות סומנו כפרויקטים`
+      );
+    }
     if (migration.priceFixCount) {
       notes.push(
         `תוקנו מחירים שפוענחו לא נכון ב־${migration.priceFixCount.toLocaleString("he-IL")} מודעות (${migration.removedPoints.toLocaleString("he-IL")} תצפיות שגויות הוסרו מההיסטוריה)`

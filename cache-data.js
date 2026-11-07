@@ -185,6 +185,35 @@ var LRCacheData = (() => {
     return { cache: cleanedCache, updatedCount, removedPoints };
   }
 
+  // כרטיס פרויקט בתוצאות החיפוש של מדלן ("החל מ־₪2,290,000") נשמר בעבר כמודעה רגילה.
+  // רשומה כזו (קישור ‎/projects/‎) מסומנת כפרויקט: לא נכנסת לרענון ולסטטיסטיקה של מודעות,
+  // והיסטוריית "המחיר" שלה (מחיר התחלתי של פרויקט) נמחקת.
+  function isMadlanProjectUrl(url) {
+    try {
+      const parsed = new URL(url);
+      return /(^|\.)madlan\.co\.il$/i.test(parsed.hostname) && /^\/projects\//i.test(parsed.pathname);
+    } catch {
+      return false;
+    }
+  }
+
+  function fixMisfiledProjects(cache) {
+    const fixed = { ...(cache && typeof cache === "object" ? cache : {}) };
+    let updatedCount = 0;
+    for (const [key, record] of Object.entries(fixed)) {
+      if (!key.startsWith("madlan:") || !record || record.recordType === "project") continue;
+      if (!isMadlanProjectUrl(record.url)) continue;
+      const project = { ...record, recordType: "project" };
+      delete project.priceHistory;
+      delete project.observedPrice;
+      delete project.suspectPrice;
+      delete project.suspectCount;
+      fixed[key] = project;
+      updatedCount++;
+    }
+    return { cache: fixed, updatedCount };
+  }
+
   // מחזיר גם accepted: false כשהמחיר נראה שגוי – אז לא מעדכנים את מחיר המודעה.
   // options.source: "page" (עמוד המודעה) או "search" (כרטיס בתוצאות חיפוש); options.sqm לבדיקת סבירות.
   function recordPriceObservation(previous, price, timestamp = Date.now(), options = {}) {
@@ -530,6 +559,8 @@ var LRCacheData = (() => {
     recordPriceObservation,
     mergeSiteHistory,
     withCardPreviousPrice,
+    isMadlanProjectUrl,
+    fixMisfiledProjects,
     pricePerSqm,
     matchesNumericRange,
     hasListingDeletionFilters,
