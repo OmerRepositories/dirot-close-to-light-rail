@@ -596,3 +596,72 @@ pre {
 /* ---------- הגדרות: הטופס של חלון ההגדרות במצב עמוד ---------- */
 .settings-panel { padding: 0; overflow: hidden !important; }
 #settingsFrame { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: transparent; color-scheme: normal; }
+
+/* ---------- טעינה בחלקים ---------- */
+.more-rows {
+  position: sticky;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.more-rows[hidden] { display: none; }
+.timeline-more { position: static; list-style: none; }
+
+/* ---------- לוח בקרה ---------- */
+.dashboard-panel { padding: 20px clamp(16px, 2vw, 28px); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.dashboard { display: grid; gap: 16px; }
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.stat-tile {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-height: 108px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--tone, var(--line-strong));
+  border-radius: var(--r-md);
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+  text-align: right;
+  white-space: normal;
+}
+.stat-row.compact .stat-tile { min-height: 88px; border-top-width: 1px; background: var(--surface-alt); }
+button.stat-tile { cursor: pointer; }
+button.stat-tile:hover { border-color: var(--line-strong); background: var(--surface-alt); transform: translateY(-2px); }
+.stat-label { color: var(--muted); font-size: 13px; font-weight: 500; }
+.stat-value { font-size: 30px; font-weight: 700; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat-row.compact .stat-value { font-size: 22px; }
+.stat-note { color: var(--muted); font-size: 13px; }
+.dash-card { padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.dash-card h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; }
+/* פס מחולק: צבעים מהפלטה שנבדקה (רלוונטי/לא רלוונטי), רווח של 2px בין המקטעים */
+:root { --fit-yes: #1baf7a; --fit-no: #eb6834; }
+@media (prefers-color-scheme: dark) { :root { --fit-yes: #199e70; --fit-no: #d95926; } }
+.split-bar { display: flex; gap: 2px; height: 16px; overflow: hidden; border-radius: 4px; background: var(--surface-sunk); }
+.split-part { min-width: 4px; border-radius: 4px; }
+.split-part.relevant { background: var(--fit-yes); }
+.split-part.irrelevant { background: var(--fit-no); }
+.split-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; font-size: 13px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-item.muted { color: var(--muted); }
+.legend-swatch { width: 10px; height: 10px; border-radius: 3px; }
+.legend-swatch.relevant { background: var(--fit-yes); }
+.legend-swatch.irrelevant { background: var(--fit-no); }
+.city-table { width: 100%; min-width: 0; border-collapse: collapse; }
+.city-table th, .city-table td { min-width: 0; padding: 8px; border-bottom: 1px solid var(--line-soft); text-align: right; white-space: nowrap; }
+.city-table th { position: static; color: var(--muted); font-weight: 600; background: transparent; }
+.city-table td:first-child, .city-table th:first-child { position: static; background: transparent; box-shadow: none; }
+.city-table tbody tr { cursor: pointer; }
+.city-table tbody tr:hover td { background: var(--surface-alt); }
+.city-name { font-weight: 600; }
+.city-count { width: 40%; }
+.city-count { display: flex; align-items: center; gap: 10px; }
+.city-bar { flex: 1 1 auto; height: 10px; border-radius: 4px; background: var(--surface-sunk); }
+.city-bar-fill { display: block; height: 100%; border-radius: 4px; background: var(--action); }
+.city-bar-value { min-width: 40px; font-variant-numeric: tabular-nums; }

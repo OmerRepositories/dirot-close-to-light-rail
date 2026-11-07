@@ -1500,6 +1500,10 @@
           normalizeListingDate(listingMetadata.listingUpdatedAt)) ||
         previous.listingUpdatedAt,
       brokerage: hasBrokerageSignal(root),
+      ...listingAgeFields(
+        (listingMetadata.listingCreatedAt && normalizeListingDate(listingMetadata.listingCreatedAt)) ||
+          previous.listingCreatedAt
+      ),
       // "search" = נשמרה רק מכרטיס בתוצאות החיפוש (מידע חלקי); "page" = עמוד המודעה נפתח
       indexedFrom: fromSearch ? previous.indexedFrom || "search" : "page",
       ...extra,
@@ -1541,6 +1545,17 @@
     if (!Number.isFinite(stats.price) || stats.price <= 0) return false;
     if (!address.street && !address.city) return false;
     return Number.isFinite(stats.sqm) || Number.isFinite(listingMetadata.rooms);
+  }
+
+  // גיל המודעה נשמר ברשומה בכל שמירה/רענון, כדי שמנהל המידע יציג אותו בלי לחשב בכל ציור.
+  // listingAgeAt = מתי חושב (יום שלם), כך שהרשומה נשמרת מחדש לכל היותר פעם ביום בגלל הגיל.
+  function listingAgeFields(createdAt) {
+    const created = createdAt ? Date.parse(createdAt) : NaN;
+    if (!Number.isFinite(created)) return {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const days = Math.max(0, Math.floor((today.getTime() - created) / 86400000));
+    return { listingAgeDays: days, listingAgeAt: today.getTime() };
   }
 
   function normalizeListingDate(value) {

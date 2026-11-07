@@ -199,6 +199,8 @@ function readListingDeletionFilters() {
 }
 
 function renderListingDeletionPreview() {
+  // מסך המחיקה לא מוצג – אין טעם לסנן את כל המאגר; הוא ייבנה כשעוברים אליו
+  if (activeTab !== "delete") return;
   const status = $("deletePreviewStatus");
   const list = $("deletePreviewList");
   const button = $("deleteMatchingListings");
@@ -323,6 +325,7 @@ const columns = [
   { key: "site", label: "אתר", sortKey: "site" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
+  { key: "listingAgeDays", label: "גיל מודעה (ימים)", sortKey: "listingAgeDays", title: "כמה ימים המודעה באוויר; מחושב ונשמר בכל שמירה או רענון של המודעה" },
   { key: "price", label: "מחיר", sortKey: "price" },
   { key: "sqm", label: "מ״ר", sortKey: "sqm" },
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
@@ -644,7 +647,7 @@ function renderHeader() {
       filter.dataset.columnFilter = column.key;
       filter.setAttribute("aria-label", `חיפוש בעמודה ${column.label}`);
       filter.placeholder = "חיפוש";
-      filter.addEventListener("input", renderRows);
+      filter.addEventListener("input", scheduleRenderRows);
       empty.appendChild(filter);
     }
     filters.appendChild(empty);
@@ -784,7 +787,9 @@ function columnFilterText(key, record, recordKey, priceRanks) {
       : searchOnly.trim();
   }
   if (key === "price") return `${record.price ?? ""} ${displayPrice(record.price)}`;
-  if (key === "sqm" || key === "rooms" || key === "railMeters") return String(record[key] ?? "");
+  if (key === "sqm" || key === "rooms" || key === "railMeters" || key === "listingAgeDays") {
+    return String(record[key] ?? "");
+  }
   if (key === "pricePerSqm") return `${LRCacheData.pricePerSqm(record) ?? ""} ${displayPrice(LRCacheData.pricePerSqm(record))}`;
   if (key === "brokerage") return booleanText(record.brokerage)[0];
   if (key.startsWith("amenity:")) {
@@ -831,8 +836,16 @@ function renderRows() {
   const ranges = searchMode
     ? activeNumericRanges("[data-search-range-min], [data-search-range-max]")
     : activeNumericRanges();
-  const priceRanks = allPriceRanks(Object.entries(cache));
-  visibleRecords = Object.entries(cache)
+  ensureListingAges(cache);
+  const priceRanks = priceRanksFor(cache);
+  // במסך החיפוש לא טוענים את כל המאגר מראש: מחכים שהמשתמש יקליד או יבחר מסנן
+  const searchDates = [...document.querySelectorAll("[data-search-date-min], [data-search-date-max]")]
+    .some((input) => input.value);
+  searchWaiting = searchMode && !(
+    query || site || type || $("listingSearchStatus").value ||
+    searchBoolFilters.length || amenityFilters.length || ranges.size || searchDates
+  );
+  visibleRecords = searchWaiting ? [] : Object.entries(cache)
     .filter(([key, record]) => {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (site && recordSite(key) !== site) return false;
@@ -858,8 +871,7 @@ function renderRows() {
       )) return false;
       if (!matchesNumericFilters(record, ranges)) return false;
       if (searchMode && !matchesSearchDateFilters(record)) return false;
-      const haystack = `${key} ${JSON.stringify(record)}`.toLocaleLowerCase("he");
-      if (query && !haystack.includes(query)) return false;
+      if (query && !recordHaystack(key, record).includes(query)) return false;
       return columnFilters.every(([field, value]) =>
         columnFilterText(field, record, key, priceRanks)
           .toLocaleLowerCase("he")
@@ -882,7 +894,8 @@ function renderRows() {
     });
 
   rows.replaceChildren();
-  for (const [key, record] of visibleRecords) {
+  // בונים רק את השורות שרואים: 100 בכל פעם, והשאר נוספות כשגוללים לסוף הטבלה
+  rowRenderer = ([key, record]) => {
     const row = document.createElement("tr");
     row.tabIndex = 0;
     row.dataset.key = key;
@@ -971,6 +984,12 @@ function renderRows() {
         td.title = record.railApprox === true ? "המרחק משוער" : "המרחק בקו אווירי";
       } else if (column.key === "rooms") {
         td.textContent = Number.isFinite(record.rooms) ? String(record.rooms) : "";
+      } else if (column.key === "listingAgeDays") {
+        // מחושב ונשמר בזמן שמירה/רענון של המודעה – לא מחשבים כאן בכל ציור
+        td.textContent = Number.isFinite(record.listingAgeDays) ? record.listingAgeDays.toLocaleString("he-IL") : "";
+        if (Number.isFinite(record.listingAgeAt)) {
+          td.title = `חושב בעדכון האחרון של המודעה (${displayDate(record.listingAgeAt)})`;
+        }
       } else if (column.key === "brokerage") {
         td.appendChild(renderBoolean(record.brokerage));
       } else if (column.key === "dealScore") {
@@ -1035,11 +1054,13 @@ function renderRows() {
       row.appendChild(td);
     }
     rows.appendChild(row);
-  }
-  const resultCount = `${visibleRecords.length.toLocaleString("he-IL")} מתוך ${Object.keys(cache).length.toLocaleString("he-IL")} רשומות`;
-  const savedListingCount = Object.values(cache).filter(
-    (record) => record && typeof record === "object" && recordType(record) === "listing"
-  ).length;
+  };
+  renderedRowCount = 0;
+  appendRowPage();
+  const resultCount = searchWaiting
+    ? `${Object.keys(cache).length.toLocaleString("he-IL")} רשומות במאגר · בחרו מסנן או הקלידו כדי לחפש`
+    : `${visibleRecords.length.toLocaleString("he-IL")} מתוך ${Object.keys(cache).length.toLocaleString("he-IL")} רשומות`;
+  const savedListingCount = listingCountFor(cache);
   $("listingsCount").textContent = savedListingCount.toLocaleString("he-IL");
   $("listingsCount").title = `${savedListingCount.toLocaleString("he-IL")} מודעות שמורות`;
   $("listingsTab").setAttribute(
@@ -1049,16 +1070,143 @@ function renderRows() {
   $("recordCount").textContent = resultCount;
   $("searchResultCount").textContent = resultCount;
   $("emptyState").hidden = visibleRecords.length > 0;
+  $("emptyState").textContent = searchWaiting
+    ? "התחילו להקליד מילת חיפוש או לבחור מסנן – התוצאות יופיעו כאן."
+    : "לא נמצאו רשומות מתאימות.";
   $("sortSelect").value = sort.key;
   renderHeaderSortState();
-  renderPriceTimeline();
+  // ציר הזמן נבנה רק כשהוא מוצג; אחרת רק מסמנים שצריך לבנות אותו מחדש
+  if (activeTab === "priceChanges") renderPriceTimeline();
+  else timelineDirty = true;
 }
 
+// ---------- ביצועים: טעינה בחלקים, זיכרון ביניים ועיכוב הקלדה ----------
+const ROW_PAGE_SIZE = 100;
+let rowRenderer = null;
+let renderedRowCount = 0;
+let searchWaiting = false;
+let timelineDirty = true;
+const haystackCache = new WeakMap();
+let priceRanksMemo = { cache: null, size: -1, ranks: new Map() };
+let listingCountMemo = { cache: null, size: -1, count: 0 };
+
+function recordHaystack(key, record) {
+  let text = haystackCache.get(record);
+  if (text === undefined) {
+    text = `${key} ${JSON.stringify(record)}`.toLocaleLowerCase("he");
+    haystackCache.set(record, text);
+  }
+  return text;
+}
+
+// מודעות שנשמרו לפני שהגיל נשמר ברשומה: משלימים פעם אחת לכל טעינת מטמון (בזיכרון בלבד);
+// ברענון/שמירה הבאים של המודעה הגיל נשמר בה עצמה.
+let agesFilledFor = { cache: null, size: -1 };
+function ensureListingAges(currentCache) {
+  const size = Object.keys(currentCache).length;
+  if (agesFilledFor.cache === currentCache && agesFilledFor.size === size) return;
+  agesFilledFor = { cache: currentCache, size };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const record of Object.values(currentCache)) {
+    if (!record || typeof record !== "object" || Number.isFinite(record.listingAgeDays)) continue;
+    const created = record.listingCreatedAt ? Date.parse(record.listingCreatedAt) : NaN;
+    if (!Number.isFinite(created)) continue;
+    Object.defineProperty(record, "listingAgeDays", {
+      value: Math.max(0, Math.floor((today.getTime() - created) / 86400000)),
+      enumerable: false, // לא נכתב חזרה לאחסון ולא נכנס לחיפוש הטקסט
+      configurable: true,
+      writable: true,
+    });
+  }
+}
+
+function priceRanksFor(currentCache) {
+  const size = Object.keys(currentCache).length;
+  if (priceRanksMemo.cache !== currentCache || priceRanksMemo.size !== size) {
+    priceRanksMemo = { cache: currentCache, size, ranks: allPriceRanks(Object.entries(currentCache)) };
+  }
+  return priceRanksMemo.ranks;
+}
+
+function listingCountFor(currentCache) {
+  const size = Object.keys(currentCache).length;
+  if (listingCountMemo.cache !== currentCache || listingCountMemo.size !== size) {
+    const count = Object.values(currentCache).filter(
+      (record) => record && typeof record === "object" && recordType(record) === "listing"
+    ).length;
+    listingCountMemo = { cache: currentCache, size, count };
+  }
+  return listingCountMemo.count;
+}
+
+function moreRowsBar() {
+  let bar = $("moreRows");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "moreRows";
+    bar.className = "more-rows";
+    const label = document.createElement("span");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.addEventListener("click", appendRowPage);
+    bar.append(label, button);
+    rows.closest(".table-wrap").appendChild(bar);
+    // כשהפס מגיע לתצוגה (גלילה לסוף הטבלה) טוענים את 100 הבאות
+    new IntersectionObserver((observed) => {
+      if (observed.some((entry) => entry.isIntersecting)) appendRowPage();
+    }, { root: rows.closest(".table-wrap"), rootMargin: "300px" }).observe(bar);
+  }
+  return bar;
+}
+
+function appendRowPage() {
+  if (!rowRenderer) return;
+  const end = Math.min(visibleRecords.length, renderedRowCount + ROW_PAGE_SIZE);
+  for (; renderedRowCount < end; renderedRowCount++) rowRenderer(visibleRecords[renderedRowCount]);
+  const bar = moreRowsBar();
+  const remaining = visibleRecords.length - renderedRowCount;
+  bar.hidden = remaining <= 0;
+  bar.firstChild.textContent = `מוצגות ${renderedRowCount.toLocaleString("he-IL")} מתוך ${visibleRecords.length.toLocaleString("he-IL")}`;
+  bar.lastChild.textContent = `הצג עוד ${Math.min(ROW_PAGE_SIZE, remaining).toLocaleString("he-IL")}`;
+}
+
+function debounce(fn, wait = 180) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+const scheduleRenderRows = debounce(() => renderRows());
+const scheduleDeletionPreview = debounce(() => renderListingDeletionPreview());
+const scheduleTimeline = debounce(() => renderPriceTimeline());
+
+let timelineMemo = { cache: null, size: -1, events: [], changes: 0 };
+function timelineEventsFor(currentCache) {
+  const size = Object.keys(currentCache).length;
+  if (timelineMemo.cache !== currentCache || timelineMemo.size !== size) {
+    const events = LRCacheExport.getPriceTimelineEvents(currentCache);
+    timelineMemo = {
+      cache: currentCache,
+      size,
+      events,
+      changes: events.filter((event) => event.kind === "increase" || event.kind === "decrease").length,
+    };
+  }
+  return timelineMemo;
+}
+
+const TIMELINE_PAGE_SIZE = 150;
+let timelineLimit = TIMELINE_PAGE_SIZE;
+
 function renderPriceTimeline() {
+  timelineDirty = false;
   const timeline = $("priceTimeline");
   timeline.replaceChildren();
-  const allEvents = LRCacheExport.getPriceTimelineEvents(cache);
-  const changes = allEvents.filter((event) => event.kind === "increase" || event.kind === "decrease");
+  const memo = timelineEventsFor(cache);
+  const allEvents = memo.events;
+  const changes = { length: memo.changes };
   const kindFilteredEvents = priceTimelineFilter === "all"
     ? allEvents
     : allEvents.filter((event) => event.kind === priceTimelineFilter);
@@ -1068,7 +1216,7 @@ function renderPriceTimeline() {
   $("emptyTimeline").hidden = events.length > 0;
   $("timelinePreferences").setAttribute("aria-pressed", String(timelinePreferencesEnabled));
 
-  for (const change of events) {
+  for (const change of events.slice(0, timelineLimit)) {
     const item = document.createElement("li");
     item.className = `timeline-item ${change.kind}`;
     const card = document.createElement("article");
@@ -1150,6 +1298,21 @@ function renderPriceTimeline() {
     item.appendChild(card);
     timeline.appendChild(item);
   }
+  if (events.length > timelineLimit) {
+    const more = document.createElement("li");
+    more.className = "more-rows timeline-more";
+    const label = document.createElement("span");
+    label.textContent = `מוצגים ${timelineLimit.toLocaleString("he-IL")} מתוך ${events.length.toLocaleString("he-IL")} אירועים`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `הצג עוד ${Math.min(TIMELINE_PAGE_SIZE, events.length - timelineLimit).toLocaleString("he-IL")}`;
+    button.addEventListener("click", () => {
+      timelineLimit += TIMELINE_PAGE_SIZE;
+      renderPriceTimeline();
+    });
+    more.append(label, button);
+    timeline.appendChild(more);
+  }
 
   for (const button of document.querySelectorAll("[data-price-filter]")) {
     button.setAttribute("aria-pressed", String(button.dataset.priceFilter === priceTimelineFilter));
@@ -1195,7 +1358,213 @@ function showSettingsSection(section) {
   }
 }
 
-const VIEW_NAMES = ["listings", "search", "delete", "priceChanges", "refresh", "transfer"];
+const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "refresh", "transfer"];
+
+// ---------- לוח בקרה ----------
+function sellerPressure(record) {
+  const history = validPriceHistory(record);
+  const change = history.length >= 2 && history[0].price > 0
+    ? (history[history.length - 1].price - history[0].price) / history[0].price
+    : 0;
+  const age = Number.isFinite(record.listingAgeDays) ? record.listingAgeDays : null;
+  if (age === null && !change) return "";
+  if ((age ?? 0) >= 90 || change <= -0.05) return "high";
+  if ((age ?? 0) >= 45 || change < 0) return "medium";
+  return "low";
+}
+
+function medianOf(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+// פותח את חיפוש המודעה עם מסנן מוכן (לחיצה על מספר בלוח הבקרה)
+function openSearchWith({ status = "", query = "", site = "" } = {}) {
+  document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max], [data-search-boolean], [data-search-amenity]")
+    .forEach((input) => { input.value = ""; });
+  $("listingSearchQuery").value = query;
+  $("listingSearchSite").value = site;
+  $("listingSearchType").value = "listing";
+  $("listingSearchStatus").value = status;
+  setActiveTab("search");
+}
+
+async function renderDashboard() {
+  ensureListingAges(cache);
+  let log = {};
+  try {
+    const stored = await storageGet(REFRESH_LOG_KEY);
+    log = stored && typeof stored === "object" ? stored : {};
+  } catch (_error) {
+    // בלי יומן רענון הספירה תסתמך על תאריך בדיקת הסטטוס בלבד
+  }
+  const today = startOfToday();
+  const weekAgo = today - 6 * 86400000;
+  const stats = {
+    listings: 0, projects: 0, yad2: 0, madlan: 0,
+    relevant: 0, irrelevant: 0, amenitiesUnknown: 0,
+    active: 0, removed: 0, unchecked: 0, searchOnly: 0,
+    refreshedToday: 0, refreshedWeek: 0, neverRefreshed: 0,
+    drops: 0, rises: 0, brokerage: 0, nearRail: 0,
+    pressure: { high: 0, medium: 0, low: 0 },
+    prices: [], ppsm: [], ages: [],
+  };
+  const cities = new Map();
+  for (const [key, record] of Object.entries(cache)) {
+    if (!record || typeof record !== "object") continue;
+    if (recordType(record) === "project") { stats.projects++; continue; }
+    stats.listings++;
+    const site = recordSite(key);
+    if (site === "yad2") stats.yad2++;
+    if (site === "madlan") stats.madlan++;
+    const hasAmenities = record.amenities && Object.values(record.amenities).some((v) => typeof v === "boolean");
+    const irrelevant = listingRelevance(record).irrelevant;
+    if (irrelevant) stats.irrelevant++;
+    else if (!hasAmenities) stats.amenitiesUnknown++;
+    else stats.relevant++;
+    if (record.listingStatus === "active") stats.active++;
+    else if (record.listingStatus === "removed") stats.removed++;
+    else stats.unchecked++;
+    if (record.indexedFrom === "search") stats.searchOnly++;
+    const refreshed = Math.max(lastRefreshedAt(key, record), Number(log[key]) || 0);
+    if (!refreshed) stats.neverRefreshed++;
+    else if (refreshed >= today) stats.refreshedToday++;
+    if (refreshed >= weekAgo) stats.refreshedWeek++;
+    const history = validPriceHistory(record);
+    if (history.length >= 2) {
+      const diff = history[history.length - 1].price - history[0].price;
+      if (diff < 0) stats.drops++;
+      if (diff > 0) stats.rises++;
+    }
+    if (record.brokerage === true) stats.brokerage++;
+    if (Number.isFinite(record.railMeters) && record.railApprox !== true && record.railMeters <= timelinePreferences.nearM) {
+      stats.nearRail++;
+    }
+    const pressure = sellerPressure(record);
+    if (pressure) stats.pressure[pressure]++;
+    const ppsm = LRCacheData.pricePerSqm(record);
+    if (Number.isFinite(record.price)) stats.prices.push(record.price);
+    if (Number.isFinite(ppsm)) stats.ppsm.push(ppsm);
+    if (Number.isFinite(record.listingAgeDays)) stats.ages.push(record.listingAgeDays);
+    if (record.city) {
+      const city = cities.get(record.city) || { count: 0, irrelevant: 0, ppsm: [], drops: 0 };
+      city.count++;
+      if (irrelevant) city.irrelevant++;
+      if (Number.isFinite(ppsm)) city.ppsm.push(ppsm);
+      if (history.length >= 2 && history[history.length - 1].price < history[0].price) city.drops++;
+      cities.set(record.city, city);
+    }
+  }
+  drawDashboard(stats, cities);
+}
+
+function drawDashboard(stats, cities) {
+  const root = $("dashboard");
+  root.replaceChildren();
+  const number = (value) => (Number.isFinite(value) ? Math.round(value).toLocaleString("he-IL") : "—");
+  const pct = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
+  const el = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const tile = (label, value, note, onClick, tone) => {
+    const card = el(onClick ? "button" : "div", "stat-tile");
+    if (onClick) { card.type = "button"; card.addEventListener("click", onClick); }
+    if (tone) card.dataset.tone = tone;
+    card.append(el("span", "stat-label", label), el("strong", "stat-value", value));
+    if (note) card.append(el("span", "stat-note", note));
+    return card;
+  };
+  const section = (title) => {
+    const box = el("section", "dash-card");
+    box.append(el("h3", "", title));
+    root.appendChild(box);
+    return box;
+  };
+
+  // שורת מספרים ראשית
+  const heroes = el("div", "stat-row");
+  heroes.append(
+    tile("מודעות שמורות", number(stats.listings), `יד2 ${number(stats.yad2)} · מדלן ${number(stats.madlan)} · ${number(stats.projects)} פרויקטים`, () => openSearchWith({}), "teal"),
+    tile("לא רלוונטיות", number(stats.irrelevant), `${pct(stats.irrelevant, stats.listings)} מהמודעות · לא נכללות ברענון`, () => openSearchWith({ status: "irrelevant" }), "amber"),
+    tile("ירדו במחיר", number(stats.drops), `${number(stats.rises)} עלו במחיר`, () => setActiveTab("priceChanges"), "green"),
+    tile("לחץ גבוה למכור", number(stats.pressure.high), "90+ ימים באוויר או ירידה של 5%+", null, "red"),
+  );
+  root.appendChild(heroes);
+
+  // התאמה לדרישות: פס מחולק עם תוויות גלויות (הצבעים נבדקו לעיוורון צבעים)
+  const fit = section("התאמה למאפייני החובה שלך");
+  const known = stats.relevant + stats.irrelevant;
+  const bar = el("div", "split-bar");
+  bar.setAttribute("role", "img");
+  bar.setAttribute("aria-label", `${stats.relevant} רלוונטיות, ${stats.irrelevant} לא רלוונטיות`);
+  for (const [kind, count, label] of [["relevant", stats.relevant, "רלוונטיות"], ["irrelevant", stats.irrelevant, "לא רלוונטיות"]]) {
+    if (!count) continue;
+    const part = el("span", `split-part ${kind}`);
+    part.style.flexGrow = String(count);
+    part.title = `${label}: ${count.toLocaleString("he-IL")} (${pct(count, known)})`;
+    bar.appendChild(part);
+  }
+  const legend = el("div", "split-legend");
+  for (const [kind, count, label] of [["relevant", stats.relevant, "רלוונטיות"], ["irrelevant", stats.irrelevant, "לא רלוונטיות"]]) {
+    const item = el("span", "legend-item");
+    item.append(el("i", `legend-swatch ${kind}`), el("span", "", `${label} ${number(count)} (${pct(count, known)})`));
+    legend.appendChild(item);
+  }
+  legend.appendChild(el("span", "legend-item muted", `מאפיינים לא ידועים עדיין: ${number(stats.amenitiesUnknown)}`));
+  fit.append(known ? bar : el("p", "stat-note", "עוד אין מודעות עם מאפיינים ידועים."), legend);
+
+  // סטטוס ורענון
+  const status = el("div", "stat-row compact");
+  status.append(
+    tile("פעילות", number(stats.active), "נבדקו ברענון יד2", () => openSearchWith({ status: "active" })),
+    tile("הוסרו", number(stats.removed), "כבר לא באתר", () => openSearchWith({ status: "removed" })),
+    tile("לא נבדקו", number(stats.unchecked), `${number(stats.searchOnly)} מהן מהחיפוש בלבד`, () => openSearchWith({ status: "unchecked" })),
+    tile("רועננו היום", number(stats.refreshedToday), `${number(stats.refreshedWeek)} בשבוע האחרון · ${number(stats.neverRefreshed)} אף פעם`, () => setActiveTab("refresh")),
+  );
+  section("סטטוס ורענון").appendChild(status);
+
+  // מחירים
+  const prices = el("div", "stat-row compact");
+  prices.append(
+    tile("מחיר חציוני", `₪${number(medianOf(stats.prices))}`),
+    tile("מחיר למ״ר חציוני", `₪${number(medianOf(stats.ppsm))}`),
+    tile("גיל מודעה חציוני", `${number(medianOf(stats.ages))} ימים`, `לחץ בינוני: ${number(stats.pressure.medium)} · נמוך: ${number(stats.pressure.low)}`),
+    tile("קרובות לרכבת", number(stats.nearRail), `עד ${number(timelinePreferences.nearM)} מ׳ · תיווך: ${number(stats.brokerage)}`),
+  );
+  section("מחירים ומיקום").appendChild(prices);
+
+  // ערים: פסים אופקיים בגוון אחד, המספר כתוב ליד כל פס
+  const cityBox = section("ערים מובילות");
+  const top = [...cities].sort((a, b) => b[1].count - a[1].count).slice(0, 10);
+  const max = top.length ? top[0][1].count : 0;
+  const table = el("table", "city-table");
+  const head = el("tr");
+  for (const label of ["עיר", "מודעות", "מחיר למ״ר חציוני", "ירדו במחיר", "לא רלוונטיות"]) head.appendChild(el("th", "", label));
+  table.appendChild(el("thead")).appendChild(head);
+  const body = el("tbody");
+  for (const [city, data] of top) {
+    const row = el("tr");
+    row.title = `פתיחת המודעות ב${city}`;
+    row.addEventListener("click", () => openSearchWith({ query: city }));
+    const name = el("td", "city-name", city);
+    const countCell = el("td", "city-count");
+    const track = el("span", "city-bar");
+    const fill = el("span", "city-bar-fill");
+    fill.style.width = `${max ? Math.max(4, (data.count / max) * 100) : 0}%`;
+    track.appendChild(fill);
+    countCell.append(track, el("span", "city-bar-value", number(data.count)));
+    row.append(name, countCell, el("td", "", `₪${number(medianOf(data.ppsm))}`), el("td", "", number(data.drops)), el("td", "", number(data.irrelevant)));
+    body.appendChild(row);
+  }
+  table.appendChild(body);
+  cityBox.appendChild(top.length ? table : el("p", "stat-note", "עוד אין מודעות עם עיר."));
+  $("dashboardUpdated").textContent = `עודכן ${new Date().toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}`;
+}
 function viewFromHash() {
   const name = decodeURIComponent(location.hash.slice(1));
   if (VIEW_NAMES.includes(name)) return name;
@@ -1215,6 +1584,7 @@ function setActiveTab(tab) {
     ["priceChangesTab", "priceChanges"],
     ["refreshTab", "refresh"],
     ["transferTab", "transfer"],
+    ["dashboardTab", "dashboard"],
   ]) {
     const active = tab === name;
     $(id).classList.toggle("active", active);
@@ -1227,6 +1597,7 @@ function setActiveTab(tab) {
   $("priceChangesPanel").hidden = tab !== "priceChanges";
   $("refreshPanel").hidden = tab !== "refresh";
   $("transferPanel").hidden = tab !== "transfer";
+  $("dashboardPanel").hidden = tab !== "dashboard";
   const settingsSection = tab.startsWith("settings-") ? tab.slice("settings-".length) : "";
   for (const button of document.querySelectorAll("[data-settings]")) {
     const active = button.dataset.settings === settingsSection;
@@ -1242,6 +1613,8 @@ function setActiveTab(tab) {
   document.body.dataset.activeTab = tab;
   if (tab === "search" || tab === "listings") renderRows();
   if (tab === "delete") renderListingDeletionPreview();
+  if (tab === "priceChanges" && timelineDirty) renderPriceTimeline();
+  if (tab === "dashboard") renderDashboard();
 }
 
 function handleTabKeydown(event) {
@@ -2146,15 +2519,21 @@ function toggleRefreshPause() {
   updateRefreshButtons();
 }
 
+// מעדכן רק את מה שמוצג כרגע; תצוגות אחרות נבנות כשעוברים אליהן
+function applyCacheToViews() {
+  renderRows();
+  if (activeTab === "delete") renderListingDeletionPreview();
+  if (activeTab === "dashboard") renderDashboard();
+  if (selectedKey && cache[selectedKey]) openRecord(selectedKey);
+  else if (selectedKey) closeDetails();
+}
+
 async function loadCache() {
   $("refreshButton").disabled = true;
   try {
     const storedCache = await storageGet();
     cache = await migrateEstimatedBaselineDates(storedCache);
-    renderRows();
-    renderListingDeletionPreview();
-    if (selectedKey && cache[selectedKey]) openRecord(selectedKey);
-    else if (selectedKey) closeDetails();
+    applyCacheToViews();
   } catch (error) {
     console.error("[lightrail-ext] failed to load cached records", error);
     $("recordCount").textContent = error.message || "טעינת המטמון נכשלה";
@@ -2428,18 +2807,18 @@ rows.addEventListener("keydown", (event) => {
   openRecord(row.dataset.key);
 });
 for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
-  $(id).addEventListener("input", renderRows);
+  $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
 }
 for (const id of ["listingSearchQuery", "listingSearchSite", "listingSearchType", "listingSearchStatus"]) {
-  $(id).addEventListener("input", renderRows);
+  $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
 }
 document.querySelectorAll("[data-range-min], [data-range-max]").forEach((input) => {
-  input.addEventListener("input", renderRows);
+  input.addEventListener("input", scheduleRenderRows);
 });
 document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max]").forEach((input) => {
-  input.addEventListener("input", renderRows);
+  input.addEventListener("input", scheduleRenderRows);
   input.addEventListener("change", renderRows);
 });
 document.querySelectorAll("[data-search-boolean]").forEach((input) => {
@@ -2465,7 +2844,7 @@ $("clearListingSearch").addEventListener("click", () => {
   });
   renderRows();
 });
-$("listingDeletePanel").addEventListener("input", renderListingDeletionPreview);
+$("listingDeletePanel").addEventListener("input", scheduleDeletionPreview);
 $("listingDeletePanel").addEventListener("change", renderListingDeletionPreview);
 $("clearListingDeleteFilters").addEventListener("click", () => {
   $("deleteListingQuery").value = "";
@@ -2494,6 +2873,8 @@ $("listingDeleteTab").addEventListener("click", () => setActiveTab("delete"));
 $("priceChangesTab").addEventListener("click", () => setActiveTab("priceChanges"));
 $("refreshTab").addEventListener("click", () => setActiveTab("refresh"));
 $("transferTab").addEventListener("click", () => setActiveTab("transfer"));
+$("dashboardTab").addEventListener("click", () => setActiveTab("dashboard"));
+$("dashboardTab").addEventListener("keydown", handleTabKeydown);
 $("listingsTab").addEventListener("keydown", handleTabKeydown);
 $("listingSearchTab").addEventListener("keydown", handleTabKeydown);
 $("listingDeleteTab").addEventListener("keydown", handleTabKeydown);
@@ -2515,7 +2896,7 @@ document.querySelectorAll("[data-price-filter]").forEach((button) => {
   });
 });
 document.querySelectorAll("[data-timeline-min], [data-timeline-max]").forEach((input) => {
-  input.addEventListener("input", renderPriceTimeline);
+  input.addEventListener("input", scheduleTimeline);
 });
 for (const input of document.querySelectorAll("#timelineBrokerage, [data-timeline-amenity]")) {
   input.addEventListener("change", renderPriceTimeline);
@@ -2542,7 +2923,7 @@ $("clearPriceHistory").addEventListener("click", clearPriceHistories);
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;
-  sort.direction = sort.key === "updatedAt" || sort.key === "dealScore" ? -1 : 1;
+  sort.direction = ["updatedAt", "dealScore", "listingAgeDays"].includes(sort.key) ? -1 : 1;
   renderRows();
 });
 form.addEventListener("input", (event) => {
@@ -2643,8 +3024,29 @@ chrome.storage.onChanged.addListener((changes, area) => {
     $("saveStatus").dataset.error = "true";
     return;
   }
-  loadCache();
+  // בזמן גלישה/רענון כל עמוד מודעה כותב למטמון; מאחדים את השינויים לעדכון אחד
+  // ומשתמשים בערך החדש שהגיע עם האירוע במקום לקרוא שוב את כל המאגר
+  pendingCacheValue = changes[CACHE_KEY].newValue;
+  scheduleCacheReload();
 });
+
+let pendingCacheValue;
+const scheduleCacheReload = debounce(async () => {
+  const next = pendingCacheValue;
+  pendingCacheValue = undefined;
+  if (writing || dirtyFields.size) return;
+  if (!next || typeof next !== "object") {
+    loadCache();
+    return;
+  }
+  try {
+    cache = await migrateEstimatedBaselineDates(next);
+    applyCacheToViews();
+  } catch (error) {
+    console.error("[lightrail-ext] failed to apply cache change", error);
+    loadCache();
+  }
+}, 1200);
 
 initializeTimelineAmenityFilters();
 initializeSearchAmenityFilters();
