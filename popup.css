@@ -140,7 +140,8 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(22, 139, 137, .13);
 }
 
-input[type="number"] {
+input[type="number"],
+input[data-thousands] {
   width: 100%;
   padding: 7px 9px;
   border: 1px solid #d5dfeb;
@@ -164,12 +165,13 @@ select {
   font: inherit;
 }
 
-input[type="number"]:focus {
+input[type="number"]:focus,
+input[data-thousands]:focus {
   outline: none;
   border-color: #168b89;
   box-shadow: 0 0 0 3px rgba(22, 139, 137, .13);
 }
-input[type="number"]:disabled { color: #97a2b1; background: #f1f4f8; }
+input[type="number"]:disabled, input[data-thousands]:disabled { color: #97a2b1; background: #f1f4f8; }
 select:disabled { color: #97a2b1; background: #f1f4f8; }
 
 .row.switch {

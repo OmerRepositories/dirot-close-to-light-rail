@@ -341,7 +341,7 @@ h2 { margin: 0; color: #173650; font-size: 18px; }
 .form-grid label span { color: #53667c; font-size: 10px; font-weight: 700; }
 .form-grid .wide { grid-column: 1 / -1; }
 .form-grid input[readonly] { background: #eef4f7; color: #52657a; cursor: not-allowed; }
-input[type="number"], input[type="date"] { direction: ltr; text-align: right; }
+input[type="number"], input[data-thousands], input[type="date"] { direction: ltr; text-align: right; }
 fieldset { margin: 12px 0 0; padding: 9px; border: 1px solid #e1e9f2; border-radius: 9px; }
 legend { padding: 0 5px; color: #3b536b; font-size: 11px; font-weight: 750; }
 .amenity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }

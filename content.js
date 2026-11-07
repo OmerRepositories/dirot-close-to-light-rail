@@ -31,7 +31,7 @@
     disableMadlan: false,
     saveListingData: true,
     listingIndexingMode: "encountered",
-    indexMinPrice: 100000, // מחיר מינימלי לשמירת מודעה חדשה מתוצאות החיפוש (מסנן שכירות/נתונים שגויים; 0 = ללא)
+    indexMaxPrice: 0, // מחיר מקסימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא הגבלה)
     requiredAmenities: ["secureRoom"],
     hideAds: true, // להסתיר פרסומות (באנרים של Google ופרויקטים ממומנים) ביד2
     blockedStreets: [], // רחובות שמודעות עליהם לא יוצגו לעולם
@@ -1449,10 +1449,11 @@
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
     const fromSearch = entry.kind === "list";
     if (fromSearch) {
-      // מכרטיס בתוצאות החיפוש יש מעט מידע: מחיר מתחת למינימום לא נרשם (שכירות/כרטיס שעוד נטען)
-      if (Number.isFinite(stats.price) && stats.price < CFG.indexMinPrice) stats.price = null;
-      if (!listingCache[key] && !searchCardIndexable(parser, root, stats, listingMetadata, address)) {
-        return;
+      // מכרטיס בתוצאות החיפוש יש מעט מידע: מחיר נמוך מרצפת השפיות לא נרשם (שכירות/כרטיס שעוד נטען)
+      if (Number.isFinite(stats.price) && stats.price < SEARCH_INDEX_MIN_PRICE) stats.price = null;
+      if (!listingCache[key]) {
+        if (!searchCardIndexable(parser, root, stats, listingMetadata, address)) return;
+        if (CFG.indexMaxPrice > 0 && stats.price > CFG.indexMaxPrice) return;
       }
     }
     const observedPrice = Number.isFinite(stats.price) ? stats.price : null;
@@ -1927,7 +1928,9 @@
   }
 
   // טוענים את ההגדרות לפני שמתחילים, ומעדכנים את הדף מיד כשהמשתמש משנה הגדרה
-  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice"];
+  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMaxPrice"];
+  // רצפת שפיות קבועה למחיר מכרטיס חיפוש: מסננת שכירות וכרטיסים שעוד נטענים
+  const SEARCH_INDEX_MIN_PRICE = 100000;
   const AMENITY_LABELS = {
     parking: "חניה",
     secureRoom: "ממ״ד",

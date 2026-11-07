@@ -1316,7 +1316,7 @@ function parseFieldValue(field, input) {
   if (field === "railApprox" || field === "brokerage") {
     return input.value === "" ? null : input.value === "true";
   }
-  if (input.type === "number") {
+  if (input.type === "number" || input.dataset.thousands !== undefined) {
     if (input.value === "") return null;
     const value = Number(input.value);
     if (!Number.isFinite(value)) throw new Error("יש להזין מספר תקין.");

@@ -55,7 +55,7 @@
         <legend>תנאי מחיר למ״ר להדגשת מודעה</legend>
         <label class="field">
           <span>מחיר מקסימלי למ״ר (₪)</span>
-          <input type="number" id="maxPpsm" min="0" step="500" placeholder="למשל 30000">
+          <input type="number" data-thousands id="maxPpsm" min="0" step="500" placeholder="למשל 30000">
         </label>
         <p class="small">0 או ריק = ללא הגבלה.</p>
         <label class="field">
@@ -77,7 +77,7 @@
         </label>
         <label class="field">
           <span>מרחק מקסימלי מתחנת רכבת (מטרים)</span>
-          <input type="number" id="nearM" min="100" step="50" placeholder="800">
+          <input type="number" data-thousands id="nearM" min="100" step="50" placeholder="800">
         </label>
       </fieldset>
       <p class="small">כיבוי חישוב מסתיר את התג ומבטל גם את התנאי המתאים בהדגשת מודעות.</p>
@@ -156,12 +156,12 @@
           <option value="opened">רק כשאני פותח/ת את עמוד המודעה</option>
         </select>
       </label>
-      <div id="indexMinPriceField">
+      <div id="indexMaxPriceField">
         <label class="field">
-          <span>מחיר מינימלי לשמירה מתוצאות החיפוש (₪)</span>
-          <input type="number" id="indexMinPrice" min="0" step="10000" placeholder="0 = ללא מינימום">
+          <span>מחיר מקסימלי לשמירה מתוצאות החיפוש (₪)</span>
+          <input type="number" data-thousands id="indexMaxPrice" min="0" step="10000" placeholder="ריק = ללא הגבלה">
         </label>
-        <p class="small">מודעה חדשה מהחיפוש נשמרת רק אם יש לה קישור, מחיר מעל המינימום, רחוב או עיר, ושטח או מספר חדרים. היא תסומן "לא נבדקה · מהחיפוש בלבד" עד שתפתח/י את עמוד המודעה או תרענן/י אותה.</p>
+        <p class="small">מודעה חדשה מהחיפוש נשמרת רק אם יש לה קישור, מחיר (לפחות ₪100,000, כדי לסנן שכירות וכרטיסים שעוד נטענים) שלא עולה על המקסימום, רחוב או עיר, ושטח או מספר חדרים. היא תסומן "לא נבדקה · מהחיפוש בלבד" עד שתפתח/י את עמוד המודעה או תרענן/י אותה.</p>
       </div>
       <p class="small">הבחירה לא מוחקת מידע שכבר נשמר. פרויקטים יישמרו כרגיל; כיבוי השמירה עוצר שמירת מידע חדש.</p>
       <p class="small">אפשר לייצא את כל המידע ל־TXT, CSV או Excel. Excel כולל מסננים בכותרות, קישורים לחיצים וצביעה ירוקה/אדומה למאפיינים.</p>
@@ -190,6 +190,7 @@
   <script src="cache-data.js"></script>
   <script src="cache-export.js"></script>
   <script src="street-filter.js"></script>
+  <script src="number-input.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
