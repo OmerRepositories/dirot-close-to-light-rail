@@ -1362,6 +1362,23 @@ function timelineDateText(change) {
   }
 }
 
+// מה בדיוק הכפתור "רק מודעות שמתאימות להגדרות שלי" בודק – אותם תנאים כמו ב-passesTimelineFilters
+function timelinePreferencesSummaryText() {
+  const rules = [];
+  for (const amenity of timelinePreferences.requiredAmenities) {
+    rules.push(`יש ${timelineAmenityLabels[amenity] || amenity}`);
+  }
+  if (timelinePreferences.removeBrokerage) rules.push("בלי תיווך");
+  if (timelinePreferences.calculateRail && timelinePreferences.requireRail) {
+    rules.push(`עד ${PRICE_FORMAT.format(timelinePreferences.nearM)} מ׳ מהרכבת (מרחק מדויק)`);
+  }
+  if (timelinePreferences.calculatePpsm && timelinePreferences.maxPpsm > 0) {
+    rules.push(`עד ${displayPrice(timelinePreferences.maxPpsm)} למ״ר`);
+  }
+  if (!rules.length) return "„רק מודעות שמתאימות להגדרות שלי”: בהגדרות לא נבחרו תנאים, אז הכפתור לא מסנן כלום.";
+  return `${timelinePreferencesEnabled ? "מוצגות רק מודעות" : "„רק מודעות שמתאימות להגדרות שלי” יציג רק מודעות"} שעונות על ההגדרות שלך: ${rules.join(" · ")}. משנים את התנאים בהגדרות התוסף.`;
+}
+
 // קורא את ערכי המסננים פעם אחת לכל רינדור (ולא פעם לכל אירוע – זה מה שהיה כבד)
 function readTimelineFilters() {
   const ranges = [];
@@ -1394,6 +1411,9 @@ function renderPriceTimeline() {
   $("timelineCount").textContent = `${events.length.toLocaleString("he-IL")} מתוך ${kindFilteredEvents.length.toLocaleString("he-IL")} אירועים`;
   $("emptyTimeline").hidden = events.length > 0;
   $("timelinePreferences").setAttribute("aria-pressed", String(timelinePreferencesEnabled));
+  const summary = $("timelinePreferencesSummary");
+  summary.textContent = timelinePreferencesSummaryText();
+  summary.dataset.active = String(timelinePreferencesEnabled);
 
   for (const change of events.slice(0, timelineLimit)) {
     const item = document.createElement("li");

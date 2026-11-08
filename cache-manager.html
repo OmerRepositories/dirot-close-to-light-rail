@@ -434,9 +434,10 @@
         <div>
           <h2>ציר זמן — שינויי מחירים</h2>
           <p>כל שינויי המחיר מכל המודעות, ללא תלות בסינון הטבלה. ליד כל שינוי מצוין כמה התאריך ודאי: „תאריך מהאתר” הוא תאריך אמיתי; „זוהה ברענון” – השינוי קרה בטווח שמוצג; „תאריך לא ידוע” – ידוע רק שהשינוי קרה לפני שהמודעה נשמרה. הסינון משנה רק את התצוגה ולא את המידע השמור.</p>
+          <p id="timelinePreferencesSummary" class="timeline-preferences-summary"></p>
         </div>
         <div class="timeline-controls">
-          <button id="timelinePreferences" type="button" aria-pressed="false">הצג לפי ההעדפות שלי</button>
+          <button id="timelinePreferences" type="button" aria-pressed="false" aria-describedby="timelinePreferencesSummary">רק מודעות שמתאימות להגדרות שלי</button>
           <div class="timeline-filters" role="group" aria-label="סינון ציר הזמן לפי שינוי מחיר">
             <button type="button" data-price-filter="all" aria-pressed="true">הכול</button>
             <button type="button" data-price-filter="increase" aria-pressed="false">עלו ↑</button>
