@@ -385,7 +385,13 @@ const columns = [
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "brokerage", label: "תיווך", boolean: true, title: "כן / לא / לא ידוע" },
-  { key: "realDeals", label: "מול עסקאות אמת", sortKey: "realDeals", title: "המחיר למ״ר של המודעה מול חציון עסקאות אמת (4 שנים אחרונות) בבניין, ברחוב או בשכונה" },
+  ...["building", "street", "neighborhood", "city"].map((level) => ({
+    key: `realDeals:${level}`,
+    realLevel: level,
+    label: `מול ${{ building: "הבניין", street: "הרחוב", neighborhood: "השכונה", city: "העיר" }[level]}`,
+    sortKey: `realDeals:${level}`,
+    title: `המחיר למ״ר של המודעה מול חציון עסקאות אמת מ-4 השנים האחרונות ${{ building: "בבניין", street: "ברחוב", neighborhood: "בשכונה", city: "בעיר" }[level]} (מינימום ${LRDeals.LEVEL_MINIMUMS[level]} עסקאות; קודם בגודל דומה). שלילי = זול מהעסקאות.`,
+  })),
   { key: "dealScore", label: "ציון שווה", sortKey: "dealScore", title: "ציון משוקלל: מאפיינים, מחיר למ״ר (מול עסקאות אמת כשיש), קרבה לרכבת ותיווך" },
   ...AMENITIES.map(([key, label]) => ({
     key: `amenity:${key}`,
@@ -792,8 +798,8 @@ function rowSortValue(key, record, priceRanks) {
   if (sort.key === "dealScore") {
     return LRCacheData.dealScore(record, priceRanks.get(key) ?? 0.5, realDealsFor(record)?.diffPct);
   }
-  if (sort.key === "realDeals") {
-    const result = realDealsFor(record);
+  if (sort.key.startsWith("realDeals:")) {
+    const result = realDealsAllFor(record)[sort.key.slice("realDeals:".length)];
     return result && Number.isFinite(result.diffPct) ? result.diffPct : null;
   }
   if (sort.key === "priceHistory") {
@@ -944,8 +950,8 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "dealScore") {
     return String(LRCacheData.dealScore(record, priceRanks.get(recordKey) ?? 0.5, realDealsFor(record)?.diffPct) ?? "");
   }
-  if (key === "realDeals") {
-    return realDealsText(realDealsFor(record));
+  if (key.startsWith("realDeals:")) {
+    return realLevelText(realDealsAllFor(record)[key.slice("realDeals:".length)]);
   }
   return "";
 }
@@ -1151,13 +1157,13 @@ function renderRows() {
         td.title = `ציון משוקלל לעזרה במיון בלבד, לא המלצת השקעה. רכיב המחיר: ${
           real && Number.isFinite(real.diffPct) ? "מול עסקאות אמת באזור" : "מול המודעות השמורות"
         }`;
-      } else if (column.key === "realDeals") {
-        const real = realDealsFor(record);
-        td.textContent = realDealsText(real);
-        td.title = realDealsTitle(real);
-        if (real && Number.isFinite(real.diffPct)) {
-          td.className = real.diffPct <= -5 ? "real-deals below" : real.diffPct >= 5 ? "real-deals above" : "real-deals";
-        }
+      } else if (column.realLevel) {
+        const real = realDealsAllFor(record)[column.realLevel];
+        td.textContent = realLevelText(real);
+        td.title = real ? realDealsTitle(real) : `אין מספיק עסקאות אמת ${LRDeals.LEVEL_LABELS[column.realLevel]} (צריך ${LRDeals.LEVEL_MINIMUMS[column.realLevel]}).`;
+        td.className = real && Number.isFinite(real.diffPct)
+          ? real.diffPct <= -5 ? "real-deals below" : real.diffPct >= 5 ? "real-deals above" : "real-deals"
+          : "real-deals";
       } else if (column.amenity) {
         td.appendChild(renderBoolean(amenityValue(record, column.amenity)));
       } else if (column.key === "updatedAt") {
@@ -3267,6 +3273,27 @@ function realDealsFor(record) {
     realDealsMemo.set(record, LRDeals.compareListing(record, dealsIndex, LRCacheData.pricePerSqm(record)));
   }
   return realDealsMemo.get(record);
+}
+
+const realDealsAllMemo = { version: -1, map: new WeakMap() };
+const NO_REAL_DEALS = Object.freeze({ building: null, street: null, neighborhood: null, city: null });
+function realDealsAllFor(record) {
+  if (!dealsIndex || !record || typeof record !== "object" || recordType(record) === "project") return NO_REAL_DEALS;
+  if (realDealsAllMemo.version !== dealsVersion) {
+    realDealsAllMemo.version = dealsVersion;
+    realDealsAllMemo.map = new WeakMap();
+  }
+  if (!realDealsAllMemo.map.has(record)) {
+    realDealsAllMemo.map.set(record, LRDeals.compareListingAll(record, dealsIndex, LRCacheData.pricePerSqm(record)));
+  }
+  return realDealsAllMemo.map.get(record);
+}
+
+// "−8% (12)" – כוכבית כשההשוואה היא לכל הגדלים (אין מספיק בגודל דומה)
+function realLevelText(result) {
+  if (!result || !Number.isFinite(result.diffPct)) return result ? `(${result.count})` : "";
+  const sign = result.diffPct > 0 ? "+" : "";
+  return `${sign}${result.diffPct}% (${result.count}${result.similar ? "" : "*"})`;
 }
 
 function realDealsText(result) {

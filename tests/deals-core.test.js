@@ -108,6 +108,37 @@ test("listings are compared with deals of a similar size first, all sizes only a
   assert.equal(tiny.count, 6);
 });
 
+test("a listing gets a separate comparison for building, street, neighborhood and city", () => {
+  const now = Date.UTC(2026, 10, 9);
+  const make = (street, house, hood, price) => Deals.fromYad2({
+    ...yad2Result,
+    address: { ...yad2Result.address, street: { text: street }, houseNumber: house, neighborhood: { text: hood } },
+    price, buildingMR: 100, rooms: 4, saleDate: "2025-06-01",
+  });
+  const items = [
+    make("אמיר בנימיני", 6, "עין גנים", 2_000_000), make("אמיר בנימיני", 6, "עין גנים", 2_100_000), make("אמיר בנימיני", 6, "עין גנים", 2_200_000),
+    make("אמיר בנימיני", 8, "עין גנים", 2_600_000), make("אמיר בנימיני", 10, "עין גנים", 2_700_000),
+    make("הרצל", 1, "מרכז", 3_000_000), make("הרצל", 2, "מרכז", 3_100_000), make("הרצל", 3, "מרכז", 3_200_000),
+    make("הרצל", 4, "מרכז", 3_300_000), make("הרצל", 5, "מרכז", 3_400_000),
+  ];
+  const index = Deals.buildIndex(Deals.mergeAll({}, items, now).store, { years: 4, now });
+  const record = { address: "אמיר בנימיני 6, פתח תקווה", city: "פתח תקווה", neighborhood: "עין גנים", sqm: 100, rooms: 4 };
+  const all = Deals.compareListingAll(record, index, 22_000);
+  assert.equal(all.building.count, 3);
+  assert.equal(all.building.medianPpsm, 21_000);
+  assert.equal(all.street.count, 5);
+  assert.equal(all.street.medianPpsm, 22_000);
+  assert.equal(all.street.diffPct, 0);
+  assert.equal(all.neighborhood.count, 5);
+  assert.equal(all.city.count, 10);
+  assert.equal(all.city.medianPpsm, 28_500);
+  assert.ok(all.city.diffPct < 0);
+  // רמה בלי מספיק עסקאות – null
+  const lonely = Deals.compareListingAll({ ...record, address: "אמיר בנימיני 40, פתח תקווה" }, index, 22_000);
+  assert.equal(lonely.building, null);
+  assert.equal(lonely.street.count, 5);
+});
+
 test("deals by city and neighborhood count only recent years and give medians", () => {
   const now = Date.UTC(2026, 10, 9);
   const make = (city, hood, house, price, date) => Deals.fromYad2({

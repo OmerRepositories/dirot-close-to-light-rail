@@ -100,6 +100,7 @@ var LRWhatsAppMessage = (() => {
     if (missingAmenities.length) {
       lines.push(`שים לב חסר: ${missingAmenities.join(", ")}`);
     }
+    if (data.realDeals) lines.push(`מחיר למ"ר מול עסקאות אמת: ${data.realDeals}`);
     // מרחק למקלט רק כשידוע (יד2 מציגה אותו בעמוד המודעה) – לא שורת "לא זוהה"
     if (Number.isFinite(data.shelterMeters)) {
       lines.push(`מרחק למקלט ציבורי: ${Math.round(data.shelterMeters).toLocaleString("he-IL")} מ׳`);

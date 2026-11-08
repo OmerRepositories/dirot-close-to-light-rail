@@ -40,6 +40,19 @@
   overflow-wrap: anywhere;
 }
 .lr-address-note[hidden] { display: none; }
+/* מול עסקאות אמת: בניין / רחוב / שכונה / עיר, שורה מלאה מתחת לתגים בעמוד מודעה */
+.lr-real-deals {
+  flex-basis: 100%;
+  padding: 3px 8px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  color: #3730a3;
+  background: #eef2ff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: help;
+}
+.lr-real-deals[hidden] { display: none; }
 .lr-label[hidden], .lr-sub[hidden] { display: none; }
 
 .lr-copy-button {

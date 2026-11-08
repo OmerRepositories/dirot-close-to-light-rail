@@ -186,9 +186,12 @@ var LRDeals = (() => {
     const minDate = new Date(now - years * 365 * DAY_MS).toISOString().slice(0, 10);
     const byStreet = new Map();
     const byHood = new Map();
+    const byCity = new Map();
     for (const deal of Object.values(store || {})) {
       if (!deal || !(deal.price > 0) || !(deal.sqm > 0) || String(deal.date) < minDate) continue;
       const city = normCity(deal.city);
+      if (!byCity.has(city)) byCity.set(city, []);
+      byCity.get(city).push(deal);
       const streetKey = `${city}|${normStreet(deal.street)}`;
       if (!byStreet.has(streetKey)) byStreet.set(streetKey, []);
       byStreet.get(streetKey).push(deal);
@@ -198,7 +201,7 @@ var LRDeals = (() => {
         byHood.get(hoodKey).push(deal);
       }
     }
-    return { byStreet, byHood, years };
+    return { byStreet, byHood, byCity, years };
   }
 
   function summarize(level, deals, listingPpsm, similar) {
@@ -247,7 +250,38 @@ var LRDeals = (() => {
     return null;
   }
 
-  const LEVEL_LABELS = { building: "בבניין", street: "ברחוב", neighborhood: "בשכונה" };
+  // כל ארבע הרמות בנפרד, כל אחת עם מינימום עסקאות משלה. בכל רמה – קודם עסקאות בגודל דומה,
+  // ואם אין מספיק, כל הגדלים (similar: false). רמה בלי מספיק עסקאות = null.
+  const LEVEL_MINIMUMS = { building: 3, street: 3, neighborhood: 5, city: 10 };
+
+  function compareListingAll(record, index, listingPpsm) {
+    const empty = { building: null, street: null, neighborhood: null, city: null };
+    if (!record || !index) return empty;
+    const place = listingPlace(record);
+    if (!place.city) return empty;
+    const street = place.street ? index.byStreet.get(`${place.city}|${place.street}`) || [] : [];
+    const groups = {
+      building: place.house ? street.filter((deal) => normHouse(deal.house) === place.house) : [],
+      street,
+      neighborhood: place.neighborhood ? index.byHood.get(`${place.city}|${place.neighborhood}`) || [] : [],
+      city: (index.byCity && index.byCity.get(place.city)) || [],
+    };
+    const similar = similarTo(record);
+    const result = {};
+    for (const [level, deals] of Object.entries(groups)) {
+      const minimum = LEVEL_MINIMUMS[level];
+      const close = deals.filter(similar);
+      result[level] = close.length >= minimum
+        ? summarize(level, close, listingPpsm, true)
+        : deals.length >= minimum
+          ? summarize(level, deals, listingPpsm, false)
+          : null;
+    }
+    return result;
+  }
+
+  const LEVEL_LABELS = { building: "בבניין", street: "ברחוב", neighborhood: "בשכונה", city: "בעיר" };
+  const LEVEL_NAMES = { building: "בניין", street: "רחוב", neighborhood: "שכונה", city: "עיר" };
 
   // ---------- חיפוש עסקאות ----------
   function dealPpsm(deal) {
@@ -367,6 +401,9 @@ var LRDeals = (() => {
     STORAGE_KEY,
     FETCH_LOG_KEY,
     LEVEL_LABELS,
+    LEVEL_NAMES,
+    LEVEL_MINIMUMS,
+    compareListingAll,
     normStreet,
     normCity,
     normHouse,

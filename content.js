@@ -881,6 +881,7 @@
       shelterMeters: Number.isFinite(metadata.shelterMeters)
         ? metadata.shelterMeters
         : listingRecord && listingRecord.shelterMeters,
+      realDeals: realDealsSummary(entry.realDealsAll),
       // תאריך פרסום: מנתוני הדף, ואם אין (למשל בכרטיס חיפוש) – מהמודעה השמורה
       listingCreatedAt:
         (metadata.listingCreatedAt && normalizeListingDate(metadata.listingCreatedAt)) ||
@@ -1493,6 +1494,36 @@
   let yad2DealsRequested = false;
   let lastMadlanDealsJson = "";
 
+  // "בניין −3% · רחוב +5% · שכונה +2% · עיר +10%" – רק הרמות שיש בהן מספיק עסקאות
+  function realDealsSummary(all) {
+    if (!all) return "";
+    return ["building", "street", "neighborhood", "city"]
+      .filter((level) => all[level] && Number.isFinite(all[level].diffPct))
+      .map((level) => {
+        const value = all[level].diffPct;
+        const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+        return `${LRDeals.LEVEL_NAMES[level]} ${sign}${Math.abs(value)}%${all[level].similar ? "" : "*"}`;
+      })
+      .join(" · ");
+  }
+
+  function renderRealDealsLine(entry) {
+    if (entry.kind !== "single") return;
+    const text = realDealsSummary(entry.realDealsAll);
+    if (!entry.realDealsEl) {
+      entry.realDealsEl = document.createElement("div");
+      entry.realDealsEl.className = "lr-real-deals";
+      entry.ppsm.insertAdjacentElement("afterend", entry.realDealsEl);
+    }
+    entry.realDealsEl.hidden = !text;
+    entry.realDealsEl.textContent = text ? `מול עסקאות אמת: ${text}` : "";
+    const details = ["building", "street", "neighborhood", "city"]
+      .map((level) => entry.realDealsAll && entry.realDealsAll[level])
+      .filter(Boolean)
+      .map((real) => `${LRDeals.LEVEL_NAMES[real.level]}: חציון ₪${fmtNum(real.medianPpsm)} למ״ר מ־${real.count} עסקאות${real.similar ? " בגודל דומה" : " (כל הגדלים)"}, ${real.fromDate} עד ${real.toDate}`);
+    entry.realDealsEl.title = `${details.join("\n")}\nשלילי = הדירה זולה מהעסקאות. עסקאות מ-4 השנים האחרונות.${details.some((line) => line.includes("כל הגדלים")) ? "\n* אין מספיק עסקאות בגודל דומה – השוואה לכל הגדלים." : ""}`;
+  }
+
   // השוואת המודעה שבעמוד לעסקאות האמת השמורות (נטען אחרי כל שמירה של עסקאות חדשות)
   function loadRealDeals(entry) {
     if (!entry.listingId) return;
@@ -1501,7 +1532,10 @@
       const record = listingCache[cacheKeyForListing(entry.listingId)];
       if (!record) return;
       const index = LRDeals.buildIndex((stored && stored[LRDeals.STORAGE_KEY]) || {});
-      entry.realDeals = LRDeals.compareListing(record, index, LRCacheData.pricePerSqm(record));
+      const ppsmValue = LRCacheData.pricePerSqm(record);
+      entry.realDeals = LRDeals.compareListing(record, index, ppsmValue);
+      entry.realDealsAll = LRDeals.compareListingAll(record, index, ppsmValue);
+      renderRealDealsLine(entry);
       scheduleRefresh();
     });
   }
