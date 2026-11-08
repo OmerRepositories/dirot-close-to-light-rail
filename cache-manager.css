@@ -85,17 +85,20 @@ input[type="number"], input[data-thousands], input[type="date"] { direction: ltr
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 10px clamp(16px, 2vw, 24px);
+  gap: 16px;
+  padding: 6px clamp(12px, 1.6vw, 20px);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
-.brand { display: flex; align-items: center; gap: 14px; }
-.brand-mark { width: 44px; height: 44px; flex: 0 0 44px; }
-.eyebrow { margin: 0; color: var(--muted); font-size: 13px; font-weight: 500; }
-h1 { margin: 0; font-size: 24px; font-weight: 700; line-height: 1.2; letter-spacing: -.015em; }
-.intro { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
-.header-actions { display: flex; align-items: center; gap: 10px; }
+/* כותרת קומפקטית: יותר מקום לתוכן */
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark { width: 32px; height: 32px; flex: 0 0 32px; }
+.eyebrow { margin: 0; color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1.2; }
+h1 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.2; letter-spacing: -.01em; }
+.intro { display: none; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-actions > button { min-height: 32px; padding-block: 4px; }
+.header-actions .font-controls button { min-height: 26px; padding-block: 2px; }
 .font-controls {
   display: flex;
   align-items: center;
