@@ -551,6 +551,43 @@
         <p class="schedule-note">התזמון מופעל רק אחרי לחיצה על „שמירת תזמון”. הוא פועל כשהדפדפן פתוח; כל מחזור פותח את כל המודעות השמורות או רק מודעות יד2 שלא נבדקו, בכרטיסייה אחת ובהשהיה שבחרת. הרענון ייתכן שיידחה כשהמחשב ישן. אפשר לעצור או להשהות מחזור פעיל, ולבטל את התזמון כאן בכל עת.</p>
       </div>
         </section>
+        <section class="tool-card walker-card" data-tone="amber">
+          <h3><span class="card-dot"></span>דפדוף בעמודי חיפוש</h3>
+          <p class="card-text">פותח עמודי חיפוש של יד2 או מדלן אחד אחרי השני, מחכה שהעמוד ייטען וגולל לאט עד למטה – כך כל המודעות בעמוד נאספות למידע השמור.</p>
+          <label class="walker-url">
+            <span>כתובת החיפוש – במקום מספר העמוד כתבו {pagehere}</span>
+            <input id="walkerUrl" type="url" dir="ltr" spellcheck="false" placeholder="https://www.yad2.co.il/realestate/forsale/center-and-sharon?area=4&amp;city=7900&amp;page={pagehere}">
+          </label>
+          <div class="tool-fields">
+            <label class="walker-page">
+              <span>מעמוד</span>
+              <input id="walkerFrom" type="number" min="1" step="1" value="1">
+            </label>
+            <label class="walker-page">
+              <span>עד עמוד</span>
+              <input id="walkerTo" type="number" min="1" step="1" value="5">
+            </label>
+            <label>
+              <span>מהירות גלילה</span>
+              <select id="walkerSpeed">
+                <option value="slow">איטית</option>
+                <option value="normal" selected>רגילה</option>
+                <option value="fast">מהירה</option>
+              </select>
+            </label>
+            <label>
+              <span>השהיה בין עמודים (שניות)</span>
+              <input id="walkerDelay" type="number" min="0" max="600" step="1" value="5">
+            </label>
+          </div>
+          <div class="refresh-actions">
+            <button id="startWalker" class="primary" type="button">התחלת דפדוף</button>
+            <button id="pauseWalker" type="button" disabled>השהיה</button>
+            <button id="stopWalker" type="button" disabled>עצירה</button>
+          </div>
+          <span id="walkerStatus" role="status" aria-live="polite">הדביקו כתובת, בחרו טווח עמודים ולחצו „התחלת דפדוף”.</span>
+          <p class="schedule-note">הדפדוף נפתח בכרטיסייה חדשה. השאירו אותה גלויה – כשהכרטיסייה ברקע הדפדפן מאט את הגלילה והטעינה. אם עמוד נטען בלי מודעות (סוף התוצאות או בדיקת „אני לא רובוט”), הדפדוף מושהה עד שתמשיכו.</p>
+        </section>
       </div>
     </section>
 
@@ -752,6 +789,7 @@
         </form>
     </aside>
   <script src="cache-data.js"></script>
+  <script src="page-walker.js"></script>
   <script src="sync-core.js"></script>
   <script src="cache-export.js"></script>
   <script src="number-input.js"></script>

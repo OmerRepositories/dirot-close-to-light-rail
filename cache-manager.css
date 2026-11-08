@@ -343,6 +343,15 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .tool-card .backup-note { flex: none; }
 .tool-card .schedule-note { flex: 1 1 100%; }
 .tool-card #refreshStatus, .tool-card #exportStatus { flex: none; min-width: 0; }
+/* דפדוף בעמודי חיפוש */
+.walker-card { grid-column: 1 / -1; }
+.walker-card label { display: grid; gap: 4px; min-width: 0; }
+.walker-card label > span { color: var(--muted); font-size: 13px; font-weight: 500; }
+.walker-card .tool-fields > label { flex: 1 1 150px; }
+.walker-card .tool-fields > .walker-page { flex: 0 1 110px; }
+#walkerUrl { text-align: left; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+#walkerStatus { color: var(--muted); font-size: 13px; }
+#walkerStatus[data-error="true"] { color: var(--danger); }
 
 /* ---------- לוח הרשומות ---------- */
 .record-list {

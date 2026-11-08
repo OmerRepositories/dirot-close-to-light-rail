@@ -2158,6 +2158,35 @@
     });
   }
 
+  // דפדוף בעמודי חיפוש (ממנהל המידע): גלילה איטית עד סוף העמוד, כדי שכל הכרטיסים ייטענו וייאספו
+  let walkerScroll = null;
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || typeof message.type !== "string") return false;
+    if (message.type === "lightrail:walker-stop-scroll") {
+      if (walkerScroll) walkerScroll.stopped = true;
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (message.type !== "lightrail:walker-scroll") return false;
+    if (walkerScroll) walkerScroll.stopped = true;
+    const run = { stopped: false };
+    walkerScroll = run;
+    LRPageWalker.slowScrollToBottom(LRPageWalker.browserScrollEnv(window), {
+      speed: message.speed,
+      shouldStop: () => run.stopped,
+    }).then((result) => {
+      if (walkerScroll === run) walkerScroll = null;
+      // נותנים לסורק הכרטיסים רגע לעבד את האחרונים לפני הספירה
+      setTimeout(() => {
+        const cards = [...entries.values()].filter((entry) => entry.kind === "list").length;
+        sendResponse({ ...result, cards });
+      }, 800);
+    }).catch((error) => {
+      sendResponse({ reason: "error", error: String(error && error.message || error), cards: 0 });
+    });
+    return true;
+  });
+
   try {
     chrome.storage.local.get(["lastMedian", LISTING_CACHE_KEY], (r) => {
       const m = r && r.lastMedian;

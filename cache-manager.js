@@ -2695,6 +2695,240 @@ function toggleRefreshPause() {
   updateRefreshButtons();
 }
 
+// ---------- דפדוף בעמודי חיפוש ----------
+// פותח עמוד אחרי עמוד בכרטיסייה אחת, מחכה לטעינה מלאה, מבקש מסקריפט התוכן לגלול לאט עד למטה,
+// ורק אז ממתין את ההשהיה ועובר לעמוד הבא. סקריפט התוכן שומר את הכרטיסים שעוברים מולו.
+const WALKER_SETTINGS_KEY = "lightrailWalker";
+const WALKER_LOAD_TIMEOUT_MS = 60000;
+const WALKER_AFTER_LOAD_MS = 1500;
+const walker = {
+  urls: [], index: 0, tabId: null, attempt: 0, phase: "idle", paused: false,
+  sawLoading: false, timer: null, loadTimer: null, delaySec: 5, speed: "normal",
+  cards: 0, skipped: 0,
+};
+
+function walkerActive() {
+  return walker.urls.length > 0;
+}
+
+function setWalkerStatus(text, error = false) {
+  const status = $("walkerStatus");
+  status.textContent = text;
+  status.dataset.error = error ? "true" : "false";
+}
+
+function updateWalkerButtons() {
+  const active = walkerActive();
+  $("startWalker").disabled = active;
+  $("pauseWalker").disabled = !active;
+  $("stopWalker").disabled = !active;
+  $("pauseWalker").textContent = walker.paused ? "המשך" : "השהיה";
+  for (const id of ["walkerUrl", "walkerFrom", "walkerTo"]) $(id).disabled = active;
+}
+
+function walkerPageLabel() {
+  const current = walker.urls[walker.index];
+  return `עמוד ${current ? current.page : "?"} (${walker.index + 1}/${walker.urls.length})`;
+}
+
+function saveWalkerSettings() {
+  try {
+    localStorage.setItem(WALKER_SETTINGS_KEY, JSON.stringify({
+      url: $("walkerUrl").value.trim(),
+      from: $("walkerFrom").value,
+      to: $("walkerTo").value,
+      speed: $("walkerSpeed").value,
+      delay: $("walkerDelay").value,
+    }));
+  } catch {}
+}
+
+function loadWalkerSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WALKER_SETTINGS_KEY) || "null");
+    if (!saved || typeof saved !== "object") return;
+    if (typeof saved.url === "string") $("walkerUrl").value = saved.url;
+    if (saved.from) $("walkerFrom").value = saved.from;
+    if (saved.to) $("walkerTo").value = saved.to;
+    if (LRPageWalker.SPEEDS[saved.speed]) $("walkerSpeed").value = saved.speed;
+    if (saved.delay !== undefined && saved.delay !== "") $("walkerDelay").value = saved.delay;
+  } catch {}
+}
+
+function readWalkerDelay() {
+  const value = Number($("walkerDelay").value);
+  walker.delaySec = Number.isFinite(value) ? Math.max(0, Math.min(600, Math.round(value))) : 5;
+  $("walkerDelay").value = String(walker.delaySec);
+  walker.speed = LRPageWalker.SPEEDS[$("walkerSpeed").value] ? $("walkerSpeed").value : "normal";
+}
+
+function startWalker() {
+  if (walkerActive()) return;
+  const built = LRPageWalker.buildPageUrls($("walkerUrl").value, $("walkerFrom").value, $("walkerTo").value);
+  if (built.error) {
+    setWalkerStatus(built.error, true);
+    return;
+  }
+  readWalkerDelay();
+  saveWalkerSettings();
+  Object.assign(walker, {
+    urls: built.urls, index: 0, paused: false, phase: "idle", cards: 0, skipped: 0,
+  });
+  updateWalkerButtons();
+  openWalkerPage();
+}
+
+function finishWalker(message) {
+  walker.attempt++;
+  clearTimeout(walker.timer);
+  clearTimeout(walker.loadTimer);
+  Object.assign(walker, { urls: [], index: 0, phase: "idle", paused: false, timer: null, loadTimer: null });
+  updateWalkerButtons();
+  setWalkerStatus(message);
+}
+
+function walkerSummary() {
+  const skipped = walker.skipped ? ` ${walker.skipped} עמודים דולגו עקב שגיאה.` : "";
+  return `נסרקו ${walker.cards.toLocaleString("he-IL")} כרטיסי מודעות.${skipped}`;
+}
+
+function openWalkerPage() {
+  if (!walkerActive()) return;
+  if (walker.index >= walker.urls.length) {
+    finishWalker(`הדפדוף הסתיים. ${walkerSummary()}`);
+    loadCache();
+    return;
+  }
+  const attempt = ++walker.attempt;
+  const { url } = walker.urls[walker.index];
+  walker.phase = "loading";
+  walker.sawLoading = false;
+  setWalkerStatus(`טוען ${walkerPageLabel()}…`);
+  clearTimeout(walker.loadTimer);
+  walker.loadTimer = setTimeout(() => {
+    if (attempt !== walker.attempt || walker.phase !== "loading") return;
+    skipWalkerPage("העמוד לא נטען בזמן שהוקצב.");
+  }, WALKER_LOAD_TIMEOUT_MS);
+  const done = (tab) => {
+    const error = chrome.runtime.lastError;
+    if (attempt !== walker.attempt) return;
+    if (error || !tab || !Number.isInteger(tab.id)) {
+      walker.tabId = null;
+      skipWalkerPage(error && error.message || "לא ניתן לפתוח את העמוד.");
+      return;
+    }
+    walker.tabId = tab.id;
+  };
+  if (walker.tabId === null) chrome.tabs.create({ url, active: true }, done);
+  else chrome.tabs.update(walker.tabId, { url }, done);
+}
+
+function skipWalkerPage(reason) {
+  if (!walkerActive()) return;
+  walker.skipped++;
+  clearTimeout(walker.loadTimer);
+  console.warn("[lightrail-ext] page walker skipped a page", reason);
+  setWalkerStatus(`${walkerPageLabel()} דולג: ${reason}`, true);
+  scheduleNextWalkerPage();
+}
+
+function scheduleNextWalkerPage() {
+  walker.phase = "waiting";
+  if (walker.paused) return;
+  clearTimeout(walker.timer);
+  const isLast = walker.index + 1 >= walker.urls.length;
+  walker.timer = setTimeout(() => {
+    walker.timer = null;
+    walker.index++;
+    openWalkerPage();
+  }, isLast ? 0 : walker.delaySec * 1000);
+}
+
+function onWalkerTabUpdated(tabId, changeInfo) {
+  if (!walkerActive() || tabId !== walker.tabId || walker.phase !== "loading") return;
+  if (changeInfo.status === "loading") walker.sawLoading = true;
+  if (changeInfo.status !== "complete" || !walker.sawLoading) return;
+  clearTimeout(walker.loadTimer);
+  walker.phase = "scrolling";
+  const attempt = walker.attempt;
+  setWalkerStatus(`${walkerPageLabel()} נטען. גולל עד למטה…`);
+  setTimeout(() => {
+    if (attempt === walker.attempt) scrollWalkerPage(attempt, 6);
+  }, WALKER_AFTER_LOAD_MS);
+}
+
+function scrollWalkerPage(attempt, retries) {
+  chrome.tabs.sendMessage(walker.tabId, { type: "lightrail:walker-scroll", speed: walker.speed }, (result) => {
+    const error = chrome.runtime.lastError;
+    if (attempt !== walker.attempt || !walkerActive()) return;
+    if (error || !result) {
+      // סקריפט התוכן עוד לא מוכן, או שהעמוד עבר לכתובת אחרת באמצע
+      if (retries > 0) {
+        setTimeout(() => {
+          if (attempt === walker.attempt) scrollWalkerPage(attempt, retries - 1);
+        }, 1000);
+      } else {
+        skipWalkerPage("לא ניתן לגלול בעמוד (התוסף לא פעיל בו?).");
+      }
+      return;
+    }
+    if (result.reason === "stopped") return;
+    walker.cards += Number(result.cards) || 0;
+    if (!result.cards) {
+      // אין מודעות: סוף התוצאות, או בדיקת "אני לא רובוט". עוצרים עד שהמשתמש מחליט
+      walker.paused = true;
+      walker.phase = "empty";
+      updateWalkerButtons();
+      setWalkerStatus(
+        `ב${walkerPageLabel()} לא נמצאו מודעות – אולי הגעתם לסוף התוצאות או שהאתר מבקש אימות. ` +
+        "אם צריך, השלימו את האימות בכרטיסייה ולחצו „המשך” (העמוד ייסרק שוב), או „עצירה”.",
+        true
+      );
+      return;
+    }
+    const isLast = walker.index + 1 >= walker.urls.length;
+    setWalkerStatus(
+      `${walkerPageLabel()} נסרק (${result.cards} מודעות${result.reason === "timeout" ? ", הגלילה נעצרה אחרי זמן מרבי" : ""}).` +
+      (walker.paused ? " הדפדוף מושהה." : isLast ? "" : ` ממתין ${walker.delaySec} שניות לעמוד הבא…`)
+    );
+    scheduleNextWalkerPage();
+  });
+}
+
+function toggleWalkerPause() {
+  if (!walkerActive()) return;
+  walker.paused = !walker.paused;
+  readWalkerDelay();
+  updateWalkerButtons();
+  if (walker.paused) {
+    clearTimeout(walker.timer);
+    walker.timer = null;
+    setWalkerStatus(walker.phase === "waiting"
+      ? "הדפדוף מושהה."
+      : "הדפדוף יושהה אחרי שהעמוד הנוכחי ייסרק.");
+    return;
+  }
+  if (walker.phase === "empty") {
+    walker.phase = "scrolling";
+    setWalkerStatus(`סורק שוב את ${walkerPageLabel()}…`);
+    scrollWalkerPage(++walker.attempt, 3);
+  } else if (walker.phase === "waiting") {
+    setWalkerStatus(`ממשיך: ממתין ${walker.delaySec} שניות לעמוד הבא…`);
+    scheduleNextWalkerPage();
+  } else {
+    setWalkerStatus("הדפדוף ממשיך.");
+  }
+}
+
+function stopWalker(message = "הדפדוף נעצר. הכרטיסייה נשארה פתוחה.") {
+  if (!walkerActive()) return;
+  if (walker.tabId !== null) {
+    chrome.tabs.sendMessage(walker.tabId, { type: "lightrail:walker-stop-scroll" }, () => void chrome.runtime.lastError);
+  }
+  finishWalker(`${message} ${walkerSummary()}`);
+  loadCache();
+}
+
 // מעדכן רק את מה שמוצג כרגע; תצוגות אחרות נבנות כשעוברים אליהן
 function applyCacheToViews() {
   renderRows();
@@ -3204,6 +3438,22 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !$("detailsPanel").hidden) closeDetails();
 });
 chrome.tabs.onUpdated.addListener(onRefreshTabUpdated);
+chrome.tabs.onUpdated.addListener(onWalkerTabUpdated);
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId !== walker.tabId) return;
+  walker.tabId = null;
+  stopWalker("כרטיסיית הדפדוף נסגרה, הדפדוף נעצר.");
+});
+loadWalkerSettings();
+$("startWalker").addEventListener("click", startWalker);
+$("pauseWalker").addEventListener("click", toggleWalkerPause);
+$("stopWalker").addEventListener("click", () => stopWalker());
+for (const id of ["walkerUrl", "walkerFrom", "walkerTo", "walkerSpeed", "walkerDelay"]) {
+  $(id).addEventListener("change", saveWalkerSettings);
+}
+// מהירות והשהיה אפשר לשנות גם באמצע דפדוף
+$("walkerSpeed").addEventListener("change", readWalkerDelay);
+$("walkerDelay").addEventListener("change", readWalkerDelay);
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabId !== refreshTabId) return;
   refreshTabId = null;
