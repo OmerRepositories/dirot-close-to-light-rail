@@ -1485,6 +1485,62 @@
     rememberListingExportData(entry, metrics);
   }
 
+  // ---------- עסקאות אמת באזור (טבלה נפרדת, LRDeals) ----------
+  // יד2: בקשה אחת לאותו API שהעמוד משתמש בו, לשנים האחרונות, לכל היותר פעם בשבוע לכל רחוב.
+  // מדלן: קוראים את מה שהסקריפט שבתוך הדף העתיק מטבלת העסקאות שכבר נטענה.
+  const DEALS_REFETCH_MS = 7 * 24 * 60 * 60 * 1000;
+  let dealsWrite = Promise.resolve();
+  let yad2DealsRequested = false;
+  let lastMadlanDealsJson = "";
+
+  function saveDeals(items) {
+    const valid = items.filter(Boolean);
+    if (!valid.length) return;
+    // כתיבות באותה לשונית אחת אחרי השנייה, כדי ששתי שמירות לא ידרסו זו את זו
+    dealsWrite = dealsWrite.then(() => new Promise((resolve) => {
+      chrome.storage.local.get(LRDeals.STORAGE_KEY, (stored) => {
+        if (chrome.runtime.lastError) return resolve();
+        const merged = LRDeals.mergeAll(stored && stored[LRDeals.STORAGE_KEY], valid);
+        if (!merged.added && !merged.updated) return resolve();
+        chrome.storage.local.set({ [LRDeals.STORAGE_KEY]: merged.store }, () => resolve());
+      });
+    }));
+  }
+
+  function collectDeals(entry) {
+    if (!CFG.saveListingData || !listingCacheLoaded || isRentalListing(entry)) return;
+    if (IS_YAD2) {
+      if (yad2DealsRequested) return;
+      const query = LRYad2.dealsQuery(document);
+      if (!query) return;
+      yad2DealsRequested = true;
+      chrome.storage.local.get(LRDeals.FETCH_LOG_KEY, async (stored) => {
+        const log = (stored && stored[LRDeals.FETCH_LOG_KEY]) || {};
+        if (Date.now() - (Number(log[query.throttleKey]) || 0) < DEALS_REFETCH_MS) return;
+        try {
+          const response = await fetch(query.url, { credentials: "include" });
+          if (!response.ok) return;
+          const json = await response.json();
+          const results = json && json.data && Array.isArray(json.data.results) ? json.data.results : [];
+          saveDeals(results.map(LRDeals.fromYad2));
+          chrome.storage.local.set({ [LRDeals.FETCH_LOG_KEY]: { ...log, [query.throttleKey]: Date.now() } });
+        } catch (error) {
+          console.warn("[lightrail-ext] could not load Yad2 deals", error);
+        }
+      });
+      return;
+    }
+    const table = document.querySelector('[data-auto="sold-listings-table"][data-lr-deals]');
+    const json = table && table.getAttribute("data-lr-deals");
+    if (!json || json === lastMadlanDealsJson) return;
+    const address = LRMadlan.readAddress(document, entry.getText(), ctxCity(), true);
+    if (!address || !address.city) return;
+    lastMadlanDealsJson = json;
+    try {
+      saveDeals(JSON.parse(json).map((row) => LRDeals.fromMadlan(row, address.city)));
+    } catch {}
+  }
+
   function rememberListingExportData(entry, extra = {}) {
     if (
       !CFG.saveListingData ||
@@ -1815,6 +1871,7 @@
       const currentAmenities = (IS_YAD2 ? LRYad2 : LRMadlan).readAmenities(root);
       if (entry.kind === "single") {
         rememberListingExportData(entry);
+        collectDeals(entry);
       } else if (CFG.listingIndexingMode === "encountered") {
         // כרטיס ברשימה: מנתחים ושומרים מחדש רק אם הטקסט שלו השתנה או שהרשומה חסרה במטמון
         const cardText = entry.getText();

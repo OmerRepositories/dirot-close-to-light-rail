@@ -411,6 +411,36 @@ test("Yad2 listing data gives floor, building floors and public shelter distance
   assert.equal(data.listingBumpedAt, "2026-11-08T23:40:38");
 });
 
+test("Yad2 deals request uses the listing's address ids, recent years and 50 results", () => {
+  const listing = {
+    token: "dl1",
+    address: {
+      topArea: { id: 2 }, area: { id: 4 }, city: { id: "7900" }, neighborhood: { id: 763 }, street: { id: "0446" },
+      coords: { lat: 32.085336, lon: 34.897159 },
+    },
+  };
+  const context = {
+    LR,
+    URL,
+    URLSearchParams,
+    document: {
+      querySelector: (selector) =>
+        selector === "script#__NEXT_DATA__" ? { textContent: JSON.stringify({ props: { pageProps: { listing } } }) } : null,
+    },
+    location: { pathname: "/realestate/item/center-and-sharon/dl1", href: "https://www.yad2.co.il/realestate/item/center-and-sharon/dl1" },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"), context);
+  const query = context.LRYad2.dealsQuery(context.document, { now: new Date(2026, 10, 9) });
+  const url = new URL(query.url);
+  assert.equal(url.origin + url.pathname, "https://gw.yad2.co.il/latest-deals-completed/");
+  assert.equal(url.searchParams.get("limit"), "50");
+  assert.equal(url.searchParams.get("street"), "0446");
+  assert.equal(url.searchParams.get("coords"), "32.085336,34.897159");
+  assert.equal(url.searchParams.get("minSaleYear"), "2023");
+  assert.equal(url.searchParams.get("maxSaleYear"), "2026");
+  assert.equal(query.throttleKey, "yad2|7900|0446");
+});
+
 test("Yad2 listing status stays unknown without explicit removal or listing data", () => {
   const unknownContext = {
     LR,

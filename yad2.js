@@ -376,6 +376,35 @@ var LRYad2 = (() => {
     };
   }
 
+  // כתובת הבקשה שהעמוד עצמו שולח לטבלת "נכסים שנמכרו באזור", אבל לשנים האחרונות ועם 50 תוצאות
+  // (ברירת המחדל של יד2 מציגה עסקאות ישנות, 2015–2016). רק בעמוד מודעה, עם מזהי הכתובת מנתוני הדף.
+  function dealsQuery(root = document, { years = 4, now = new Date() } = {}) {
+    if (root !== document) return null;
+    const id = listingId(root);
+    const index = id ? getPageListingsById() : null;
+    const data = index && index.get(id);
+    const address = data && data.address;
+    if (!address) return null;
+    const idOf = (part) => (part && part.id !== undefined && part.id !== null && part.id !== "" ? String(part.id) : null);
+    const city = idOf(address.city);
+    const street = idOf(address.street);
+    const coords = address.coords;
+    if (!city || !street || !coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return null;
+    const maxYear = now.getFullYear();
+    const params = new URLSearchParams({ limit: "50", page: "1", sortBy: "distance", order: "asc" });
+    for (const [name, part] of [["topArea", address.topArea], ["area", address.area], ["city", address.city], ["neighborhood", address.neighborhood], ["street", address.street]]) {
+      const value = idOf(part);
+      if (value) params.set(name, value);
+    }
+    params.set("coords", `${coords.lat},${coords.lon}`);
+    params.set("minSaleYear", String(maxYear - years + 1));
+    params.set("maxSaleYear", String(maxYear));
+    return {
+      url: `https://gw.yad2.co.il/latest-deals-completed/?${params}`,
+      throttleKey: `yad2|${city}|${street}`,
+    };
+  }
+
   // קומה, מספר הקומות בבניין ומרחק למקלט ציבורי (האחרון קיים רק בעמוד המודעה)
   function buildingData(data) {
     if (!data) return {};
@@ -606,6 +635,7 @@ var LRYad2 = (() => {
     readAddress,
     listingExportData,
     brokerageFromData,
+    dealsQuery,
     listingPageStatus,
     projectExportData,
     readAmenities,
