@@ -51,8 +51,10 @@
 
   const LISTING_CACHE_KEY = "yad2AmenityCache_v1";
   const LISTING_CACHE_TTL_MS = 60 * 24 * 60 * 60 * 1000;
-  const LISTING_CACHE_MAX_ITEMS = 2500;
-  const LISTING_CACHE_MAX_BYTES = 4 * 1024 * 1024;
+  // אין מגבלת כמות/גודל: לתוסף יש הרשאת unlimitedStorage. מגבלה מקומית הייתה מוחקת בשקט מודעות
+  // שהגיעו מהסנכרון (והסנכרון לא היה מחזיר אותן, כי הן כבר נמשכו בעבר).
+  const LISTING_CACHE_MAX_ITEMS = Infinity;
+  const LISTING_CACHE_MAX_BYTES = Infinity;
   const SITE_DISABLE_KEY = IS_YAD2 ? "disableYad2" : "disableMadlan";
   let listingCache = {};
   let listingCacheLoaded = false;

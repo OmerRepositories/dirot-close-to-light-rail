@@ -488,8 +488,13 @@ async function syncPush(settings) {
   return pushed;
 }
 
+// עולה כשצריך שכל מחשב ימשוך שוב את כל המודעות מהשרת פעם אחת (למשל אחרי שגרסה ישנה
+// מחקה מקומית מודעות מעבר למגבלת 2,500 מודעות / 4MB, והן לא היו חוזרות במשיכה "מאז הפעם הקודמת")
+const LISTINGS_FULL_PULL_VERSION = 1;
+
 async function syncPull(settings) {
-  let cursor = settings.cursor || null;
+  const fullPull = settings.listingsFullPull !== LISTINGS_FULL_PULL_VERSION;
+  let cursor = fullPull ? null : settings.cursor || null;
   let since = cursor
     ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
     : "1970-01-01T00:00:00Z";
@@ -525,7 +530,10 @@ async function syncPull(settings) {
     since = last;
     if (rows.length < LRSync.PULL_PAGE) break;
   }
-  if (cursor) await saveSyncSettings({ cursor });
+  await saveSyncSettings({
+    ...(cursor ? { cursor } : {}),
+    ...(fullPull ? { listingsFullPull: LISTINGS_FULL_PULL_VERSION } : {}),
+  });
   return applied;
 }
 
