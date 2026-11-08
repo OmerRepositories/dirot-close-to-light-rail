@@ -401,6 +401,25 @@ test("price timeline dates say how certain they are instead of using the indexin
     "yad2:updated": {
       title: "updated",
       listingUpdatedAt: "2026-10-20",
+      listingBumpedAt: "2026-11-04", // ההקפצה הייתה אחרי העדכון → העדכון אמיתי
+      priceHistory: [
+        { price: 2_000_000, at: null, baselineUnknown: true, src: "card" },
+        { price: 1_900_000, at: indexed, src: "page" },
+      ],
+    },
+    // ביד2 "עודכן" שווה לזמן ההקפצה, או שזמן ההקפצה לא ידוע – לא אומדן לשינוי מחיר
+    "yad2:bumped": {
+      title: "bumped",
+      listingUpdatedAt: "2026-10-25",
+      listingBumpedAt: "2026-10-25",
+      priceHistory: [
+        { price: 2_000_000, at: null, baselineUnknown: true, src: "card" },
+        { price: 1_900_000, at: indexed, src: "page" },
+      ],
+    },
+    "yad2:bumpUnknown": {
+      title: "bumpUnknown",
+      listingUpdatedAt: "2026-10-25",
       priceHistory: [
         { price: 2_000_000, at: null, baselineUnknown: true, src: "card" },
         { price: 1_900_000, at: indexed, src: "page" },
@@ -435,8 +454,13 @@ test("price timeline dates say how certain they are instead of using the indexin
   assert.equal(byTitle.detected.at, refreshed);
   assert.equal(byTitle.site.dateKind, "site");
   assert.equal(byTitle.site.at, Date.UTC(2026, 9, 1));
+  assert.equal(byTitle.bumped.dateKind, "beforeFirstSeen");
+  assert.equal(byTitle.bumpUnknown.dateKind, "beforeFirstSeen");
   // מיון לפי תאריך השינוי המשוער, לא לפי תאריך השמירה
-  assert.deepEqual(events.map((event) => event.title), ["detected", "card", "updated", "site"]);
+  assert.deepEqual(
+    events.map((event) => event.title).filter((title) => !title.startsWith("bump")),
+    ["detected", "card", "updated", "site"]
+  );
 });
 
 test("price timeline events include saved listing details", () => {

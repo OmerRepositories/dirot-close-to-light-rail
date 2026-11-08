@@ -1576,6 +1576,10 @@
         (listingMetadata.listingUpdatedAt &&
           normalizeListingDate(listingMetadata.listingUpdatedAt)) ||
         previous.listingUpdatedAt,
+      listingBumpedAt:
+        (listingMetadata.listingBumpedAt &&
+          normalizeListingDate(listingMetadata.listingBumpedAt)) ||
+        previous.listingBumpedAt,
       brokerage: hasBrokerageSignal(
         root === document ? document.querySelector("main") || document.body : root,
         root

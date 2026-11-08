@@ -338,6 +338,8 @@ var LRYad2 = (() => {
         "modifiedAt",
         "updateDate",
       ]),
+      // זמן ההקפצה האחרון – ביד2 "עודכן" מתאפס גם בהקפצה, אז צריך לדעת להבדיל
+      listingBumpedAt: dateValue(["rebouncedAt"]),
     };
   }
 

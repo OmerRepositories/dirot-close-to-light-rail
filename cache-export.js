@@ -122,6 +122,15 @@ var LRCacheExport = (() => {
     return Number.isFinite(ms) ? ms : null;
   }
 
+  // ביד2 "עודכן" מתאפס גם בהקפצת מודעה (updatedAt == rebouncedAt), כך שהוא לא מעיד על שינוי מחיר.
+  // משתמשים בו רק כשידוע שהוא שונה מזמן ההקפצה האחרון.
+  function reliableUpdatedMs(site, record) {
+    const updatedMs = listingDateMs(record.listingUpdatedAt);
+    if (!Number.isFinite(updatedMs) || site !== "yad2") return updatedMs;
+    const bumpedMs = listingDateMs(record.listingBumpedAt);
+    return Number.isFinite(bumpedMs) && Math.abs(updatedMs - bumpedMs) > DAY_MS ? updatedMs : null;
+  }
+
   // מתי השינוי קרה בפועל? רק נתוני האתר (src: "site") נותנים תאריך אמיתי. תצפית שלנו היא רק
   // מתי שמנו לב: השינוי קרה בין התצפית הקודמת לזו. אם תאריך "עודכן" של המודעה נופל בטווח הזה
   // הוא אומדן טוב יותר. dateKind: site | updated | detected | beforeFirstSeen
@@ -151,7 +160,7 @@ var LRCacheExport = (() => {
       const history = validPriceHistory(record);
       if (!history.length) continue;
       const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
-      const updatedMs = listingDateMs(record.listingUpdatedAt);
+      const updatedMs = reliableUpdatedMs(site, record);
       const listing = {
         key,
         site,
