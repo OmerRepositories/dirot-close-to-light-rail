@@ -34,7 +34,33 @@ var LRYad2 = (() => {
     return match ? match[1] : null;
   }
 
+  // נתונים שהסקריפט שרץ בתוך הדף (yad2-page-data.js) העתיק לקישור המודעה. כך יש נתונים מלאים גם בעמוד 2
+  // ואילך, שבהם __NEXT_DATA__ נשאר של העמוד הראשון. נקרא רק כשהמודעה לא נמצאת בנתוני הדף.
+  const domItemCache = new Map();
+  function domListing(id) {
+    if (!/^[\w-]+$/.test(id) || typeof document.querySelector !== "function") return null;
+    const link = document.querySelector(`a[data-lr-item-id="${id}"][data-lr-item]`);
+    const raw = link && link.getAttribute("data-lr-item");
+    if (!raw) return null;
+    if (!domItemCache.has(raw)) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {}
+      domItemCache.set(raw, parsed && String(parsed.token) === id && parsed.address ? parsed : null);
+      if (domItemCache.size > 500) domItemCache.delete(domItemCache.keys().next().value);
+    }
+    return domItemCache.get(raw);
+  }
+
   function getPageListingsById() {
+    const index = pageIndex();
+    return {
+      get: (id) => (index && index.get(id)) || domListing(String(id)),
+    };
+  }
+
+  function pageIndex() {
     if (pageListingsById) return pageListingsById;
     const data = getPageData();
     if (!data) return null;

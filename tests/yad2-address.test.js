@@ -348,6 +348,42 @@ test("Yad2 brokerage comes from the page data's adType (private / commercial)", 
   assert.equal(feed.LRYad2.brokerageFromData(card("missing")), null);
 });
 
+test("Yad2 reads card data copied by the in-page script when __NEXT_DATA__ is stale (page 2+)", () => {
+  const copied = {
+    token: "page2card",
+    adType: "commercial",
+    price: 2_100_000,
+    address: { city: { text: "פתח תקווה" }, street: { text: "רוטשילד" }, house: { number: 5, floor: 3 }, coords: { lat: 32.09, lon: 34.88 } },
+    additionalDetails: { roomsCount: 4, squareMeter: 95 },
+  };
+  const link = {
+    href: "https://www.yad2.co.il/realestate/item/center-and-sharon/page2card",
+    getAttribute: (name) => (name === "data-lr-item" ? JSON.stringify(copied) : null),
+  };
+  const context = {
+    LR,
+    URL,
+    document: {
+      querySelector: (selector) => {
+        // __NEXT_DATA__ של העמוד הראשון – בלי הכרטיס הזה
+        if (selector === "script#__NEXT_DATA__") {
+          return { textContent: JSON.stringify({ props: { pageProps: { feed: [{ token: "page1card", address: {} }] } } }) };
+        }
+        return selector === 'a[data-lr-item-id="page2card"][data-lr-item]' ? link : null;
+      },
+    },
+    location: { pathname: "/realestate/forsale", href: "https://www.yad2.co.il/realestate/forsale?page=2" },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"), context);
+  const card = { querySelector: (selector) => (selector.includes("/realestate/item/") ? link : null) };
+  assert.equal(context.LRYad2.brokerageFromData(card), true);
+  const place = context.LRYad2.readAddress(card, "", "", false);
+  assert.equal(place.city, "פתח תקווה");
+  assert.deepEqual(JSON.parse(JSON.stringify(place.coordinates)), { lat: 32.09, lon: 34.88 });
+  // מזהה לא תקין לא נכנס לבורר
+  assert.equal(context.LRYad2.brokerageFromData({ querySelector: () => ({ href: 'https://www.yad2.co.il/realestate/item/x/a"b' }) }), null);
+});
+
 test("Yad2 listing status stays unknown without explicit removal or listing data", () => {
   const unknownContext = {
     LR,
