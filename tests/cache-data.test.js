@@ -306,6 +306,27 @@ test("deletion filter can select irrelevant listings on any site", () => {
   assert.deepEqual(matches.map(([key]) => key).sort(), ["madlan:b", "yad2:a"]);
 });
 
+test("status filter: active excludes irrelevant listings and several statuses can be combined", () => {
+  const cache = {
+    "yad2:activeOk": { recordType: "listing", listingStatus: "active", amenities: { parking: true } },
+    "yad2:activeBad": { recordType: "listing", listingStatus: "active", amenities: { parking: false } },
+    "yad2:removedBad": { recordType: "listing", listingStatus: "removed", amenities: { parking: false } },
+    "yad2:unchecked": { recordType: "listing", amenities: { parking: true } },
+    "madlan:bad": { recordType: "listing", amenities: { parking: false } },
+  };
+  const base = { requiredAmenities: ["parking"], irrelevantMissingPct: 50 };
+  const keys = (status) => CacheData.filterListingsForDeletion(cache, { ...base, status })
+    .map(([key]) => key).sort();
+  assert.deepEqual(keys("active"), ["yad2:activeOk"]);
+  assert.deepEqual(keys(["active"]), ["yad2:activeOk"]);
+  assert.deepEqual(keys(["irrelevant"]), ["madlan:bad", "yad2:activeBad"]);
+  assert.deepEqual(keys(["removed"]), ["yad2:removedBad"]);
+  assert.deepEqual(keys(["active", "unchecked"]), ["yad2:activeOk", "yad2:unchecked"]);
+  assert.deepEqual(keys([]), []); // אין מסננים כלל → אין התאמות למחיקה
+  assert.equal(CacheData.hasListingDeletionFilters({ status: [] }), false);
+  assert.equal(CacheData.hasListingDeletionFilters({ status: ["active"] }), true);
+});
+
 test("a missing deal-breaker amenity makes a listing irrelevant regardless of the threshold", () => {
   const record = {
     recordType: "listing",

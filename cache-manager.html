@@ -131,16 +131,18 @@
             <option value="project">פרויקטים</option>
           </select>
         </label>
-        <label class="search-choice">
-          <span>סטטוס מודעה</span>
-          <select id="listingSearchStatus">
-            <option value="">כל הסטטוסים</option>
-            <option value="active">פעילה</option>
-            <option value="removed">הוסרה</option>
-            <option value="unchecked">לא נבדקה</option>
-            <option value="irrelevant">לא רלוונטית</option>
-          </select>
-        </label>
+        <div class="search-choice multi-choice">
+          <span id="listingSearchStatusLabel">סטטוס מודעה</span>
+          <details id="listingSearchStatus" class="multi-select" data-multi-select>
+            <summary aria-labelledby="listingSearchStatusLabel">כל הסטטוסים</summary>
+            <div class="multi-options" role="group" aria-labelledby="listingSearchStatusLabel">
+              <label><input type="checkbox" value="active"> פעילה</label>
+              <label><input type="checkbox" value="removed"> הוסרה</label>
+              <label><input type="checkbox" value="unchecked"> לא נבדקה</label>
+              <label><input type="checkbox" value="irrelevant"> לא רלוונטית</label>
+            </div>
+          </details>
+        </div>
         <label class="range-filter">
           <span>מחיר (₪)</span>
           <span class="range-inputs">
@@ -254,16 +256,18 @@
             <option value="madlan">מדלן</option>
           </select>
         </label>
-        <label class="search-choice">
-          <span>סטטוס מודעה (רשות)</span>
-          <select id="deleteListingStatus">
-            <option value="">כל הסטטוסים</option>
-            <option value="active">פעילה</option>
-            <option value="removed">הוסרה</option>
-            <option value="unchecked">לא נבדקה</option>
-            <option value="irrelevant">לא רלוונטית</option>
-          </select>
-        </label>
+        <div class="search-choice multi-choice">
+          <span id="deleteListingStatusLabel">סטטוס מודעה (רשות)</span>
+          <details id="deleteListingStatus" class="multi-select" data-multi-select>
+            <summary aria-labelledby="deleteListingStatusLabel">כל הסטטוסים</summary>
+            <div class="multi-options" role="group" aria-labelledby="deleteListingStatusLabel">
+              <label><input type="checkbox" value="active"> פעילה</label>
+              <label><input type="checkbox" value="removed"> הוסרה</label>
+              <label><input type="checkbox" value="unchecked"> לא נבדקה</label>
+              <label><input type="checkbox" value="irrelevant"> לא רלוונטית</label>
+            </div>
+          </details>
+        </div>
         <label class="range-filter">
           <span>מחיר (₪) (רשות)</span>
           <span class="range-inputs">

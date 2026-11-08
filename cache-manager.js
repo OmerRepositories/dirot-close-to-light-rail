@@ -162,11 +162,30 @@ function initializeDeleteAmenityFilters() {
   }
 }
 
+// בחירה מרובה (סטטוס מודעה): <details data-multi-select> עם תיבות סימון
+function multiSelectValues(id) {
+  return [...$(id).querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+}
+
+function updateMultiSelectSummary(details) {
+  const checked = [...details.querySelectorAll('input[type="checkbox"]:checked')];
+  details.querySelector("summary").textContent = checked.length
+    ? checked.map((input) => input.parentElement.textContent.trim()).join(", ")
+    : "כל הסטטוסים";
+}
+
+function setMultiSelectValues(id, values) {
+  const wanted = new Set(Array.isArray(values) ? values : values ? [values] : []);
+  const details = $(id);
+  for (const input of details.querySelectorAll('input[type="checkbox"]')) input.checked = wanted.has(input.value);
+  updateMultiSelectSummary(details);
+}
+
 function readListingDeletionFilters() {
   const filters = {
     query: $("deleteListingQuery").value.trim(),
     site: $("deleteListingSite").value,
-    status: $("deleteListingStatus").value,
+    status: multiSelectValues("deleteListingStatus"),
     requiredAmenities: timelinePreferences.requiredAmenities,
     irrelevantMissingPct: timelinePreferences.irrelevantMissingPct,
     dealBreakerAmenities: timelinePreferences.dealBreakerAmenities,
@@ -947,8 +966,9 @@ function renderRows() {
   // במסך החיפוש לא טוענים את כל המאגר מראש: מחכים שהמשתמש יקליד או יבחר מסנן
   const searchDates = [...document.querySelectorAll("[data-search-date-min], [data-search-date-max]")]
     .some((input) => input.value);
+  const searchStatuses = searchMode ? multiSelectValues("listingSearchStatus") : [];
   searchWaiting = searchMode && !(
-    query || site || type || $("listingSearchStatus").value ||
+    query || site || type || searchStatuses.length ||
     searchBoolFilters.length || amenityFilters.length || ranges.size || searchDates
   );
   visibleRecords = searchWaiting ? [] : Object.entries(cache)
@@ -956,17 +976,12 @@ function renderRows() {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (site && recordSite(key) !== site) return false;
       if (type && recordType(record) !== type) return false;
-      if (searchMode && $("listingSearchStatus").value === "irrelevant") {
-        if (!listingRelevance(record).irrelevant) return false;
-      } else if (searchMode && $("listingSearchStatus").value) {
-        const status = recordSite(key) !== "yad2" || recordType(record) !== "listing"
-          ? ""
-          : record.listingStatus === "active"
-            ? "active"
-            : record.listingStatus === "removed"
-              ? "removed"
-              : "unchecked";
-        if (status !== $("listingSearchStatus").value) return false;
+      if (searchStatuses.length) {
+        // סטטוס אחד לכל מודעה: "פעילה" לא כוללת מודעות שסומנו לא רלוונטיות
+        const status = recordType(record) === "listing"
+          ? LRCacheData.listingStatusKey(recordSite(key), record, listingRelevance(record).irrelevant)
+          : "";
+        if (!searchStatuses.includes(status)) return false;
       }
       if (!boolFilters.every(([field, value]) => matchesBooleanFilter(record, field, value))) return false;
       if (!searchBoolFilters.every(([field, value]) =>
@@ -1517,7 +1532,7 @@ function openSearchWith({ status = "", query = "", site = "" } = {}) {
   $("listingSearchQuery").value = query;
   $("listingSearchSite").value = site;
   $("listingSearchType").value = "listing";
-  $("listingSearchStatus").value = status;
+  setMultiSelectValues("listingSearchStatus", status);
   setActiveTab("search");
 }
 
@@ -2980,6 +2995,22 @@ for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
   $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
 }
+document.querySelectorAll("[data-multi-select]").forEach((details) => {
+  details.addEventListener("change", () => updateMultiSelectSummary(details));
+});
+// סגירת רשימת הבחירה המרובה בלחיצה מחוץ לה או ב־Escape
+document.addEventListener("click", (event) => {
+  document.querySelectorAll("[data-multi-select][open]").forEach((details) => {
+    if (!details.contains(event.target)) details.open = false;
+  });
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  document.querySelectorAll("[data-multi-select][open]").forEach((details) => {
+    details.open = false;
+    details.querySelector("summary").focus();
+  });
+});
 for (const id of ["listingSearchQuery", "listingSearchSite", "listingSearchType", "listingSearchStatus"]) {
   $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
@@ -3005,7 +3036,7 @@ $("clearListingSearch").addEventListener("click", () => {
   $("listingSearchQuery").value = "";
   $("listingSearchSite").value = "";
   $("listingSearchType").value = "";
-  $("listingSearchStatus").value = "";
+  setMultiSelectValues("listingSearchStatus", []);
   document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max]").forEach((input) => {
     input.value = "";
   });
@@ -3019,7 +3050,7 @@ $("listingDeletePanel").addEventListener("change", renderListingDeletionPreview)
 $("clearListingDeleteFilters").addEventListener("click", () => {
   $("deleteListingQuery").value = "";
   $("deleteListingSite").value = "";
-  $("deleteListingStatus").value = "";
+  setMultiSelectValues("deleteListingStatus", []);
   document.querySelectorAll("[data-delete-range-min], [data-delete-range-max], [data-delete-boolean], [data-delete-amenity]").forEach((input) => {
     input.value = "";
   });

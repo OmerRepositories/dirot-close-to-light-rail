@@ -306,7 +306,6 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 }
 .view-tab.active .tab-count { color: var(--tone); background: var(--surface); }
 .tab-panel[hidden] { display: none; }
-
 /* כותרת לכל תצוגה */
 .panel-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .panel-head p { max-width: 820px; margin: 3px 0 0; color: var(--muted); font-size: 13px; }
@@ -366,6 +365,46 @@ h2, .search-panel-heading h2, .timeline-heading h2 { margin: 0; color: var(--ink
 .listing-search-grid > label:has(input[type="date"]) { grid-column: span 2; }
 .listing-search-grid .range-inputs input, .timeline-range .range-inputs input { min-width: 0; padding: 5px 8px; direction: ltr; text-align: right; }
 .search-amenity-filters, .timeline-amenity-filters { display: contents; }
+/* בחירה מרובה של סטטוסים: כפתור בגובה של select, ורשימת תיבות סימון שנפתחת מעליו */
+.listing-search-grid > .multi-choice { display: grid; gap: 4px; min-width: 0; }
+.listing-search-grid > .multi-choice > span:first-child { color: var(--muted); font-size: 13px; font-weight: 500; }
+.multi-select { position: relative; }
+.multi-select summary {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  overflow: hidden;
+  padding: 6px 10px;
+  padding-inline-end: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  list-style: none;
+}
+.multi-select summary::-webkit-details-marker { display: none; }
+.multi-select summary::after { position: absolute; inset-inline-end: 10px; color: var(--muted); font-size: 11px; content: "▾"; }
+.multi-select summary:hover { border-color: var(--faint); }
+.multi-select[open] summary { border-color: var(--action); box-shadow: 0 0 0 3px var(--action-soft); }
+.multi-options {
+  position: absolute;
+  z-index: 20;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
+}
+.multi-options label { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; color: var(--ink); font-size: 14px; cursor: pointer; }
+.multi-options label:hover { background: var(--surface-alt); }
 .search-filter-hint, .timeline-filter-hint { margin-top: 10px; }
 
 /* ---------- מחיקה ---------- */

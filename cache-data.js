@@ -365,12 +365,27 @@ var LRCacheData = (() => {
     );
   }
 
+  // סטטוס אחד לכל מודעה, כמו שמוצג בעמודת "סטטוס מודעה": הוסרה > לא רלוונטית > פעילה/לא נבדקה.
+  // כך "פעילה" לא כוללת מודעות לא רלוונטיות. "" = אין סטטוס (פרויקט, או מודעת מדלן רלוונטית).
+  function listingStatusKey(site, record, irrelevant) {
+    if (!record || record.recordType === "project") return "";
+    if (site === "yad2" && record.listingStatus === "removed") return "removed";
+    if (irrelevant) return "irrelevant";
+    if (site !== "yad2") return "";
+    return record.listingStatus === "active" ? "active" : "unchecked";
+  }
+
+  function normalizeStatusFilter(status) {
+    const list = Array.isArray(status) ? status : status ? [status] : [];
+    return list.filter((value) => typeof value === "string" && value);
+  }
+
   function hasListingDeletionFilters(filters) {
     if (!filters || typeof filters !== "object") return false;
     return Boolean(
       (typeof filters.query === "string" && filters.query.trim()) ||
       filters.site ||
-      filters.status ||
+      normalizeStatusFilter(filters.status).length ||
       filters.brokerage ||
       filters.railApprox ||
       Object.values(filters.ranges || {}).some(
@@ -392,23 +407,15 @@ var LRCacheData = (() => {
       const separator = key.indexOf(":");
       const site = separator < 0 ? "" : key.slice(0, separator);
       if (filters.site && site !== filters.site) return false;
-      if (filters.status === "irrelevant") {
-        if (!amenityRelevance(
+      const statuses = normalizeStatusFilter(filters.status);
+      if (statuses.length) {
+        const irrelevant = amenityRelevance(
           record,
           filters.requiredAmenities,
           filters.irrelevantMissingPct,
           filters.dealBreakerAmenities
-        ).irrelevant) {
-          return false;
-        }
-      } else if (filters.status) {
-        if (site !== "yad2") return false;
-        const status = record.listingStatus === "active"
-          ? "active"
-          : record.listingStatus === "removed"
-            ? "removed"
-            : "unchecked";
-        if (status !== filters.status) return false;
+        ).irrelevant;
+        if (!statuses.includes(listingStatusKey(site, record, irrelevant))) return false;
       }
 
       const priceRange = Number.isFinite(record.price)
@@ -565,6 +572,8 @@ var LRCacheData = (() => {
     matchesNumericRange,
     hasListingDeletionFilters,
     filterListingsForDeletion,
+    listingStatusKey,
+    normalizeStatusFilter,
     dealScore,
   };
 })();
