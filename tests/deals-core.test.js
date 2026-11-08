@@ -108,6 +108,31 @@ test("listings are compared with deals of a similar size first, all sizes only a
   assert.equal(tiny.count, 6);
 });
 
+test("deals by city and neighborhood count only recent years and give medians", () => {
+  const now = Date.UTC(2026, 10, 9);
+  const make = (city, hood, house, price, date) => Deals.fromYad2({
+    ...yad2Result,
+    address: { ...yad2Result.address, city: { text: city }, neighborhood: hood ? { text: hood } : undefined, houseNumber: house },
+    price, buildingMR: 100, saleDate: date,
+  });
+  const store = Deals.mergeAll({}, [
+    make("פתח תקווה", "עין גנים", 1, 2_000_000, "2026-01-01"),
+    make("פתח תקווה", "עין גנים", 2, 2_400_000, "2025-01-01"),
+    make("פתח תקווה", "כפר גנים", 3, 3_000_000, "2024-05-01"),
+    make("פתח תקווה", null, 4, 9_000_000, "2020-01-01"), // ישנה מדי
+    make("רמת גן", "הבורסה", 5, 4_000_000, "2026-03-01"),
+  ], now).store;
+  const result = Deals.dealsByArea(store, { years: 3, now });
+  assert.deepEqual(result.years, [2024, 2025, 2026]);
+  assert.equal(result.cities[0].city, "פתח תקווה");
+  assert.equal(result.cities[0].count, 3);
+  assert.deepEqual(result.cities[0].byYear, { 2024: 1, 2025: 1, 2026: 1 });
+  assert.equal(result.cities[0].medianPpsm, 24_000);
+  assert.equal(result.neighborhoods[0].neighborhood, "עין גנים");
+  assert.equal(result.neighborhoods[0].count, 2);
+  assert.equal(result.cities.length, 2);
+});
+
 test("deal search filters by text, city, source and ranges, sorts with missing values last and summarizes", () => {
   const make = (house, price, sqm, date, rooms, source) => {
     const item = Deals.fromYad2({ ...yad2Result, address: { ...yad2Result.address, houseNumber: house }, price, buildingMR: sqm, saleDate: date, rooms });

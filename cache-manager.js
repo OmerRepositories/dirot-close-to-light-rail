@@ -1742,7 +1742,20 @@ async function renderDashboard() {
     if (event.at >= weekAgo) stats.dropsWeek++;
     if (event.at >= monthAgo) stats.dropsMonth++;
   }
+  stats.dealAreas = LRDeals.dealsByArea(dealsStore, { years: 3 });
   drawDashboard(stats, cities);
+}
+
+// פותח את חיפוש העסקאות מסונן לעיר (ולשכונה) – לחיצה על שורה בלוח הבקרה
+function openDealsWith({ city = "", query = "" } = {}) {
+  $("dealsQuery").value = query;
+  $("dealsSource").value = "";
+  document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => { input.value = ""; });
+  const years = LRDeals.dealsByArea({}, { years: 3 }).years;
+  document.querySelector('[data-deals-min="year"]').value = String(years[0]);
+  setActiveTab("deals");
+  $("dealsCity").value = city;
+  renderDeals();
 }
 
 // הפעם הראשונה שהתוסף ראה מחיר למודעה (לא נקודות מהאתר, שיכולות להיות ישנות בהרבה)
@@ -1953,6 +1966,54 @@ function drawDashboard(stats, cities) {
   }
   table.appendChild(body);
   cityBox.appendChild(top.length ? table : el("p", "stat-note", "עוד אין מודעות עם עיר."));
+
+  // עסקאות אמת לפי עיר ושכונה בשנים האחרונות
+  const areas = stats.dealAreas;
+  const yearsLabel = `${areas.years[0]}–${areas.years[areas.years.length - 1]}`;
+  const dealsTable = (headers, items, nameOf, onClick) => {
+    const max = items.length ? items[0].count : 0;
+    const table = el("table", "city-table");
+    const headRow = el("tr");
+    for (const label of headers) headRow.appendChild(el("th", "", label));
+    table.appendChild(el("thead")).appendChild(headRow);
+    const body = el("tbody");
+    for (const item of items) {
+      const row = el("tr");
+      row.title = "פתיחת העסקאות בחיפוש עסקאות";
+      row.addEventListener("click", () => onClick(item));
+      const countCell = el("td", "city-count");
+      const track = el("span", "city-bar");
+      const fill = el("span", "city-bar-fill");
+      fill.style.width = `${max ? Math.max(4, (item.count / max) * 100) : 0}%`;
+      track.appendChild(fill);
+      countCell.append(track, el("span", "city-bar-value", number(item.count)));
+      row.append(el("td", "city-name", nameOf(item)), countCell);
+      for (const year of areas.years) row.appendChild(el("td", "", number(item.byYear[year])));
+      row.appendChild(el("td", "", item.medianPpsm ? `₪${number(item.medianPpsm)}` : "—"));
+      body.appendChild(row);
+    }
+    table.appendChild(body);
+    return table;
+  };
+  const yearHeaders = areas.years.map(String);
+  const dealCities = section(`עסקאות אמת לפי עיר (${yearsLabel})`);
+  if (!areas.cities.length) {
+    dealCities.appendChild(el("p", "stat-note", "עוד אין עסקאות אמת מהשנים האחרונות. הן נאספות כשפותחים מודעות ביד2 ובמדלן."));
+  } else {
+    dealCities.append(
+      dealsTable(["עיר", "עסקאות", ...yearHeaders, "₪ למ״ר חציוני"], areas.cities.slice(0, 10), (item) => item.city,
+        (item) => openDealsWith({ city: item.city })),
+      el("p", "stat-note", "לפי העסקאות שנאספו מהמודעות שפתחת – לא כל העסקאות בעיר. עיר שפתחת בה יותר מודעות תיראה עם יותר עסקאות.")
+    );
+    if (areas.neighborhoods.length) {
+      const dealHoods = section(`שכונות עם הכי הרבה עסקאות (${yearsLabel})`);
+      dealHoods.appendChild(
+        dealsTable(["שכונה", "עסקאות", ...yearHeaders, "₪ למ״ר חציוני"], areas.neighborhoods.slice(0, 10),
+          (item) => `${item.neighborhood} · ${item.city}`,
+          (item) => openDealsWith({ city: item.city, query: item.neighborhood }))
+      );
+    }
+  }
   $("dashboardUpdated").textContent = `עודכן ${new Date().toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}`;
 }
 function viewFromHash() {

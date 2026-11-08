@@ -318,6 +318,46 @@ var LRDeals = (() => {
     };
   }
 
+  // עסקאות לפי עיר ולפי שכונה בשנים האחרונות (ללוח הבקרה). years: כמה שנים כולל השנה הנוכחית.
+  function dealsByArea(store, { years = 3, now = Date.now() } = {}) {
+    const lastYear = new Date(now).getFullYear();
+    const yearList = Array.from({ length: years }, (_, index) => lastYear - years + 1 + index);
+    const firstYear = yearList[0];
+    const cities = new Map();
+    const hoods = new Map();
+    const add = (map, key, extra, deal, year) => {
+      const entry = map.get(key) || { ...extra, count: 0, byYear: Object.fromEntries(yearList.map((y) => [y, 0])), ppsm: [], prices: [] };
+      entry.count++;
+      entry.byYear[year]++;
+      const ppsm = dealPpsm(deal);
+      if (Number.isFinite(ppsm)) entry.ppsm.push(ppsm);
+      if (deal.price > 0) entry.prices.push(deal.price);
+      map.set(key, entry);
+    };
+    for (const deal of Object.values(store || {})) {
+      if (!deal || !deal.city) continue;
+      const year = Number(String(deal.date).slice(0, 4));
+      if (!(year >= firstYear && year <= lastYear)) continue;
+      add(cities, normCity(deal.city), { city: deal.city }, deal, year);
+      if (deal.neighborhood) {
+        add(hoods, `${normCity(deal.city)}|${cleanText(deal.neighborhood)}`, { city: deal.city, neighborhood: deal.neighborhood }, deal, year);
+      }
+    }
+    const finish = (entry) => ({
+      ...entry,
+      medianPpsm: entry.ppsm.length ? Math.round(median(entry.ppsm)) : null,
+      medianPrice: entry.prices.length ? Math.round(median(entry.prices)) : null,
+      ppsm: undefined,
+      prices: undefined,
+    });
+    const byCount = (a, b) => b.count - a.count;
+    return {
+      years: yearList,
+      cities: [...cities.values()].map(finish).sort(byCount),
+      neighborhoods: [...hoods.values()].map(finish).sort(byCount),
+    };
+  }
+
   // מפתח מקום של מודעה או עסקה – להצלבה בין עסקאות למודעות שמורות באותה כתובת
   function placeKey(city, street, house = "") {
     return `${normCity(city)}|${normStreet(street)}|${normHouse(house)}`;
@@ -342,6 +382,7 @@ var LRDeals = (() => {
     filterDeals,
     sortDeals,
     summarizeDeals,
+    dealsByArea,
     placeKey,
   };
 })();
