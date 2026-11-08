@@ -2022,11 +2022,14 @@
         if (real) {
           const diff = (info.ppsm - real.medianPpsm) / real.medianPpsm;
           const pct = Math.round(Math.abs(diff) * 100);
+          const sizes = real.similar ? "" : " (כל הגדלים)";
           sub = pct >= 1
-            ? `${diff < 0 ? "−" : "+"}${pct}% מעסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}`
-            : `כמו עסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}`;
+            ? `${diff < 0 ? "−" : "+"}${pct}% מעסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}${sizes}`
+            : `כמו עסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}${sizes}`;
           state = diff <= -0.05 ? "good" : diff >= 0.05 ? "bad" : "neutral";
-          realNote = ` עסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}: חציון ₪${fmtNum(real.medianPpsm)} למ״ר מ־${real.count} עסקאות (${real.fromDate} עד ${real.toDate}).`;
+          realNote = ` עסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}${
+            real.similar ? " בגודל דומה" : " (אין מספיק בגודל דומה – כל הגדלים)"
+          }: חציון ₪${fmtNum(real.medianPpsm)} למ״ר מ־${real.count} עסקאות (${real.fromDate} עד ${real.toDate}).`;
         }
         // אם המשתמש קבע תקרת מחיר למ"ר – הצבע נקבע לפיה
         if (CFG.maxPpsm > 0) state = info.ppsm <= CFG.maxPpsm ? "good" : "neutral";

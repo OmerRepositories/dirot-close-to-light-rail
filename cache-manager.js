@@ -3211,14 +3211,16 @@ function realDealsFor(record) {
 function realDealsText(result) {
   if (!result) return "";
   const sign = result.diffPct > 0 ? "+" : "";
-  return Number.isFinite(result.diffPct)
-    ? `${sign}${result.diffPct}% · ${LRDeals.LEVEL_LABELS[result.level]} (${result.count})`
-    : `${LRDeals.LEVEL_LABELS[result.level]} (${result.count})`;
+  const where = `${LRDeals.LEVEL_LABELS[result.level]} (${result.count}${result.similar ? "" : ", כל הגדלים"})`;
+  return Number.isFinite(result.diffPct) ? `${sign}${result.diffPct}% · ${where}` : where;
 }
 
 function realDealsTitle(result) {
   if (!result) return "אין מספיק עסקאות אמת שמורות ליד הכתובת הזו (צריך 3 בבניין או ברחוב, או 5 בשכונה). עסקאות נאספות כשפותחים מודעות ביד2 ובמדלן.";
   return `חציון ${displayPrice(result.medianPpsm)} למ״ר מ־${result.count} עסקאות ${LRDeals.LEVEL_LABELS[result.level]}, ${result.fromDate} עד ${result.toDate}. ` +
+    (result.similar
+      ? "רק עסקאות בגודל דומה (שטח ±35%, עד חדר הבדל). "
+      : "אין מספיק עסקאות בגודל דומה, אז ההשוואה היא לכל הגדלים – פחות מדויקת. ") +
     "חיובי = המודעה יקרה מהעסקאות, שלילי = זולה מהן.";
 }
 

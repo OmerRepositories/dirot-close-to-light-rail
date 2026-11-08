@@ -82,6 +82,32 @@ test("merging keeps one record, unions sources and fills only missing fields", (
   assert.equal(third.store[Object.keys(third.store)[0]], deal);
 });
 
+test("listings are compared with deals of a similar size first, all sizes only as a marked fallback", () => {
+  const now = Date.UTC(2026, 10, 9);
+  const deal = (house, price, sqm, rooms) => Deals.fromYad2({
+    ...yad2Result,
+    address: { ...yad2Result.address, houseNumber: house },
+    price, buildingMR: sqm, rooms, saleDate: "2025-06-01",
+  });
+  const store = Deals.mergeAll({}, [
+    deal(10, 2_000_000, 80, 3), deal(12, 2_100_000, 85, 3), deal(14, 2_050_000, 82, 3), // דירות רגילות
+    deal(16, 5_000_000, 200, 6), deal(18, 5_400_000, 210, 6), deal(20, 5_200_000, 220, 6), // גדולות
+  ], now).store;
+  const index = Deals.buildIndex(store, { years: 4, now });
+  const base = { address: "אמיר בנימיני 30, פתח תקווה", city: "פתח תקווה" };
+  const big = Deals.compareListing({ ...base, sqm: 228, rooms: 6 }, index, 20_000);
+  assert.equal(big.similar, true);
+  assert.equal(big.count, 3);
+  assert.equal(big.medianPpsm, 25_000);
+  const small = Deals.compareListing({ ...base, sqm: 84, rooms: 3 }, index, 25_000);
+  assert.equal(small.count, 3);
+  assert.ok(small.medianPpsm < 26_000);
+  // אין עסקאות בגודל דומה (40 מ״ר) – כל הגדלים, מסומן
+  const tiny = Deals.compareListing({ ...base, sqm: 40, rooms: 1 }, index, 30_000);
+  assert.equal(tiny.similar, false);
+  assert.equal(tiny.count, 6);
+});
+
 test("deal search filters by text, city, source and ranges, sorts with missing values last and summarizes", () => {
   const make = (house, price, sqm, date, rooms, source) => {
     const item = Deals.fromYad2({ ...yad2Result, address: { ...yad2Result.address, houseNumber: house }, price, buildingMR: sqm, saleDate: date, rooms });

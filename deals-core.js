@@ -201,12 +201,13 @@ var LRDeals = (() => {
     return { byStreet, byHood, years };
   }
 
-  function summarize(level, deals, listingPpsm) {
+  function summarize(level, deals, listingPpsm, similar) {
     const ppsm = deals.map((deal) => deal.price / deal.sqm);
     const value = median(ppsm);
     const dates = deals.map((deal) => deal.date).sort();
     return {
       level,
+      similar,
       count: deals.length,
       medianPpsm: Math.round(value),
       diffPct: Number.isFinite(listingPpsm) && value ? Math.round(((listingPpsm - value) / value) * 1000) / 10 : null,
@@ -215,17 +216,34 @@ var LRDeals = (() => {
     };
   }
 
-  // הרמה הכי ספציפית שיש בה מספיק עסקאות: בניין (3+), רחוב (3+), שכונה (5+)
+  // עסקה "דומה" למודעה: שטח בטווח ±35% ועד חדר אחד הבדל (כשהם ידועים). בלי זה דופלקס של 228 מ״ר
+  // הושווה לדירות רגילות ברחוב ויצא "32% מתחת" – השוואה מטעה.
+  function similarTo(record) {
+    const sqm = Number(record && record.sqm);
+    const rooms = Number(record && record.rooms);
+    return (deal) =>
+      (!(sqm > 0) || (deal.sqm >= sqm * 0.65 && deal.sqm <= sqm * 1.35)) &&
+      (!(rooms > 0) || !(deal.rooms > 0) || Math.abs(deal.rooms - rooms) <= 1);
+  }
+
+  // הרמה הכי ספציפית שיש בה מספיק עסקאות: בניין (3+), רחוב (3+), שכונה (5+).
+  // קודם רק עסקאות בגודל דומה; אם אין מספיק באף רמה – כל העסקאות, עם similar: false.
   function compareListing(record, index, listingPpsm) {
     if (!record || !index) return null;
     const place = listingPlace(record);
     if (!place.city || !place.street) return null;
     const street = index.byStreet.get(`${place.city}|${place.street}`) || [];
     const building = place.house ? street.filter((deal) => normHouse(deal.house) === place.house) : [];
-    if (building.length >= 3) return summarize("building", building, listingPpsm);
-    if (street.length >= 3) return summarize("street", street, listingPpsm);
     const hood = place.neighborhood ? index.byHood.get(`${place.city}|${place.neighborhood}`) || [] : [];
-    if (hood.length >= 5) return summarize("neighborhood", hood, listingPpsm);
+    const levels = [["building", building, 3], ["street", street, 3], ["neighborhood", hood, 5]];
+    const similar = similarTo(record);
+    for (const [level, deals, minimum] of levels) {
+      const close = deals.filter(similar);
+      if (close.length >= minimum) return summarize(level, close, listingPpsm, true);
+    }
+    for (const [level, deals, minimum] of levels) {
+      if (deals.length >= minimum) return summarize(level, deals, listingPpsm, false);
+    }
     return null;
   }
 
