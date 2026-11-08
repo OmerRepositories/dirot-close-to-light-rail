@@ -2995,6 +2995,24 @@ for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
   $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
 }
+// הסתרת התפריט הצדדי (נשמר במכשיר הזה)
+function setNavHidden(hidden) {
+  document.querySelector(".app").classList.toggle("nav-hidden", hidden);
+  const button = $("toggleNav");
+  button.setAttribute("aria-expanded", String(!hidden));
+  button.title = hidden ? "הצגת התפריט הצדדי" : "הסתרת התפריט הצדדי";
+  button.querySelector("span").textContent = hidden ? "הצגת תפריט" : "הסתרת תפריט";
+}
+try {
+  setNavHidden(localStorage.getItem("lightrailNavHidden") === "1");
+} catch {}
+$("toggleNav").addEventListener("click", () => {
+  const hidden = !document.querySelector(".app").classList.contains("nav-hidden");
+  setNavHidden(hidden);
+  try {
+    localStorage.setItem("lightrailNavHidden", hidden ? "1" : "0");
+  } catch {}
+});
 document.querySelectorAll("[data-multi-select]").forEach((details) => {
   details.addEventListener("change", () => updateMultiSelectSummary(details));
 });

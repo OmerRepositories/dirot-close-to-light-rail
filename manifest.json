@@ -1,8 +1,8 @@
-﻿{
+{
   "manifest_version": 3,
   "name": "׳§׳¨׳‘׳” ׳׳¨׳›׳‘׳× ׳”׳§׳׳” ג€“ ׳™׳“2 ׳•׳׳“׳׳",
   "description": "׳׳¦׳™׳’ ׳¢׳ ׳׳•׳“׳¢׳•׳× ׳ ׳“׳\"׳ ׳‘׳™׳“2, ׳׳“׳׳ ׳•׳₪׳™׳™׳¡׳‘׳•׳§ ׳׳× ׳”׳׳¨׳—׳§ ׳׳¨׳›׳‘׳× ׳”׳§׳׳” ׳•׳׳× ׳”׳׳—׳™׳¨ ׳׳\"׳¨.",
-  "version": "1.12.4",
+  "version": "1.12.5",
   "permissions": ["storage", "unlimitedStorage", "clipboardWrite", "alarms"],
   "icons": {
     "16": "icons/icon16.png",
