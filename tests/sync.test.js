@@ -57,8 +57,9 @@ test("the setup SQL creates one table with row level security and no fixed proje
 
 // ---------- שני מחשבים מול שרת Supabase מדומה ----------
 
-function fakeSupabase() {
+function fakeSupabase({ withDeals = false } = {}) {
   const rows = new Map(); // `${user}|${key}` -> row
+  const dealRows = new Map(); // `${user}|${deal_key}` -> row
   let clock = Date.parse("2026-11-07T10:00:00Z");
   const users = { "me@example.test": { id: "user-1", password: "pw-1" } };
   const tokens = new Map();
@@ -92,6 +93,37 @@ function fakeSupabase() {
     }
     const userId = tokens.get(String(headers.Authorization).replace("Bearer ", ""));
     if (typeof userId !== "string") return reply(401, { message: "JWT expired" });
+    if (withDeals && parsed.pathname === "/rest/v1/lightrail_deals") {
+      if ((options.method || "GET") === "GET") {
+        const filter = parsed.searchParams.get("updated_at");
+        const since = filter ? Date.parse(filter.replace(/^gt\./, "")) : -Infinity;
+        const limit = Number(parsed.searchParams.get("limit")) || 1000;
+        return reply(200, [...dealRows.values()]
+          .filter((row) => row.user_id === userId && Date.parse(row.updated_at) > since)
+          .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))
+          .slice(0, limit)
+          .map(({ user_id, ...row }) => row));
+      }
+      for (const incoming of body) {
+        if (incoming.user_id !== userId) return reply(403, { message: "row level security" });
+        const id = `${userId}|${incoming.deal_key}`;
+        const old = dealRows.get(id);
+        // אותה לוגיקה כמו הטריגר lightrail_deals_merge: משלימים חסרים ומאחדים מקורות
+        let next = { ...incoming };
+        if (old) {
+          next = { ...old };
+          for (const field of ["sqm", "rooms", "floor", "total_floors", "build_year", "neighborhood", "property_type"]) {
+            if (next[field] === null || next[field] === undefined) next[field] = incoming[field];
+          }
+          next.sources = [...new Set([...old.sources, ...incoming.sources])].sort();
+          if (JSON.stringify(next) === JSON.stringify(old)) continue;
+        }
+        clock += 1000;
+        next.updated_at = new Date(clock).toISOString();
+        dealRows.set(id, next);
+      }
+      return reply(201);
+    }
     if (parsed.pathname !== "/rest/v1/lightrail_records") return reply(404, {});
     if ((options.method || "GET") === "GET") {
       const filter = parsed.searchParams.get("updated_at");
@@ -116,7 +148,7 @@ function fakeSupabase() {
     }
     return reply(201);
   }
-  return { fetch, rows };
+  return { fetch, rows, dealRows };
 }
 
 function computer(server, initialCache) {
@@ -154,8 +186,10 @@ function computer(server, initialCache) {
     alarms: { create: async () => {}, clear: async () => {}, get: (_n, cb) => cb && cb(null), onAlarm: noopEvent },
     tabs: { onRemoved: noopEvent, onUpdated: noopEvent },
   };
-  const sandbox = { chrome, fetch: server.fetch, console: { ...console, warn() {} }, setTimeout, clearTimeout, URL, Date, Math, JSON, Promise };
-  sandbox.importScripts = (file) => vm.runInContext(fs.readFileSync(path.join(__dirname, "..", file), "utf8"), sandbox);
+  const sandbox = { chrome, fetch: server.fetch, console: { ...console, warn() {} }, setTimeout, clearTimeout, URL, URLSearchParams, Date, Math, JSON, Promise };
+  sandbox.importScripts = (...files) => {
+    for (const file of files) vm.runInContext(fs.readFileSync(path.join(__dirname, "..", file), "utf8"), sandbox);
+  };
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8"), sandbox);
   const send = (message, sender = { id: "ext", url: "chrome-extension://ext/cache-manager.html" }) =>
@@ -181,8 +215,67 @@ function computer(server, initialCache) {
     syncNow: () => send({ type: "lightrail:sync-now" }),
     setCache: (cache) => local.set({ yad2AmenityCache_v1: cache }),
     cache: () => store.yad2AmenityCache_v1,
+    setDeals: (deals) => local.set({ lightrailDeals: deals }),
+    deals: () => store.lightrailDeals || {},
   };
 }
+
+test("real deals sync through their own table: one row per deal, sources merged, nothing overwritten", async () => {
+  const Deals = require("../deals-core.js");
+  const server = fakeSupabase({ withDeals: true });
+  const fromYad2 = Deals.fromYad2({
+    address: { city: { text: "פתח תקווה" }, street: { text: "אמיר בנימיני" }, houseNumber: 2, neighborhood: { text: "עין גנים" } },
+    saleDate: "2025-04-08T00:00:00.000Z", price: 2025000, buildingMR: 85, rooms: 4, floor: 2, numberOfFloors: 3,
+  });
+  const fromMadlan = Deals.fromMadlan(
+    { action: "sale", isFinal: true, address: "בנימיני אמיר 2", date: "2025-04-08T00:00:00Z", price: 2025000, size: 84, beds: 4, floor: 2 },
+    "פתח תקווה"
+  );
+  const other = Deals.fromMadlan(
+    { action: "sale", isFinal: true, address: "ראש פינה 30", date: "2026-10-29T00:00:00Z", price: 2400000, size: 94, beds: 3, floor: 4 },
+    "פתח תקווה"
+  );
+  const a = computer(server, {});
+  const b = computer(server, {});
+  await a.setDeals(Deals.mergeAll({}, [fromYad2], 1).store);
+  await b.setDeals(Deals.mergeAll({}, [fromMadlan, other], 2).store);
+
+  await a.connect();
+  await b.connect();
+  await a.syncNow();
+
+  // אותה עסקה משני האתרים = שורה אחת בשרת
+  assert.equal(server.dealRows.size, 2);
+  const row = server.dealRows.get(`user-1|${fromYad2.key}`);
+  assert.deepEqual(row.sources, ["madlan", "yad2"]);
+  assert.equal(row.sqm, 85, "the first value is kept, a later write does not overwrite it");
+  assert.equal(row.neighborhood, "עין גנים");
+  // שני המחשבים מחזיקים את שתי העסקאות, עם שני המקורות
+  for (const pc of [a, b]) {
+    assert.deepEqual(Object.keys(pc.deals()).sort(), [fromYad2.key, other.key].sort());
+    assert.deepEqual(pc.deals()[fromYad2.key].sources, ["madlan", "yad2"]);
+  }
+  assert.equal(b.deals()[fromYad2.key].neighborhood, "עין גנים", "a missing field is filled from the other site");
+
+  // סבב נוסף בלי שינויים לא שולח כלום
+  const before = JSON.stringify([...server.dealRows.values()]);
+  await a.syncNow();
+  await b.syncNow();
+  assert.equal(JSON.stringify([...server.dealRows.values()]), before);
+});
+
+test("without the deals table, listings still sync and the setup SQL is shown again", async () => {
+  const server = fakeSupabase();
+  const a = computer(server, { "yad2:a": { title: "A", price: 1, updatedAt: 1 } });
+  await a.setDeals({ k: { city: "x", street: "y", house: "1", date: "2025-01-01", price: 1000000, sources: ["yad2"] } });
+  const result = await a.connect();
+  assert.equal(result.ok, true);
+  assert.equal(server.rows.size, 1);
+  const status = await a.send({ type: "lightrail:sync-status" });
+  assert.equal(status.dealsNeedsSetup, true);
+  assert.match(LRSync.SETUP_SQL, /create table if not exists public\.lightrail_deals/);
+  assert.match(LRSync.SETUP_SQL, /primary key \(user_id, deal_key\)/);
+});
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

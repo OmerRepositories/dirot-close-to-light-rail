@@ -1,6 +1,6 @@
 // Service worker: גיאוקוד כתובות (Nominatim) + רשימת תחנות רכבת קלה (Overpass / OpenStreetMap)
 // + סנכרון אונליין אופציונלי (sync-core.js)
-importScripts("sync-core.js");
+importScripts("sync-core.js", "deals-core.js");
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_ENDPOINTS = [
@@ -529,6 +529,61 @@ async function syncPull(settings) {
   return applied;
 }
 
+// ---------- סנכרון עסקאות אמת (טבלה נפרדת) ----------
+// אין כאן "מי מנצח": מיזוג עסקה רק משלים שדות חסרים ומאחד מקורות, גם אצלנו וגם בשרת (טריגר),
+// כך שסדר הכתיבות בין המחשבים לא משנה. אין מחיקות.
+async function syncDeals(settings) {
+  if (!(await LRSync.checkDealsTable(settings))) {
+    await saveSyncSettings({ dealsNeedsSetup: true });
+    return { pulled: 0, pushed: 0, needsSetup: true };
+  }
+  if (settings.dealsNeedsSetup) await saveSyncSettings({ dealsNeedsSetup: false });
+
+  // משיכה
+  let cursor = settings.dealsCursor || null;
+  let since = cursor
+    ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
+    : "1970-01-01T00:00:00Z";
+  let pulled = 0;
+  for (;;) {
+    const rows = await LRSync.fetchDealChangesSince(settings, since);
+    if (!rows.length) break;
+    const stored = await chrome.storage.local.get([LRSync.DEALS_KEY, LRSync.DEAL_HASHES_KEY]);
+    const before = stored[LRSync.DEALS_KEY] || {};
+    const hashes = { ...(stored[LRSync.DEAL_HASHES_KEY] || {}) };
+    const items = rows.map(LRSync.rowToDeal).filter(Boolean);
+    const merged = LRDeals.mergeAll(before, items);
+    for (const { key } of items) {
+      // עסקה שהייתה מסונכרנת לפני המשיכה – מסומנת כמסונכרנת גם אחריה. עסקה עם שינוי מקומי שעוד
+      // לא נשלח נשארת "שונה", כדי שהמידע הנוסף שלה יישלח לשרת בהמשך.
+      const local = before[key];
+      if (!local || hashes[key] === LRSync.hashRecord(local)) hashes[key] = LRSync.hashRecord(merged.store[key]);
+    }
+    await chrome.storage.local.set({ [LRSync.DEAL_HASHES_KEY]: hashes });
+    if (merged.added || merged.updated) await chrome.storage.local.set({ [LRSync.DEALS_KEY]: merged.store });
+    pulled += merged.added + merged.updated;
+    const last = rows[rows.length - 1].updated_at;
+    if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
+    since = last;
+    if (rows.length < LRSync.PULL_PAGE) break;
+  }
+  if (cursor) await saveSyncSettings({ dealsCursor: cursor });
+
+  // שליחה: רק עסקאות שהשתנו מאז הסנכרון האחרון
+  const stored = await chrome.storage.local.get([LRSync.DEALS_KEY, LRSync.DEAL_HASHES_KEY]);
+  const deals = stored[LRSync.DEALS_KEY] || {};
+  const hashes = { ...(stored[LRSync.DEAL_HASHES_KEY] || {}) };
+  const keys = LRSync.changedKeys(deals, hashes);
+  let pushed = 0;
+  for (const part of LRSync.chunk(keys, LRSync.PUSH_CHUNK)) {
+    await LRSync.upsertDealRows(settings, part.map((key) => LRSync.dealToRow(key, deals[key], settings.userId)));
+    for (const key of part) hashes[key] = LRSync.hashRecord(deals[key]);
+    pushed += part.length;
+    await chrome.storage.local.set({ [LRSync.DEAL_HASHES_KEY]: hashes });
+  }
+  return { pulled, pushed, needsSetup: false };
+}
+
 function runSync(reason) {
   return queueSync(async () => {
     let settings = await syncSettings();
@@ -537,7 +592,10 @@ function runSync(reason) {
       settings = await ensureSyncSession(settings);
       const pulled = reason === "push" ? 0 : await syncPull(settings);
       const pushed = await syncPush(settings);
+      const deals = await syncDeals(await syncSettings());
       await saveSyncSettings({
+        lastDealsPulled: deals.pulled,
+        lastDealsPushed: deals.pushed,
         lastSyncAt: Date.now(),
         lastError: "",
         needsLogin: false,
@@ -608,8 +666,9 @@ async function connectSync(msg) {
       intervalMin: syncIntervalMinutes(previous),
       // חשבון/פרויקט חדש: מתחילים מאפס – מושכים הכל ושולחים את כל המידע המקומי
       cursor: sameAccount ? previous.cursor || null : null,
+      dealsCursor: sameAccount ? previous.dealsCursor || null : null,
     },
-    ...(sameAccount ? {} : { [LRSync.HASHES_KEY]: {}, [LRSync.TOMBSTONES_KEY]: [] }),
+    ...(sameAccount ? {} : { [LRSync.HASHES_KEY]: {}, [LRSync.TOMBSTONES_KEY]: [], [LRSync.DEAL_HASHES_KEY]: {} }),
   });
   await updateSyncAlarm();
   const result = await runSync("connect");
@@ -647,6 +706,9 @@ async function syncStatus() {
     lastError: settings.lastError || "",
     lastPulled: settings.lastPulled || 0,
     lastPushed: settings.lastPushed || 0,
+    dealsNeedsSetup: Boolean(settings.dealsNeedsSetup),
+    lastDealsPulled: settings.lastDealsPulled || 0,
+    lastDealsPushed: settings.lastDealsPushed || 0,
   };
 }
 

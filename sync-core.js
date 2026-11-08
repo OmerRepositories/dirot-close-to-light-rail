@@ -7,6 +7,9 @@ var LRSync = (() => {
   const TOMBSTONES_KEY = "lightrailSyncTombstones";
   const CACHE_KEY = "yad2AmenityCache_v1";
   const TABLE = "lightrail_records";
+  const DEALS_TABLE = "lightrail_deals";
+  const DEALS_KEY = "lightrailDeals";
+  const DEAL_HASHES_KEY = "lightrailSyncDealHashes";
   const PUSH_CHUNK = 200;
   const PULL_PAGE = 1000;
   // חפיפה בקריאת שינויים: שורה שנכתבה ממש לפני שינוי מאוחר יותר לא תפוספס
@@ -51,6 +54,68 @@ $$;
 drop trigger if exists ${TABLE}_touch on public.${TABLE};
 create trigger ${TABLE}_touch before insert or update on public.${TABLE}
   for each row execute function public.${TABLE}_touch();
+
+-- Real deals (tax authority) seen on Yad2 and Madlan: a separate table, one row per deal.
+-- deal_key = city | street (normalized) | house number | sale date | price, built the same way on
+-- every computer, so the same deal from both sites is one row. A second write never overwrites a value:
+-- it only fills empty columns and adds its source, so the order of writes does not matter.
+create table if not exists public.${DEALS_TABLE} (
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  deal_key text not null,
+  city text not null,
+  street text not null,
+  house text not null,
+  sale_date date not null,
+  price bigint not null check (price > 0),
+  sqm numeric,
+  rooms numeric,
+  floor integer,
+  total_floors integer,
+  build_year integer,
+  neighborhood text,
+  property_type text,
+  sources text[] not null default '{}',
+  first_seen_at bigint,
+  updated_at timestamptz not null default clock_timestamp(),
+  primary key (user_id, deal_key)
+);
+
+create index if not exists ${DEALS_TABLE}_sync_idx on public.${DEALS_TABLE} (user_id, updated_at);
+create index if not exists ${DEALS_TABLE}_place_idx on public.${DEALS_TABLE} (user_id, city, street);
+
+alter table public.${DEALS_TABLE} enable row level security;
+
+drop policy if exists "${DEALS_TABLE} select own" on public.${DEALS_TABLE};
+drop policy if exists "${DEALS_TABLE} insert own" on public.${DEALS_TABLE};
+drop policy if exists "${DEALS_TABLE} update own" on public.${DEALS_TABLE};
+create policy "${DEALS_TABLE} select own" on public.${DEALS_TABLE} for select using (auth.uid() = user_id);
+create policy "${DEALS_TABLE} insert own" on public.${DEALS_TABLE} for insert with check (auth.uid() = user_id);
+create policy "${DEALS_TABLE} update own" on public.${DEALS_TABLE} for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create or replace function public.${DEALS_TABLE}_merge() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.sqm := coalesce(old.sqm, new.sqm);
+    new.rooms := coalesce(old.rooms, new.rooms);
+    new.floor := coalesce(old.floor, new.floor);
+    new.total_floors := coalesce(old.total_floors, new.total_floors);
+    new.build_year := coalesce(old.build_year, new.build_year);
+    new.neighborhood := coalesce(old.neighborhood, new.neighborhood);
+    new.property_type := coalesce(old.property_type, new.property_type);
+    new.first_seen_at := least(old.first_seen_at, new.first_seen_at);
+    new.sources := array(select distinct unnest(old.sources || new.sources) order by 1);
+    if new is not distinct from old then
+      return null; -- nothing new: keep the row (and its updated_at) as it was
+    end if;
+  end if;
+  new.updated_at := clock_timestamp();
+  return new;
+end;
+$$;
+
+drop trigger if exists ${DEALS_TABLE}_merge on public.${DEALS_TABLE};
+create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TABLE}
+  for each row execute function public.${DEALS_TABLE}_merge();
 `;
 
   // ---------- פונקציות טהורות (נבדקות בבדיקות) ----------
@@ -133,6 +198,52 @@ create trigger ${TABLE}_touch before insert or update on public.${TABLE}
       // אחרת הגרסה המקומית חדשה יותר – היא תישלח לשרת בסבב הבא
     }
     return { cache: next, hashUpdates, applied };
+  }
+
+  // עסקה מקומית ↔ שורה בטבלת העסקאות (עמודות אמיתיות, כדי שאפשר יהיה לשאול עליהן ב-Supabase)
+  function dealToRow(key, deal, userId) {
+    const number = (value) => (Number.isFinite(value) ? value : null);
+    return {
+      user_id: userId,
+      deal_key: key,
+      city: deal.city,
+      street: deal.street,
+      house: deal.house,
+      sale_date: deal.date,
+      price: Math.round(deal.price),
+      sqm: number(deal.sqm),
+      rooms: number(deal.rooms),
+      floor: Number.isFinite(deal.floor) ? Math.round(deal.floor) : null,
+      total_floors: Number.isFinite(deal.totalFloors) ? Math.round(deal.totalFloors) : null,
+      build_year: Number.isFinite(deal.buildYear) ? Math.round(deal.buildYear) : null,
+      neighborhood: deal.neighborhood || null,
+      property_type: deal.propertyType || null,
+      sources: Array.isArray(deal.sources) ? deal.sources : [],
+      first_seen_at: number(deal.firstSeenAt),
+    };
+  }
+
+  function rowToDeal(row) {
+    if (!row || typeof row.deal_key !== "string" || !row.deal_key) return null;
+    const number = (value) => (value === null || value === undefined || value === "" ? null : Number(value));
+    return {
+      key: row.deal_key,
+      deal: {
+        city: row.city,
+        street: row.street,
+        house: row.house,
+        neighborhood: row.neighborhood || null,
+        date: String(row.sale_date || "").slice(0, 10),
+        price: number(row.price),
+        sqm: number(row.sqm),
+        rooms: number(row.rooms),
+        floor: number(row.floor),
+        totalFloors: number(row.total_floors),
+        buildYear: number(row.build_year),
+        propertyType: row.property_type || null,
+        sources: Array.isArray(row.sources) ? row.sources : [],
+      },
+    };
   }
 
   function chunk(list, size) {
@@ -221,6 +332,35 @@ create trigger ${TABLE}_touch before insert or update on public.${TABLE}
     });
   }
 
+  // טבלת העסקאות נוספה אחרי טבלת המודעות: מי שהריץ את פקודת ההקמה הישנה צריך להריץ אותה שוב.
+  // עד אז סנכרון המודעות ממשיך כרגיל, ורק העסקאות לא נשלחות.
+  async function checkDealsTable(settings) {
+    try {
+      await call(settings, `/rest/v1/${DEALS_TABLE}?select=deal_key&limit=1`, { token: settings.accessToken });
+      return true;
+    } catch (error) {
+      if (error.status === 404 || error.code === "42P01" || error.code === "PGRST205") return false;
+      throw error;
+    }
+  }
+
+  async function upsertDealRows(settings, rows) {
+    if (!rows.length) return;
+    await call(settings, `/rest/v1/${DEALS_TABLE}?on_conflict=user_id,deal_key`, {
+      method: "POST",
+      token: settings.accessToken,
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: rows,
+    });
+  }
+
+  async function fetchDealChangesSince(settings, sinceIso) {
+    const query =
+      `select=deal_key,city,street,house,sale_date,price,sqm,rooms,floor,total_floors,build_year,neighborhood,property_type,sources,updated_at` +
+      `&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc&limit=${PULL_PAGE}`;
+    return (await call(settings, `/rest/v1/${DEALS_TABLE}?${query}`, { token: settings.accessToken })) || [];
+  }
+
   async function fetchChangesSince(settings, sinceIso) {
     const query =
       `select=key,data,deleted,client_updated_at,updated_at` +
@@ -234,6 +374,14 @@ create trigger ${TABLE}_touch before insert or update on public.${TABLE}
     TOMBSTONES_KEY,
     CACHE_KEY,
     TABLE,
+    DEALS_TABLE,
+    DEALS_KEY,
+    DEAL_HASHES_KEY,
+    dealToRow,
+    rowToDeal,
+    checkDealsTable,
+    upsertDealRows,
+    fetchDealChangesSince,
     PUSH_CHUNK,
     PULL_PAGE,
     PULL_OVERLAP_MS,

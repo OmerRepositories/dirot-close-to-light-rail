@@ -3907,7 +3907,8 @@ async function renderSyncPanel() {
   const connected = state.enabled && !state.needsLogin;
   $("syncConnectedCard").hidden = !connected;
   $("syncLoginCard").hidden = connected;
-  $("syncSetupCard").hidden = connected;
+  // טבלת העסקאות חדשה: מי שכבר מחובר צריך להריץ שוב את פקודת ההקמה, אז מציגים אותה
+  $("syncSetupCard").hidden = connected && !state.dealsNeedsSetup;
   if (!$("syncUrl").value) $("syncUrl").value = state.url;
   if (!$("syncApiKey").value) $("syncApiKey").value = state.apiKey;
   if (!$("syncEmail").value) $("syncEmail").value = state.email;
@@ -3920,7 +3921,12 @@ async function renderSyncPanel() {
       host = new URL(state.url).host;
     } catch {}
     const last = state.lastSyncAt ? new Date(state.lastSyncAt).toLocaleString("he-IL") : "עדיין לא";
-    $("syncConnectedText").textContent = `מחובר כ-${state.email} לפרויקט ${host}. סנכרון אחרון: ${last}.`;
+    $("syncConnectedText").textContent = `מחובר כ-${state.email} לפרויקט ${host}. סנכרון אחרון: ${last}.` +
+      (state.dealsNeedsSetup
+        ? " טבלת עסקאות האמת עוד לא קיימת בפרויקט: יש להריץ שוב את פקודת ההקמה (למטה) ב-SQL Editor. המודעות ממשיכות להסתנכרן כרגיל."
+        : state.lastDealsPushed || state.lastDealsPulled
+          ? ` עסקאות אמת בסבב האחרון: ${state.lastDealsPushed} נשלחו, ${state.lastDealsPulled} התקבלו.`
+          : "");
     if (state.lastError) setSyncStatus("syncConnectedStatus", `הסנכרון האחרון נכשל: ${state.lastError}`, true);
     badge.textContent = state.lastError ? "שגיאת סנכרון" : "מחובר";
     badge.dataset.state = state.lastError ? "error" : "on";
