@@ -282,12 +282,7 @@ function readTimelinePreferences(settings) {
   };
 }
 
-function passesTimelineRange(event, field) {
-  const minimum = document.querySelector(`[data-timeline-min="${field}"]`);
-  const maximum = document.querySelector(`[data-timeline-max="${field}"]`);
-  const min = minimum && minimum.value !== "" ? Number(minimum.value) : null;
-  const max = maximum && maximum.value !== "" ? Number(maximum.value) : null;
-  if (min === null && max === null) return true;
+function passesTimelineRange(event, { field, min, max }) {
   const value = field === "price"
     ? Number.isFinite(event.currentPrice) ? event.currentPrice : event.toPrice
     : event[field];
@@ -295,20 +290,17 @@ function passesTimelineRange(event, field) {
   return (min === null || value >= min) && (max === null || value <= max);
 }
 
-function passesTimelineFilters(event) {
-  if (!["price", "railMeters", "pricePerSqm", "rooms"].every((field) => passesTimelineRange(event, field))) {
-    return false;
-  }
-  const brokerageFilter = $("timelineBrokerage").value;
+function passesTimelineFilters(event, filters) {
+  if (!filters.ranges.every((range) => passesTimelineRange(event, range))) return false;
+  const brokerageFilter = filters.brokerage;
   if (brokerageFilter === "unknown") {
     if (typeof event.brokerage === "boolean") return false;
   } else if (brokerageFilter && String(event.brokerage) !== brokerageFilter) {
     return false;
   }
-  for (const input of document.querySelectorAll("[data-timeline-amenity]")) {
-    if (!input.value) continue;
-    const value = event.amenities && event.amenities[input.dataset.timelineAmenity];
-    if (input.value === "unknown" ? typeof value === "boolean" : String(value) !== input.value) {
+  for (const [amenity, wanted] of filters.amenities) {
+    const value = event.amenities && event.amenities[amenity];
+    if (wanted === "unknown" ? typeof value === "boolean" : String(value) !== wanted) {
       return false;
     }
   }
@@ -561,20 +553,23 @@ function displayDate(value) {
   return Number.isFinite(date.getTime()) ? date.toLocaleDateString("he-IL") : String(value);
 }
 
+const PRICE_FORMAT = new Intl.NumberFormat("he-IL");
 function displayPrice(value) {
-  return Number.isFinite(value) ? `₪${Math.round(value).toLocaleString("he-IL")}` : "";
+  return Number.isFinite(value) ? `₪${PRICE_FORMAT.format(Math.round(value))}` : "";
 }
 
+// יצירת Intl.DateTimeFormat יקרה – פעם אחת לכל העמוד
+const HISTORY_DATE_FORMAT = new Intl.DateTimeFormat("he-IL-u-nu-latn", {
+  timeZone: "Asia/Jerusalem",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
 function displayHistoryDate(value) {
   if (!Number.isFinite(value) || !Number.isFinite(new Date(value).getTime())) {
     return "תאריך לא ידוע";
   }
-  return new Intl.DateTimeFormat("he-IL-u-nu-latn", {
-    timeZone: "Asia/Jerusalem",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(value));
+  return HISTORY_DATE_FORMAT.format(new Date(value));
 }
 
 function validPriceHistory(record) {
@@ -1333,6 +1328,22 @@ function timelineEventsFor(currentCache) {
 const TIMELINE_PAGE_SIZE = 150;
 let timelineLimit = TIMELINE_PAGE_SIZE;
 
+// קורא את ערכי המסננים פעם אחת לכל רינדור (ולא פעם לכל אירוע – זה מה שהיה כבד)
+function readTimelineFilters() {
+  const ranges = [];
+  for (const field of ["price", "railMeters", "pricePerSqm", "rooms"]) {
+    const minimum = document.querySelector(`[data-timeline-min="${field}"]`);
+    const maximum = document.querySelector(`[data-timeline-max="${field}"]`);
+    const min = minimum && minimum.value !== "" ? Number(minimum.value) : null;
+    const max = maximum && maximum.value !== "" ? Number(maximum.value) : null;
+    if (min !== null || max !== null) ranges.push({ field, min, max });
+  }
+  const amenities = [...document.querySelectorAll("[data-timeline-amenity]")]
+    .filter((input) => input.value)
+    .map((input) => [input.dataset.timelineAmenity, input.value]);
+  return { ranges, brokerage: $("timelineBrokerage").value, amenities };
+}
+
 function renderPriceTimeline() {
   timelineDirty = false;
   const timeline = $("priceTimeline");
@@ -1343,7 +1354,8 @@ function renderPriceTimeline() {
   const kindFilteredEvents = priceTimelineFilter === "all"
     ? allEvents
     : allEvents.filter((event) => event.kind === priceTimelineFilter);
-  const events = kindFilteredEvents.filter(passesTimelineFilters);
+  const filters = readTimelineFilters();
+  const events = kindFilteredEvents.filter((event) => passesTimelineFilters(event, filters));
   $("priceChangesCount").textContent = changes.length.toLocaleString("he-IL");
   $("timelineCount").textContent = `${events.length.toLocaleString("he-IL")} מתוך ${kindFilteredEvents.length.toLocaleString("he-IL")} אירועים`;
   $("emptyTimeline").hidden = events.length > 0;
