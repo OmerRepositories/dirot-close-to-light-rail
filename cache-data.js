@@ -476,7 +476,10 @@ var LRCacheData = (() => {
     });
   }
 
-  function dealScore(record, ppsmRank = 0.5) {
+  // realDealsDiffPct: כמה אחוז המחיר למ״ר של המודעה מעל (חיובי) או מתחת (שלילי) לחציון עסקאות אמת באזור.
+  // כשהוא ידוע, רכיב המחיר (עד 30 נק׳) נקבע לפיו ולא לפי הדירוג בין המודעות השמורות:
+  // 20% מתחת לעסקאות ומטה = 30, כמו העסקאות ≈ 13, 15% מעליהן ומעלה = 0.
+  function dealScore(record, ppsmRank = 0.5, realDealsDiffPct = null) {
     if (!record || record.recordType === "project") return null;
     const amenities = record.amenities && typeof record.amenities === "object"
       ? Object.values(record.amenities)
@@ -487,7 +490,9 @@ var LRCacheData = (() => {
         ? Math.max(0, 20 - (record.railMeters / 1000) * 5)
         : 0;
     const brokeragePenalty = record.brokerage === true ? 10 : 0;
-    const priceBonus = Math.max(0, Math.min(1, ppsmRank)) * 30;
+    const priceBonus = Number.isFinite(realDealsDiffPct)
+      ? Math.max(0, Math.min(1, (15 - realDealsDiffPct) / 35)) * 30
+      : Math.max(0, Math.min(1, ppsmRank)) * 30;
     return Math.round(positives * 10 + railBonus + priceBonus - brokeragePenalty);
   }
 

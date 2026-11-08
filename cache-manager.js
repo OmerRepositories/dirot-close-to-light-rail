@@ -385,7 +385,8 @@ const columns = [
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "brokerage", label: "תיווך", boolean: true, title: "כן / לא / לא ידוע" },
-  { key: "dealScore", label: "ציון שווה", sortKey: "dealScore", title: "ציון משוקלל: מאפיינים, מחיר למ״ר, קרבה לרכבת ותיווך" },
+  { key: "realDeals", label: "מול עסקאות אמת", sortKey: "realDeals", title: "המחיר למ״ר של המודעה מול חציון עסקאות אמת (4 שנים אחרונות) בבניין, ברחוב או בשכונה" },
+  { key: "dealScore", label: "ציון שווה", sortKey: "dealScore", title: "ציון משוקלל: מאפיינים, מחיר למ״ר (מול עסקאות אמת כשיש), קרבה לרכבת ותיווך" },
   ...AMENITIES.map(([key, label]) => ({
     key: `amenity:${key}`,
     amenity: key,
@@ -789,7 +790,11 @@ function rowSortValue(key, record, priceRanks) {
   if (sort.key === "site") return recordSite(key);
   if (sort.key === "pricePerSqm") return LRCacheData.pricePerSqm(record);
   if (sort.key === "dealScore") {
-    return LRCacheData.dealScore(record, priceRanks.get(key) ?? 0.5);
+    return LRCacheData.dealScore(record, priceRanks.get(key) ?? 0.5, realDealsFor(record)?.diffPct);
+  }
+  if (sort.key === "realDeals") {
+    const result = realDealsFor(record);
+    return result && Number.isFinite(result.diffPct) ? result.diffPct : null;
   }
   if (sort.key === "priceHistory") {
     return validPriceHistory(record).length;
@@ -937,7 +942,10 @@ function columnFilterText(key, record, recordKey, priceRanks) {
       .join(" ");
   }
   if (key === "dealScore") {
-    return String(LRCacheData.dealScore(record, priceRanks.get(recordKey) ?? 0.5) ?? "");
+    return String(LRCacheData.dealScore(record, priceRanks.get(recordKey) ?? 0.5, realDealsFor(record)?.diffPct) ?? "");
+  }
+  if (key === "realDeals") {
+    return realDealsText(realDealsFor(record));
   }
   return "";
 }
@@ -1137,9 +1145,19 @@ function renderRows() {
       } else if (column.key === "brokerage") {
         td.appendChild(renderBoolean(record.brokerage));
       } else if (column.key === "dealScore") {
-        const score = LRCacheData.dealScore(record, priceRanks.get(key) ?? 0.5);
+        const real = realDealsFor(record);
+        const score = LRCacheData.dealScore(record, priceRanks.get(key) ?? 0.5, real?.diffPct);
         td.textContent = score === null ? "—" : `${score} ★`;
-        td.title = "ציון משוקלל לעזרה במיון בלבד, לא המלצת השקעה";
+        td.title = `ציון משוקלל לעזרה במיון בלבד, לא המלצת השקעה. רכיב המחיר: ${
+          real && Number.isFinite(real.diffPct) ? "מול עסקאות אמת באזור" : "מול המודעות השמורות"
+        }`;
+      } else if (column.key === "realDeals") {
+        const real = realDealsFor(record);
+        td.textContent = realDealsText(real);
+        td.title = realDealsTitle(real);
+        if (real && Number.isFinite(real.diffPct)) {
+          td.className = real.diffPct <= -5 ? "real-deals below" : real.diffPct >= 5 ? "real-deals above" : "real-deals";
+        }
       } else if (column.amenity) {
         td.appendChild(renderBoolean(amenityValue(record, column.amenity)));
       } else if (column.key === "updatedAt") {
@@ -3155,10 +3173,57 @@ function applyCacheToViews() {
   else if (selectedKey) closeDetails();
 }
 
+// ---------- עסקאות אמת באזור ----------
+// האינדקס נבנה פעם אחת לכל טעינה של העסקאות; ההשוואה לכל מודעה נשמרת לפי אובייקט הרשומה
+let dealsIndex = null;
+let dealsVersion = 0;
+let dealsTotal = 0;
+let realDealsMemo = new WeakMap();
+
+async function loadDeals() {
+  try {
+    const store = (await storageGet(LRDeals.STORAGE_KEY)) || {};
+    dealsTotal = Object.keys(store).length;
+    dealsIndex = LRDeals.buildIndex(store);
+  } catch (error) {
+    console.warn("[lightrail-ext] failed to load real deals", error);
+    dealsIndex = null;
+  }
+  dealsVersion++;
+  realDealsMemo = new WeakMap();
+}
+
+function realDealsFor(record) {
+  if (!dealsIndex || !record || typeof record !== "object" || recordType(record) === "project") return null;
+  if (!realDealsMemo.has(record)) {
+    realDealsMemo.set(record, LRDeals.compareListing(record, dealsIndex, LRCacheData.pricePerSqm(record)));
+  }
+  return realDealsMemo.get(record);
+}
+
+function realDealsText(result) {
+  if (!result) return "";
+  const sign = result.diffPct > 0 ? "+" : "";
+  return Number.isFinite(result.diffPct)
+    ? `${sign}${result.diffPct}% · ${LRDeals.LEVEL_LABELS[result.level]} (${result.count})`
+    : `${LRDeals.LEVEL_LABELS[result.level]} (${result.count})`;
+}
+
+function realDealsTitle(result) {
+  if (!result) return "אין מספיק עסקאות אמת שמורות ליד הכתובת הזו (צריך 3 בבניין או ברחוב, או 5 בשכונה). עסקאות נאספות כשפותחים מודעות ביד2 ובמדלן.";
+  return `חציון ${displayPrice(result.medianPpsm)} למ״ר מ־${result.count} עסקאות ${LRDeals.LEVEL_LABELS[result.level]}, ${result.fromDate} עד ${result.toDate}. ` +
+    "חיובי = המודעה יקרה מהעסקאות, שלילי = זולה מהן.";
+}
+
+const scheduleDealsReload = debounce(async () => {
+  await loadDeals();
+  applyCacheToViews();
+}, 1500);
+
 async function loadCache() {
   $("refreshButton").disabled = true;
   try {
-    const storedCache = await storageGet();
+    const [storedCache] = await Promise.all([storageGet(), loadDeals()]);
     cache = await migrateEstimatedBaselineDates(storedCache);
     applyCacheToViews();
   } catch (error) {
@@ -4052,6 +4117,7 @@ function scheduleCloudIndicators(delay = 300) {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
+  if (changes[LRDeals.STORAGE_KEY]) scheduleDealsReload();
   if (changes[LRSync.SETTINGS_KEY] || changes[LRSync.HASHES_KEY]) scheduleCloudIndicators(300);
   // שינוי במטמון מגיע לטבלה אחרי עיכוב קצר – מעדכנים את החיווי אחריו
   else if (changes[CACHE_KEY]) scheduleCloudIndicators(1500);

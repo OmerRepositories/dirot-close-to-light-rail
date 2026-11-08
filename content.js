@@ -1493,9 +1493,25 @@
   let yad2DealsRequested = false;
   let lastMadlanDealsJson = "";
 
-  function saveDeals(items) {
+  // השוואת המודעה שבעמוד לעסקאות האמת השמורות (נטען אחרי כל שמירה של עסקאות חדשות)
+  function loadRealDeals(entry) {
+    if (!entry.listingId) return;
+    chrome.storage.local.get(LRDeals.STORAGE_KEY, (stored) => {
+      if (chrome.runtime.lastError) return;
+      const record = listingCache[cacheKeyForListing(entry.listingId)];
+      if (!record) return;
+      const index = LRDeals.buildIndex((stored && stored[LRDeals.STORAGE_KEY]) || {});
+      entry.realDeals = LRDeals.compareListing(record, index, LRCacheData.pricePerSqm(record));
+      scheduleRefresh();
+    });
+  }
+
+  function saveDeals(items, entry) {
     const valid = items.filter(Boolean);
-    if (!valid.length) return;
+    if (!valid.length) {
+      if (entry) loadRealDeals(entry);
+      return;
+    }
     // כתיבות באותה לשונית אחת אחרי השנייה, כדי ששתי שמירות לא ידרסו זו את זו
     dealsWrite = dealsWrite.then(() => new Promise((resolve) => {
       chrome.storage.local.get(LRDeals.STORAGE_KEY, (stored) => {
@@ -1504,11 +1520,18 @@
         if (!merged.added && !merged.updated) return resolve();
         chrome.storage.local.set({ [LRDeals.STORAGE_KEY]: merged.store }, () => resolve());
       });
-    }));
+    })).then(() => {
+      if (entry) loadRealDeals(entry);
+    });
   }
 
   function collectDeals(entry) {
     if (!CFG.saveListingData || !listingCacheLoaded || isRentalListing(entry)) return;
+    // פעם אחת לכל עמוד: השוואה למה שכבר שמור, עוד לפני שנאספות עסקאות חדשות
+    if (!entry.realDealsRequested && entry.listingId && listingCache[cacheKeyForListing(entry.listingId)]) {
+      entry.realDealsRequested = true;
+      loadRealDeals(entry);
+    }
     if (IS_YAD2) {
       if (yad2DealsRequested) return;
       const query = LRYad2.dealsQuery(document);
@@ -1522,7 +1545,7 @@
           if (!response.ok) return;
           const json = await response.json();
           const results = json && json.data && Array.isArray(json.data.results) ? json.data.results : [];
-          saveDeals(results.map(LRDeals.fromYad2));
+          saveDeals(results.map(LRDeals.fromYad2), entry);
           chrome.storage.local.set({ [LRDeals.FETCH_LOG_KEY]: { ...log, [query.throttleKey]: Date.now() } });
         } catch (error) {
           console.warn("[lightrail-ext] could not load Yad2 deals", error);
@@ -1537,7 +1560,7 @@
     if (!address || !address.city) return;
     lastMadlanDealsJson = json;
     try {
-      saveDeals(JSON.parse(json).map((row) => LRDeals.fromMadlan(row, address.city)));
+      saveDeals(JSON.parse(json).map((row) => LRDeals.fromMadlan(row, address.city)), entry);
     } catch {}
   }
 
@@ -1991,6 +2014,20 @@
           if (pct >= 3) sub = `${entry.delta < 0 ? "−" : "+"}${pct}% מהחציון`;
           state = entry.delta <= -0.05 ? "good" : entry.delta >= 0.05 ? "bad" : "neutral";
         }
+        // בעמוד מודעה: כשיש מספיק עסקאות אמת באזור, ההשוואה היא אליהן ולא לחציון המודעות
+        const real = entry.kind === "single" && entry.realDeals && entry.realDeals.medianPpsm > 0
+          ? entry.realDeals
+          : null;
+        let realNote = "";
+        if (real) {
+          const diff = (info.ppsm - real.medianPpsm) / real.medianPpsm;
+          const pct = Math.round(Math.abs(diff) * 100);
+          sub = pct >= 1
+            ? `${diff < 0 ? "−" : "+"}${pct}% מעסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}`
+            : `כמו עסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}`;
+          state = diff <= -0.05 ? "good" : diff >= 0.05 ? "bad" : "neutral";
+          realNote = ` עסקאות אמת ${LRDeals.LEVEL_LABELS[real.level]}: חציון ₪${fmtNum(real.medianPpsm)} למ״ר מ־${real.count} עסקאות (${real.fromDate} עד ${real.toDate}).`;
+        }
         // אם המשתמש קבע תקרת מחיר למ"ר – הצבע נקבע לפיה
         if (CFG.maxPpsm > 0) state = info.ppsm <= CFG.maxPpsm ? "good" : "neutral";
 
@@ -2000,9 +2037,10 @@
           `₪${fmtNum(info.ppsm)}`,
           sub,
           `מחיר ₪${fmtNum(info.price)} ÷ ${info.sqm} מ״ר.` +
+            realNote +
             (refMed
               ? ` ${refLabel}: ₪${fmtNum(refMed)}.`
-              : ` צריך לפחות ${CFG.MIN_SAMPLES} מודעות בדף כדי להשוות לחציון.`)
+              : real ? "" : ` צריך לפחות ${CFG.MIN_SAMPLES} מודעות בדף כדי להשוות לחציון.`)
         );
       } else if (CFG.calculatePpsm && parsed && parsed.reason) {
         setBadge(

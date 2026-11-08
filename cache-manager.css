@@ -732,6 +732,11 @@ button.stat-tile:hover { border-color: var(--line-strong); background: var(--sur
 .dist-table .city-count { width: 60%; }
 .dist-table .city-bar-value { min-width: 84px; }
 
+/* מול עסקאות אמת: זול מהעסקאות = ירוק, יקר מהן = אדום (הטקסט עצמו כולל את הסימן + / −) */
+td.real-deals { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.real-deals.below { color: var(--ok); font-weight: 600; }
+td.real-deals.above { color: var(--danger); }
+
 /* ---------- מדד לחץ למכור ---------- */
 .pressure-chip { display: inline-block; min-width: 76px; padding: 1px 8px; border-radius: 999px; font-size: 13px; font-weight: 600; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pressure-chip.high { color: var(--danger); background: var(--danger-soft); }

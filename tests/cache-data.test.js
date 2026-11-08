@@ -189,6 +189,10 @@ test("price per square meter is derived and listing value score rewards value an
   assert.ok(CacheData.dealScore(lowPrice, 1) > CacheData.dealScore(highPrice, 0));
   assert.equal(CacheData.pricePerSqm({ price: 100, sqm: 0 }), null);
   assert.equal(CacheData.dealScore({ recordType: "project" }), null);
+  // עסקאות אמת קובעות את רכיב המחיר כשהן ידועות: 20% מתחת = 30 נק׳, 15% מעל = 0
+  assert.equal(CacheData.dealScore({}, 0, -20), 30);
+  assert.equal(CacheData.dealScore({}, 1, 15), 0);
+  assert.ok(CacheData.dealScore({}, 0.5, -5) > CacheData.dealScore({}, 0.5, 10));
 });
 
 test("numeric filters support ranges and match overlapping project price or area ranges", () => {
