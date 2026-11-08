@@ -1600,6 +1600,18 @@
     } catch {}
   }
 
+  // סימנים שהעמוד הוא באמת מודעה: מחיר (או "מחיר לא פורסם"), שטח, חדרים או רחוב.
+  // עמוד חסימה של יד2/מדלן נמצא באותה כתובת של המודעה, אבל אין בו אף אחד מאלה.
+  function looksLikeListingPage(stats, metadata, address) {
+    return Boolean(
+      Number.isFinite(stats.price) ||
+        Number.isFinite(stats.sqm) ||
+        stats.priceHidden ||
+        Number.isFinite(metadata.rooms) ||
+        (address && address.street)
+    );
+  }
+
   function rememberListingExportData(entry, extra = {}) {
     if (
       !CFG.saveListingData ||
@@ -1621,6 +1633,9 @@
     const listingMetadata = parser.listingExportData(root);
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
     const fromSearch = entry.kind === "list";
+    // עמוד שלא נראה כמו מודעה (חסימת בוט / קפצ'ה / שגיאה / עמוד שעוד לא נטען) לא נשמר:
+    // אחרת הוא היה דורס את הכותרת, הכתובת וסימון התיווך השמורים, ו"מעדכן" את המודעה גם בסנכרון
+    if (!fromSearch && !looksLikeListingPage(stats, listingMetadata, address)) return;
     if (fromSearch) {
       // מכרטיס בתוצאות החיפוש יש מעט מידע: מחיר נמוך מרצפת השפיות לא נרשם (שכירות/כרטיס שעוד נטען)
       if (Number.isFinite(stats.price) && stats.price < SEARCH_INDEX_MIN_PRICE) stats.price = null;
@@ -1673,9 +1688,10 @@
       ...previous,
       recordType: "listing",
       title: (listingHeading && listingHeading.innerText.trim()) || previous.title || "",
-      address: [address.street, address.city].filter(Boolean).join(", "),
-      city: address.city || "",
-      neighborhood: address.hood || "",
+      // כתובת שלא נקראה הפעם לא מוחקת כתובת שכבר נשמרה
+      address: [address.street, address.city].filter(Boolean).join(", ") || previous.address || "",
+      city: address.city || previous.city || "",
+      neighborhood: address.hood || previous.neighborhood || "",
       url: parser.listingUrl(root) || previous.url || "",
       coordinates: LRLocation.validCoordinates(address.coordinates)
         ? address.coordinates
