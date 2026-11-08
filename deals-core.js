@@ -231,6 +231,80 @@ var LRDeals = (() => {
 
   const LEVEL_LABELS = { building: "בבניין", street: "ברחוב", neighborhood: "בשכונה" };
 
+  // ---------- חיפוש עסקאות ----------
+  function dealPpsm(deal) {
+    return deal && deal.price > 0 && deal.sqm > 0 ? Math.round(deal.price / deal.sqm) : null;
+  }
+
+  const inRange = (value, min, max) =>
+    (!Number.isFinite(min) || (Number.isFinite(value) && value >= min)) &&
+    (!Number.isFinite(max) || (Number.isFinite(value) && value <= max));
+
+  // filters: { query, city, source ("yad2" | "madlan" | "both"), rooms/sqm/price/ppsm/year: { min, max } }
+  function filterDeals(store, filters = {}) {
+    const words = cleanText(filters.query).split(" ").filter(Boolean);
+    const city = filters.city ? normCity(filters.city) : "";
+    const range = (name) => filters[name] || {};
+    const out = [];
+    for (const [key, deal] of Object.entries(store || {})) {
+      if (!deal || typeof deal !== "object") continue;
+      if (city && normCity(deal.city) !== city) continue;
+      const sources = deal.sources || [];
+      if (filters.source === "both" ? sources.length < 2 : filters.source && !sources.includes(filters.source)) continue;
+      if (words.length) {
+        const haystack = cleanText(`${deal.city} ${deal.street} ${deal.house} ${deal.neighborhood || ""}`);
+        if (!words.every((word) => haystack.includes(word))) continue;
+      }
+      if (!inRange(deal.rooms, range("rooms").min, range("rooms").max)) continue;
+      if (!inRange(deal.sqm, range("sqm").min, range("sqm").max)) continue;
+      if (!inRange(deal.price, range("price").min, range("price").max)) continue;
+      if (!inRange(dealPpsm(deal), range("ppsm").min, range("ppsm").max)) continue;
+      if (!inRange(Number(String(deal.date).slice(0, 4)), range("year").min, range("year").max)) continue;
+      out.push([key, deal]);
+    }
+    return out;
+  }
+
+  const SORT_VALUES = {
+    date: (deal) => deal.date || "",
+    price: (deal) => deal.price,
+    ppsm: dealPpsm,
+    sqm: (deal) => deal.sqm,
+    rooms: (deal) => deal.rooms,
+    address: (deal) => `${deal.city} ${deal.street} ${String(deal.house).padStart(5, "0")}`,
+  };
+
+  // ערכים חסרים תמיד בסוף, בלי קשר לכיוון המיון
+  function sortDeals(list, key = "date", direction = -1) {
+    const value = SORT_VALUES[key] || SORT_VALUES.date;
+    return [...list].sort(([, a], [, b]) => {
+      const left = value(a);
+      const right = value(b);
+      const leftMissing = left === null || left === undefined || left === "";
+      const rightMissing = right === null || right === undefined || right === "";
+      if (leftMissing || rightMissing) return leftMissing === rightMissing ? 0 : leftMissing ? 1 : -1;
+      return (typeof left === "string" ? left.localeCompare(right, "he") : left - right) * direction;
+    });
+  }
+
+  function summarizeDeals(list) {
+    const ppsm = list.map(([, deal]) => dealPpsm(deal)).filter(Number.isFinite);
+    const prices = list.map(([, deal]) => deal.price).filter(Number.isFinite);
+    const dates = list.map(([, deal]) => deal.date).filter(Boolean).sort();
+    return {
+      count: list.length,
+      medianPpsm: ppsm.length ? Math.round(median(ppsm)) : null,
+      medianPrice: prices.length ? Math.round(median(prices)) : null,
+      fromDate: dates[0] || null,
+      toDate: dates[dates.length - 1] || null,
+    };
+  }
+
+  // מפתח מקום של מודעה או עסקה – להצלבה בין עסקאות למודעות שמורות באותה כתובת
+  function placeKey(city, street, house = "") {
+    return `${normCity(city)}|${normStreet(street)}|${normHouse(house)}`;
+  }
+
   return {
     STORAGE_KEY,
     FETCH_LOG_KEY,
@@ -246,6 +320,11 @@ var LRDeals = (() => {
     listingPlace,
     buildIndex,
     compareListing,
+    dealPpsm,
+    filterDeals,
+    sortDeals,
+    summarizeDeals,
+    placeKey,
   };
 })();
 

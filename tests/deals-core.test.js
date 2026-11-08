@@ -82,6 +82,35 @@ test("merging keeps one record, unions sources and fills only missing fields", (
   assert.equal(third.store[Object.keys(third.store)[0]], deal);
 });
 
+test("deal search filters by text, city, source and ranges, sorts with missing values last and summarizes", () => {
+  const make = (house, price, sqm, date, rooms, source) => {
+    const item = Deals.fromYad2({ ...yad2Result, address: { ...yad2Result.address, houseNumber: house }, price, buildingMR: sqm, saleDate: date, rooms });
+    item.deal.sources = source;
+    return item;
+  };
+  const store = Deals.mergeAll({}, [
+    make(1, 2_000_000, 100, "2025-01-01", 4, ["yad2"]),
+    make(2, 3_000_000, 100, "2026-01-01", 5, ["madlan", "yad2"]),
+    make(3, 1_500_000, null, "2024-01-01", 3, ["madlan"]),
+  ], 1).store;
+  assert.equal(Deals.filterDeals(store, { query: "בנימיני" }).length, 3);
+  assert.equal(Deals.filterDeals(store, { query: "הרצל" }).length, 0);
+  assert.equal(Deals.filterDeals(store, { city: "פתח תקווה" }).length, 3);
+  assert.equal(Deals.filterDeals(store, { source: "both" }).length, 1);
+  assert.equal(Deals.filterDeals(store, { source: "madlan" }).length, 2);
+  assert.equal(Deals.filterDeals(store, { rooms: { min: 4 } }).length, 2);
+  assert.equal(Deals.filterDeals(store, { year: { min: 2025, max: 2025 } }).length, 1);
+  assert.equal(Deals.filterDeals(store, { ppsm: { max: 25_000 } }).length, 1, "a deal without area has no price per m2");
+  const byPpsm = Deals.sortDeals(Deals.filterDeals(store), "ppsm", -1).map(([, deal]) => deal.house);
+  assert.deepEqual(byPpsm, ["2", "1", "3"]);
+  const summary = Deals.summarizeDeals(Deals.filterDeals(store));
+  assert.equal(summary.count, 3);
+  assert.equal(summary.medianPpsm, 25_000);
+  assert.equal(summary.medianPrice, 2_000_000);
+  assert.equal(summary.fromDate, "2024-01-01");
+  assert.equal(Deals.placeKey("פתח תקווה", "רחוב אמיר בנימיני", "2"), Deals.placeKey("פתח-תקווה", "בנימיני אמיר", "2"));
+});
+
 test("a listing is compared with the most specific level that has enough recent deals", () => {
   const now = Date.UTC(2026, 10, 9);
   const deal = (house, price, sqm, date = "2025-06-01") => Deals.fromYad2({

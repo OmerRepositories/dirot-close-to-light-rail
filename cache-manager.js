@@ -1597,7 +1597,7 @@ function showSettingsSection(section) {
   }
 }
 
-const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "refresh", "transfer", "sync"];
+const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "deals", "refresh", "transfer", "sync"];
 
 // ---------- לוח בקרה ----------
 // מדד לחץ למכור (LRCacheData.sellerPressure) – נשמר בזיכרון לכל רשומה כדי שמיון וציור לא יחשבו שוב ושוב
@@ -1972,6 +1972,7 @@ function setActiveTab(tab) {
     ["listingSearchTab", "search"],
     ["listingDeleteTab", "delete"],
     ["priceChangesTab", "priceChanges"],
+    ["dealsTab", "deals"],
     ["refreshTab", "refresh"],
     ["transferTab", "transfer"],
     ["syncTab", "sync"],
@@ -1986,6 +1987,7 @@ function setActiveTab(tab) {
   $("listingSearchPanel").hidden = tab !== "search";
   $("listingDeletePanel").hidden = tab !== "delete";
   $("priceChangesPanel").hidden = tab !== "priceChanges";
+  $("dealsPanel").hidden = tab !== "deals";
   $("refreshPanel").hidden = tab !== "refresh";
   $("transferPanel").hidden = tab !== "transfer";
   $("syncPanel").hidden = tab !== "sync";
@@ -2000,8 +2002,9 @@ function setActiveTab(tab) {
   $("settingsPanel").hidden = !settingsSection;
   if (settingsSection) showSettingsSection(settingsSection);
   if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
-  $("listingToolbar").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
-  $("listingAdvancedFilters").hidden = tab === "search" || tab === "delete" || tab === "priceChanges";
+  $("listingToolbar").hidden = tab === "search" || tab === "delete" || tab === "priceChanges" || tab === "deals";
+  $("listingAdvancedFilters").hidden = tab === "search" || tab === "delete" || tab === "priceChanges" || tab === "deals";
+  if (tab === "deals") renderDeals();
   document.body.dataset.activeTab = tab;
   if (tab === "search" || tab === "listings") renderRows();
   if (tab === "delete") renderListingDeletionPreview();
@@ -3180,10 +3183,14 @@ let dealsVersion = 0;
 let dealsTotal = 0;
 let realDealsMemo = new WeakMap();
 
+let dealsStore = {};
+
 async function loadDeals() {
   try {
     const store = (await storageGet(LRDeals.STORAGE_KEY)) || {};
+    dealsStore = store;
     dealsTotal = Object.keys(store).length;
+    $("dealsCount").textContent = dealsTotal.toLocaleString("he-IL");
     dealsIndex = LRDeals.buildIndex(store);
   } catch (error) {
     console.warn("[lightrail-ext] failed to load real deals", error);
@@ -3215,9 +3222,131 @@ function realDealsTitle(result) {
     "חיובי = המודעה יקרה מהעסקאות, שלילי = זולה מהן.";
 }
 
+// ---------- מסך "חיפוש עסקאות" ----------
+const DEALS_PAGE_SIZE = 200;
+let dealsSort = { key: "date", direction: -1 };
+let dealsLimit = DEALS_PAGE_SIZE;
+let listingPlacesMemo = { cache: null, size: -1, places: new Map() };
+
+// כמה מודעות שמורות יש בכל כתובת (עיר + רחוב + מספר בית)
+function listingPlaces() {
+  const size = Object.keys(cache).length;
+  if (listingPlacesMemo.cache !== cache || listingPlacesMemo.size !== size) {
+    const places = new Map();
+    for (const record of Object.values(cache)) {
+      if (!record || typeof record !== "object" || recordType(record) === "project") continue;
+      const place = LRDeals.listingPlace(record);
+      if (!place.city || !place.street || !place.house) continue;
+      const key = `${place.city}|${place.street}|${place.house}`;
+      places.set(key, (places.get(key) || 0) + 1);
+    }
+    listingPlacesMemo = { cache, size, places };
+  }
+  return listingPlacesMemo.places;
+}
+
+function readDealsFilters() {
+  const filters = {
+    query: $("dealsQuery").value,
+    city: $("dealsCity").value,
+    source: $("dealsSource").value,
+  };
+  for (const input of document.querySelectorAll("[data-deals-min], [data-deals-max]")) {
+    if (input.value === "") continue;
+    const isMin = input.dataset.dealsMin !== undefined;
+    const name = isMin ? input.dataset.dealsMin : input.dataset.dealsMax;
+    filters[name] = { ...(filters[name] || {}), [isMin ? "min" : "max"]: Number(input.value) };
+  }
+  return filters;
+}
+
+function fillDealsCities() {
+  const select = $("dealsCity");
+  const current = select.value;
+  const cities = [...new Set(Object.values(dealsStore).map((deal) => deal && deal.city).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "he"));
+  const known = [...select.options].slice(1).map((option) => option.value);
+  if (known.join("|") === cities.join("|")) return;
+  select.replaceChildren(new Option("כל הערים", ""), ...cities.map((city) => new Option(city, city)));
+  select.value = cities.includes(current) ? current : "";
+}
+
+function renderDeals() {
+  if (activeTab !== "deals") return;
+  fillDealsCities();
+  const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSort.key, dealsSort.direction);
+  const summary = LRDeals.summarizeDeals(list);
+  const status = $("dealsSummary");
+  status.replaceChildren();
+  if (!dealsTotal) {
+    status.textContent = "עוד לא נאספו עסקאות. פתחו מודעות ביד2 או במדלן – העסקאות שבסביבה נשמרות כאן אוטומטית.";
+  } else {
+    const strong = document.createElement("strong");
+    strong.textContent = `${summary.count.toLocaleString("he-IL")} עסקאות`;
+    status.append(
+      strong,
+      ` מתוך ${dealsTotal.toLocaleString("he-IL")}`,
+      summary.count
+        ? ` · חציון ${displayPrice(summary.medianPpsm)} למ״ר · מחיר חציוני ${displayPrice(summary.medianPrice)} · ${summary.fromDate || "?"} עד ${summary.toDate || "?"}`
+        : ""
+    );
+  }
+  for (const button of document.querySelectorAll("[data-deals-sort]")) {
+    const active = button.dataset.dealsSort === dealsSort.key;
+    button.dataset.active = String(active);
+    button.textContent = button.textContent.replace(/ [▲▼]$/, "") + (active ? (dealsSort.direction < 0 ? " ▼" : " ▲") : "");
+  }
+  const places = listingPlaces();
+  const rowsHost = $("dealsRows");
+  const fragment = document.createDocumentFragment();
+  for (const [, deal] of list.slice(0, dealsLimit)) {
+    const row = document.createElement("tr");
+    const cell = (text, className) => {
+      const td = document.createElement("td");
+      if (className) td.className = className;
+      td.textContent = text === null || text === undefined ? "" : String(text);
+      row.appendChild(td);
+      return td;
+    };
+    cell(deal.date ? deal.date.split("-").reverse().join(".") : "");
+    cell(`${deal.street} ${deal.house}, ${deal.city}`, "deal-address");
+    cell(deal.neighborhood || "");
+    cell(Number.isFinite(deal.rooms) ? deal.rooms : "");
+    cell(Number.isFinite(deal.sqm) ? deal.sqm : "");
+    cell(Number.isFinite(deal.floor) ? (Number.isFinite(deal.totalFloors) ? `${deal.floor}/${deal.totalFloors}` : deal.floor) : "");
+    cell(displayPrice(deal.price));
+    cell(displayPrice(LRDeals.dealPpsm(deal)));
+    cell(Number.isFinite(deal.buildYear) ? deal.buildYear : "");
+    cell((deal.sources || []).map((source) => (source === "yad2" ? "יד2" : source === "madlan" ? "מדלן" : source)).join(" + "), "deal-sources");
+    const listingsCell = cell("", "deal-listings");
+    const count = places.get(LRDeals.placeKey(deal.city, deal.street, deal.house)) || 0;
+    if (count) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${count} מודעות`;
+      button.title = "פתיחת המודעות השמורות בכתובת הזו";
+      button.addEventListener("click", () => openSearchWith({ query: `${deal.street} ${deal.house}` }));
+      listingsCell.appendChild(button);
+    }
+    fragment.appendChild(row);
+  }
+  rowsHost.replaceChildren(fragment);
+  const more = $("dealsMore");
+  const remaining = list.length - Math.min(list.length, dealsLimit);
+  more.hidden = remaining <= 0;
+  more.firstChild.textContent = `מוצגות ${Math.min(list.length, dealsLimit).toLocaleString("he-IL")} מתוך ${list.length.toLocaleString("he-IL")}`;
+  more.lastChild.textContent = `הצג עוד ${Math.min(DEALS_PAGE_SIZE, remaining).toLocaleString("he-IL")}`;
+}
+
+const scheduleDealsRender = debounce(() => {
+  dealsLimit = DEALS_PAGE_SIZE;
+  renderDeals();
+}, 200);
+
 const scheduleDealsReload = debounce(async () => {
   await loadDeals();
   applyCacheToViews();
+  renderDeals();
 }, 1500);
 
 async function loadCache() {
@@ -3606,6 +3735,33 @@ $("listingsTab").addEventListener("click", () => setActiveTab("listings"));
 $("listingSearchTab").addEventListener("click", () => setActiveTab("search"));
 $("listingDeleteTab").addEventListener("click", () => setActiveTab("delete"));
 $("priceChangesTab").addEventListener("click", () => setActiveTab("priceChanges"));
+$("dealsTab").addEventListener("click", () => setActiveTab("deals"));
+$("dealsTab").addEventListener("keydown", handleTabKeydown);
+$("dealsQuery").addEventListener("input", scheduleDealsRender);
+for (const id of ["dealsCity", "dealsSource"]) $(id).addEventListener("change", scheduleDealsRender);
+document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => {
+  input.addEventListener("input", scheduleDealsRender);
+});
+document.querySelectorAll("[data-deals-sort]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const key = button.dataset.dealsSort;
+    dealsSort = dealsSort.key === key
+      ? { key, direction: -dealsSort.direction }
+      : { key, direction: key === "address" ? 1 : -1 };
+    renderDeals();
+  });
+});
+$("clearDealsSearch").addEventListener("click", () => {
+  $("dealsQuery").value = "";
+  $("dealsCity").value = "";
+  $("dealsSource").value = "";
+  document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => { input.value = ""; });
+  scheduleDealsRender();
+});
+$("dealsMore").lastChild.addEventListener("click", () => {
+  dealsLimit += DEALS_PAGE_SIZE;
+  renderDeals();
+});
 $("refreshTab").addEventListener("click", () => setActiveTab("refresh"));
 $("transferTab").addEventListener("click", () => setActiveTab("transfer"));
 $("dashboardTab").addEventListener("click", () => setActiveTab("dashboard"));

@@ -732,6 +732,23 @@ button.stat-tile:hover { border-color: var(--line-strong); background: var(--sur
 .dist-table .city-count { width: 60%; }
 .dist-table .city-bar-value { min-width: 84px; }
 
+/* ---------- חיפוש עסקאות ---------- */
+.deals-panel { padding: 18px; }
+.deals-summary { margin: 12px 0 8px; color: var(--muted); font-size: 13px; }
+.deals-summary strong { color: var(--ink); }
+.deals-table-wrap { flex: 1 1 auto; min-height: 200px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.deals-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.deals-table th, .deals-table td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft, var(--line)); text-align: right; white-space: nowrap; }
+.deals-table th { position: sticky; top: 0; z-index: 2; color: var(--muted); font-weight: 600; background: var(--surface-alt); }
+.deals-table td:first-child { position: static; box-shadow: none; background: transparent; }
+.deals-table th:first-child { right: auto; box-shadow: none; }
+.deals-table td { font-variant-numeric: tabular-nums; }
+.deals-table tbody tr:hover td { background: var(--surface-alt); }
+.deals-table .deal-address { font-weight: 600; }
+.deals-table .deal-sources { color: var(--muted); font-size: 13px; }
+.deals-table .deal-listings button { min-height: 0; padding: 1px 8px; font-size: 13px; }
+.deals-table .sort-button[data-active="true"] { color: var(--action); }
+
 /* מול עסקאות אמת: זול מהעסקאות = ירוק, יקר מהן = אדום (הטקסט עצמו כולל את הסימן + / −) */
 td.real-deals { font-variant-numeric: tabular-nums; white-space: nowrap; }
 td.real-deals.below { color: var(--ok); font-weight: 600; }

@@ -52,6 +52,10 @@
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
         <span class="nav-text"><span class="nav-label">שינויי מחירים</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
       </button>
+      <button id="dealsTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="dealsPanel" tabindex="-1" title="חיפוש עסקאות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10l8-6 8 6v10"/><path d="M9.5 20v-5h5v5"/><path d="M16 4.5h3.5V8"/></svg></span>
+        <span class="nav-text"><span class="nav-label">חיפוש עסקאות</span><span class="nav-hint">עסקאות אמת שנמכרו</span></span> <span id="dealsCount" class="tab-count">0</span>
+      </button>
       <p class="nav-group">כלים</p>
       <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
@@ -426,6 +430,92 @@
           <tbody id="recordRows"></tbody>
         </table>
         <p id="emptyState" class="empty-state" hidden>לא נמצאו רשומות מתאימות.</p>
+      </div>
+    </section>
+
+    <section id="dealsPanel" class="tab-panel deals-panel" role="tabpanel" aria-labelledby="dealsTab" aria-label="חיפוש עסקאות אמת" hidden>
+      <div class="search-panel-heading">
+        <div>
+          <h2>חיפוש עסקאות אמת</h2>
+          <p>עסקאות שנמכרו בפועל (רשות המסים), כפי שיד2 ומדלן מציגות בעמוד מודעה. עסקאות נאספות כשפותחים מודעות באתרים; אותה עסקה משני האתרים מופיעה פעם אחת.</p>
+        </div>
+      </div>
+      <div class="listing-search-grid">
+        <label class="search-field">
+          <span>עיר, רחוב או שכונה</span>
+          <input id="dealsQuery" type="search" placeholder="למשל: רוטשילד, עין גנים…">
+        </label>
+        <label class="search-choice">
+          <span>עיר</span>
+          <select id="dealsCity"><option value="">כל הערים</option></select>
+        </label>
+        <label class="search-choice">
+          <span>מקור</span>
+          <select id="dealsSource">
+            <option value="">כל המקורות</option>
+            <option value="yad2">יד2</option>
+            <option value="madlan">מדלן</option>
+            <option value="both">שני האתרים</option>
+          </select>
+        </label>
+        <label class="range-filter">
+          <span>שנת עסקה</span>
+          <span class="range-inputs">
+            <input data-deals-min="year" type="number" min="2000" max="2100" step="1" placeholder="מ־" aria-label="שנת עסקה מוקדמת ביותר">
+            <input data-deals-max="year" type="number" min="2000" max="2100" step="1" placeholder="עד" aria-label="שנת עסקה מאוחרת ביותר">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>חדרים</span>
+          <span class="range-inputs">
+            <input data-deals-min="rooms" type="number" min="0" step="0.5" placeholder="מ־" aria-label="מספר חדרים מינימלי">
+            <input data-deals-max="rooms" type="number" min="0" step="0.5" placeholder="עד" aria-label="מספר חדרים מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>שטח (מ״ר)</span>
+          <span class="range-inputs">
+            <input data-deals-min="sqm" type="number" min="0" step="any" placeholder="מ־" aria-label="שטח מינימלי">
+            <input data-deals-max="sqm" type="number" min="0" step="any" placeholder="עד" aria-label="שטח מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מחיר (₪)</span>
+          <span class="range-inputs">
+            <input data-deals-min="price" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מחיר מינימלי">
+            <input data-deals-max="price" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מחיר מקסימלי">
+          </span>
+        </label>
+        <label class="range-filter">
+          <span>מחיר למ״ר (₪)</span>
+          <span class="range-inputs">
+            <input data-deals-min="ppsm" type="number" data-thousands min="0" step="any" placeholder="מ־" aria-label="מחיר למטר מינימלי">
+            <input data-deals-max="ppsm" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מחיר למטר מקסימלי">
+          </span>
+        </label>
+        <button id="clearDealsSearch" type="button">ניקוי מסננים</button>
+      </div>
+      <p id="dealsSummary" class="deals-summary" role="status" aria-live="polite"></p>
+      <div class="deals-table-wrap">
+        <table class="deals-table">
+          <thead>
+            <tr>
+              <th><button class="sort-button" type="button" data-deals-sort="date">תאריך</button></th>
+              <th><button class="sort-button" type="button" data-deals-sort="address">כתובת</button></th>
+              <th>שכונה</th>
+              <th><button class="sort-button" type="button" data-deals-sort="rooms">חדרים</button></th>
+              <th><button class="sort-button" type="button" data-deals-sort="sqm">מ״ר</button></th>
+              <th>קומה</th>
+              <th><button class="sort-button" type="button" data-deals-sort="price">מחיר</button></th>
+              <th><button class="sort-button" type="button" data-deals-sort="ppsm">₪ למ״ר</button></th>
+              <th>נבנה</th>
+              <th>מקור</th>
+              <th title="מודעות שמורות באותה כתובת; לחיצה פותחת אותן בחיפוש מודעה">מודעות בכתובת</th>
+            </tr>
+          </thead>
+          <tbody id="dealsRows"></tbody>
+        </table>
+        <div id="dealsMore" class="more-rows" hidden><span></span><button type="button">הצג עוד</button></div>
       </div>
     </section>
 
