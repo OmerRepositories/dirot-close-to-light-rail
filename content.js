@@ -869,6 +869,11 @@
       sqm: Number.isFinite(stats.sqm) ? stats.sqm : null,
       rooms: Number.isFinite(metadata.rooms) ? metadata.rooms : null,
       floor,
+      // תאריך פרסום: מנתוני הדף, ואם אין (למשל בכרטיס חיפוש) – מהמודעה השמורה
+      listingCreatedAt:
+        (metadata.listingCreatedAt && normalizeListingDate(metadata.listingCreatedAt)) ||
+        (listingRecord && listingRecord.listingCreatedAt) ||
+        null,
       pricePerSqm: Number.isFinite(stats.ppsm) ? `₪${fmtNum(stats.ppsm)}` : null,
       railDistance,
       missingAmenities,

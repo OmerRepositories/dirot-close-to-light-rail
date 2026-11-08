@@ -10,12 +10,13 @@ test("WhatsApp message lists all requested property fields in Hebrew", () => {
     sqm: 87,
     rooms: 4,
     floor: "קומה 4",
+    listingCreatedAt: "2026-10-20",
     pricePerSqm: "₪25,287",
     railDistance: "כ-450 מ׳ (מיקום משוער)",
     url: "https://www.madlan.co.il/listings/test-id",
     missingAmenities: ["ממ״ד", "דוד שמש"],
     brokerage: true,
-  });
+  }, new Date(2026, 10, 8, 15).getTime());
 
   assert.equal(
     message,
@@ -24,7 +25,9 @@ test("WhatsApp message lists all requested property fields in Hebrew", () => {
       "מחיר: ₪2,200,000",
       'מ"ר: 87',
       "חדרים: 4",
-      "קומה: קומה 4",
+      "קומה: 4",
+      "תאריך פרסום: 20/10/2026",
+      "גיל המודעה: 19 ימים",
       'מחיר למ"ר: ₪25,287',
       "מרחק בקו אווירי מהרכבת (המרחק בהליכה עשוי להיות גדול יותר): כ-450 מ׳ (מיקום משוער)",
       "קישור למודעה: https://www.madlan.co.il/listings/test-id",
@@ -36,8 +39,20 @@ test("WhatsApp message lists all requested property fields in Hebrew", () => {
 
 test("WhatsApp message clearly marks unavailable listing fields", () => {
   const message = LRWhatsAppMessage.format({});
-  assert.equal(message.split("\n").length, 8);
+  assert.equal(message.split("\n").length, 10);
   assert.ok(message.split("\n").every((line) => line.endsWith("לא זוהה")));
+});
+
+test("WhatsApp message writes the floor label once and a readable listing age", () => {
+  assert.ok(LRWhatsAppMessage.format({ floor: "קומה קרקע" }).includes("קומה: קרקע\n"));
+  assert.ok(LRWhatsAppMessage.format({ floor: "3" }).includes("קומה: 3\n"));
+  const now = new Date(2026, 10, 8, 9).getTime();
+  assert.equal(LRWhatsAppMessage.ageText("2026-11-08", now), "פורסמה היום");
+  assert.equal(LRWhatsAppMessage.ageText("2026-11-07", now), "יום אחד");
+  assert.equal(LRWhatsAppMessage.ageText("2026-11-06", now), "יומיים");
+  assert.equal(LRWhatsAppMessage.ageText("2026-11-01T10:00:00.000Z", now), "7 ימים");
+  assert.equal(LRWhatsAppMessage.ageText("", now), null);
+  assert.equal(LRWhatsAppMessage.ageText("bad", now), null);
 });
 
 test("WhatsApp message lists only confirmed missing amenities", () => {

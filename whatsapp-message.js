@@ -43,14 +43,41 @@ var LRWhatsAppMessage = (() => {
       : null;
   }
 
-  function format(data) {
+  // "קומה 4" → "4", כדי שהשורה תהיה "קומה: 4" ולא "קומה: קומה 4"
+  function floorValue(floor) {
+    const text = String(floor || "").replace(/^\s*קומה\s*/, "").trim();
+    return text || null;
+  }
+
+  // listingCreatedAt בפורמט YYYY-MM-DD (או תאריך ISO מלא)
+  function createdDate(createdAt) {
+    const match = String(createdAt || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? { text: `${match[3]}/${match[2]}/${match[1]}`, utc: Date.UTC(+match[1], +match[2] - 1, +match[3]) } : null;
+  }
+
+  function ageText(createdAt, now = Date.now()) {
+    const created = createdDate(createdAt);
+    if (!created) return null;
+    const today = new Date(now);
+    const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+    const days = Math.max(0, Math.round((todayUtc - created.utc) / 86400000));
+    if (days === 0) return "פורסמה היום";
+    if (days === 1) return "יום אחד";
+    if (days === 2) return "יומיים";
+    return `${days.toLocaleString("he-IL")} ימים`;
+  }
+
+  function format(data, now = Date.now()) {
     const value = (item) => (item === null || item === undefined || item === "" ? "לא זוהה" : item);
+    const created = createdDate(data.listingCreatedAt);
     const lines = [
       `כתובת: ${value(data.address)}`,
       `מחיר: ${value(data.price)}`,
       `מ"ר: ${value(data.sqm)}`,
       `חדרים: ${value(data.rooms)}`,
-      `קומה: ${value(data.floor)}`,
+      `קומה: ${value(floorValue(data.floor))}`,
+      `תאריך פרסום: ${value(created && created.text)}`,
+      `גיל המודעה: ${value(ageText(data.listingCreatedAt, now))}`,
       `מחיר למ"ר: ${value(data.pricePerSqm)}`,
       `מרחק בקו אווירי מהרכבת (המרחק בהליכה עשוי להיות גדול יותר): ${value(data.railDistance)}`,
       `קישור למודעה: ${value(data.url)}`,
@@ -73,7 +100,7 @@ var LRWhatsAppMessage = (() => {
     return lines.join("\n");
   }
 
-  return { format, normalizeFloor, readFloor };
+  return { format, normalizeFloor, readFloor, ageText };
 })();
 
 if (typeof module !== "undefined") module.exports = LRWhatsAppMessage;
