@@ -4061,7 +4061,9 @@ initializeSearchAmenityFilters();
 initializeDeleteAmenityFilters();
 renderHeader();
 loadTimelinePreferences();
-Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_KEY)])
+// עסקאות האמת נטענות יחד עם המודעות – אחרת המונה, חיפוש העסקאות, עמודות "מול עסקאות אמת"
+// ולוח הבקרה הראו 0 בכל פתיחה של העמוד, עד לחיצה על "רענון תצוגה"
+Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_KEY), loadDeals()])
   .then(async ([storedCache, storedDelay, storedFontScale]) => {
     cache = await migrateEstimatedBaselineDates(storedCache);
     if (Number.isFinite(storedDelay)) {
@@ -4080,6 +4082,7 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
     // אם המשתמש עבר ללוח הבקרה או לציר המחירים לפני שהמידע נטען – בונים אותם עכשיו עם המידע
     else if (activeTab === "dashboard") renderDashboard();
     else if (activeTab === "priceChanges") renderPriceTimeline();
+    else if (activeTab === "deals") renderDeals();
     const params = new URLSearchParams(location.search);
     if (params.get("scheduledRefresh") === "1") {
       const uncheckedOnly = params.get("uncheckedOnly") === "1";

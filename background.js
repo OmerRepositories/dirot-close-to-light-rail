@@ -539,8 +539,11 @@ async function syncDeals(settings) {
   }
   if (settings.dealsNeedsSetup) await saveSyncSettings({ dealsNeedsSetup: false });
 
-  // משיכה
-  let cursor = settings.dealsCursor || null;
+  // משיכה. אין עסקאות במחשב אבל כבר סונכרנו בעבר (למשל אחרי התקנה מחדש) – מושכים הכל מההתחלה,
+  // אחרת המשיכה "מאז הפעם הקודמת" לא הייתה מחזירה אותן לעולם
+  const localDeals = (await chrome.storage.local.get(LRSync.DEALS_KEY))[LRSync.DEALS_KEY];
+  const hasLocalDeals = Boolean(localDeals && Object.keys(localDeals).length);
+  let cursor = hasLocalDeals ? settings.dealsCursor || null : null;
   let since = cursor
     ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
     : "1970-01-01T00:00:00Z";

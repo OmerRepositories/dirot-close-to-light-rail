@@ -262,6 +262,11 @@ test("real deals sync through their own table: one row per deal, sources merged,
   await a.syncNow();
   await b.syncNow();
   assert.equal(JSON.stringify([...server.dealRows.values()]), before);
+
+  // העסקאות נמחקו מהמחשב (למשל התקנה מחדש) – הסנכרון הבא מחזיר את כולן מהשרת
+  await a.setDeals({});
+  await a.syncNow();
+  assert.equal(Object.keys(a.deals()).length, 2);
 });
 
 test("without the deals table, listings still sync and the setup SQL is shown again", async () => {
