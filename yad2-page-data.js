@@ -50,6 +50,9 @@
         squareMeter: num(details.squareMeter),
         buildingTopFloor: num(details.buildingTopFloor),
       },
+      metaData: item.metaData && num(item.metaData.shelterDistance) !== undefined
+        ? { shelterDistance: num(item.metaData.shelterDistance) }
+        : undefined,
       inProperty,
     };
   }

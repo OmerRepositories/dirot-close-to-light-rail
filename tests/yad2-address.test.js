@@ -384,6 +384,33 @@ test("Yad2 reads card data copied by the in-page script when __NEXT_DATA__ is st
   assert.equal(context.LRYad2.brokerageFromData({ querySelector: () => ({ href: 'https://www.yad2.co.il/realestate/item/x/a"b' }) }), null);
 });
 
+test("Yad2 listing data gives floor, building floors and public shelter distance", () => {
+  const listing = {
+    token: "flr1",
+    address: { city: { text: "פתח תקווה" }, house: { floor: 4 } },
+    additionalDetails: { buildingTopFloor: 6, squareMeter: 96 },
+    metaData: { shelterDistance: 207 },
+    dates: { rebouncedAt: "2026-11-08T23:40:38" },
+  };
+  const context = {
+    LR,
+    URL,
+    document: {
+      querySelector: (selector) =>
+        selector === "script#__NEXT_DATA__"
+          ? { textContent: JSON.stringify({ props: { pageProps: { listing } } }) }
+          : null,
+    },
+    location: { pathname: "/realestate/item/center-and-sharon/flr1", href: "https://www.yad2.co.il/realestate/item/center-and-sharon/flr1" },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"), context);
+  const data = context.LRYad2.listingExportData(context.document);
+  assert.equal(data.floor, 4);
+  assert.equal(data.buildingTopFloor, 6);
+  assert.equal(data.shelterMeters, 207);
+  assert.equal(data.listingBumpedAt, "2026-11-08T23:40:38");
+});
+
 test("Yad2 listing status stays unknown without explicit removal or listing data", () => {
   const unknownContext = {
     LR,

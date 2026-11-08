@@ -154,7 +154,7 @@ var LRYad2 = (() => {
     const currentPrice = LR.extractPriceSqm(currentPriceText).price;
     // יש מקום למחיר אבל אין בו מספר (למשל "למידע נוסף") = המפרסם לא פרסם מחיר
     const priceHidden = Boolean(currentPriceElement) && !Number.isFinite(currentPrice);
-    const id = Number.isFinite(currentPrice) ? null : listingId(root);
+    const id = listingId(root);
     const index = id ? getPageListingsById() : null;
     const dataRecord = index && index.get(id);
     const dataPrice = dataRecord && Number.isFinite(dataRecord.price) && dataRecord.price > 0
@@ -169,7 +169,13 @@ var LRYad2 = (() => {
         : priceHidden || isWholePage
           ? null
           : stats.price;
-    const sqm = Number.isFinite(structuredSqm) ? structuredSqm : stats.sqm;
+    // שטח: מפרטי עמוד המודעה, אחר כך מנתוני הדף (squareMeter), ורק בסוף ניחוש מהטקסט
+    const dataSqm = dataRecord && dataRecord.additionalDetails && Number(dataRecord.additionalDetails.squareMeter);
+    const sqm = Number.isFinite(structuredSqm)
+      ? structuredSqm
+      : Number.isFinite(dataSqm) && dataSqm > 0
+        ? dataSqm
+        : stats.sqm;
     const normalized = LR.extractPriceSqm(
       `${Number.isFinite(price) ? `${price} ₪ ` : ""}${Number.isFinite(sqm) ? `${sqm} מ״ר` : ""}`
     );
@@ -366,7 +372,28 @@ var LRYad2 = (() => {
       ]),
       // זמן ההקפצה האחרון – ביד2 "עודכן" מתאפס גם בהקפצה, אז צריך לדעת להבדיל
       listingBumpedAt: dateValue(["rebouncedAt"]),
+      ...buildingData(data),
     };
+  }
+
+  // קומה, מספר הקומות בבניין ומרחק למקלט ציבורי (האחרון קיים רק בעמוד המודעה)
+  function buildingData(data) {
+    if (!data) return {};
+    const details = data.additionalDetails || {};
+    const house = (data.address && data.address.house) || {};
+    const meta = data.metaData || {};
+    const count = (value, max) => {
+      const number = Number(value);
+      return value !== null && value !== "" && Number.isFinite(number) && number >= 0 && number <= max ? number : null;
+    };
+    const result = {};
+    const floor = count(house.floor, 200);
+    const topFloor = count(details.buildingTopFloor, 200);
+    const shelter = count(meta.shelterDistance, 20000);
+    if (floor !== null) result.floor = floor;
+    if (topFloor !== null && topFloor > 0) result.buildingTopFloor = topFloor;
+    if (shelter !== null) result.shelterMeters = Math.round(shelter);
+    return result;
   }
 
   function listingPageStatus(root = document) {

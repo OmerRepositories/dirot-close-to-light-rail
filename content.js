@@ -875,6 +875,12 @@
       sqm: Number.isFinite(stats.sqm) ? stats.sqm : null,
       rooms: Number.isFinite(metadata.rooms) ? metadata.rooms : null,
       floor,
+      buildingTopFloor: Number.isFinite(metadata.buildingTopFloor)
+        ? metadata.buildingTopFloor
+        : listingRecord && listingRecord.buildingTopFloor,
+      shelterMeters: Number.isFinite(metadata.shelterMeters)
+        ? metadata.shelterMeters
+        : listingRecord && listingRecord.shelterMeters,
       // תאריך פרסום: מנתוני הדף, ואם אין (למשל בכרטיס חיפוש) – מהמודעה השמורה
       listingCreatedAt:
         (metadata.listingCreatedAt && normalizeListingDate(metadata.listingCreatedAt)) ||
@@ -1580,6 +1586,13 @@
         (listingMetadata.listingBumpedAt &&
           normalizeListingDate(listingMetadata.listingBumpedAt)) ||
         previous.listingBumpedAt,
+      floor: Number.isFinite(listingMetadata.floor) ? listingMetadata.floor : previous.floor,
+      buildingTopFloor: Number.isFinite(listingMetadata.buildingTopFloor)
+        ? listingMetadata.buildingTopFloor
+        : previous.buildingTopFloor,
+      shelterMeters: Number.isFinite(listingMetadata.shelterMeters)
+        ? listingMetadata.shelterMeters
+        : previous.shelterMeters,
       brokerage: hasBrokerageSignal(
         root === document ? document.querySelector("main") || document.body : root,
         root

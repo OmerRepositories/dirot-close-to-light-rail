@@ -46,6 +46,9 @@ test("WhatsApp message clearly marks unavailable listing fields", () => {
 test("WhatsApp message writes the floor label once and a readable listing age", () => {
   assert.ok(LRWhatsAppMessage.format({ floor: "קומה קרקע" }).includes("קומה: קרקע\n"));
   assert.ok(LRWhatsAppMessage.format({ floor: "3" }).includes("קומה: 3\n"));
+  assert.ok(LRWhatsAppMessage.format({ floor: "קומה 4", buildingTopFloor: 6 }).includes("קומה: 4 מתוך 6\n"));
+  assert.ok(LRWhatsAppMessage.format({ shelterMeters: 207 }).includes("מרחק למקלט ציבורי: 207 מ׳"));
+  assert.equal(LRWhatsAppMessage.format({}).includes("מקלט"), false);
   const now = new Date(2026, 10, 8, 9).getTime();
   assert.equal(LRWhatsAppMessage.ageText("2026-11-08", now), "פורסמה היום");
   assert.equal(LRWhatsAppMessage.ageText("2026-11-07", now), "יום אחד");

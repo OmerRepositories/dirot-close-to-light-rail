@@ -376,6 +376,8 @@ const columns = [
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
   { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
+  { key: "floor", label: "קומה", sortKey: "floor", title: "קומת הדירה מתוך מספר הקומות בבניין (מנתוני יד2)" },
+  { key: "shelterMeters", label: "מקלט ציבורי (מ׳)", sortKey: "shelterMeters", title: "מרחק למקלט הציבורי הקרוב, כפי שיד2 מציגה בעמוד המודעה" },
   { key: "listingAgeDays", label: "גיל מודעה (ימים)", sortKey: "listingAgeDays", title: "כמה ימים המודעה באוויר; מחושב ונשמר בכל שמירה או רענון של המודעה" },
   { key: "sellerPressure", label: "לחץ למכור", sortKey: "sellerPressure", title: "מדד 0–100: ימים באוויר (עד 60 נק׳), ירידת מחיר מהשיא (עד 30) ומספר הורדות (עד 10)" },
   { key: "price", label: "מחיר", sortKey: "price" },
@@ -773,6 +775,15 @@ function allPriceRanks(records) {
   ]));
 }
 
+// "4/6" (קומה 4 מתוך 6), "4" כשמספר הקומות לא ידוע, "קרקע" לקומה 0
+function floorText(record) {
+  if (!Number.isFinite(record.floor)) return "";
+  const floor = record.floor === 0 ? "קרקע" : String(record.floor);
+  return Number.isFinite(record.buildingTopFloor) && record.buildingTopFloor > 0
+    ? `${floor}/${record.buildingTopFloor}`
+    : floor;
+}
+
 function rowSortValue(key, record, priceRanks) {
   if (sort.key === "recordType") return recordType(record);
   if (sort.key === "site") return recordSite(key);
@@ -903,9 +914,10 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   }
   if (key === "cloud") return CLOUD_LABELS[cloudState(recordKey, record)] || "";
   if (key === "price") return `${record.price ?? ""} ${displayPrice(record.price)}`;
-  if (key === "sqm" || key === "rooms" || key === "railMeters" || key === "listingAgeDays") {
+  if (key === "sqm" || key === "rooms" || key === "railMeters" || key === "listingAgeDays" || key === "shelterMeters") {
     return String(record[key] ?? "");
   }
+  if (key === "floor") return floorText(record);
   if (key === "sellerPressure") {
     const pressure = sellerPressure(record);
     return pressure ? `${pressure.score} ${LRCacheData.PRESSURE_LABELS[pressure.level]}` : "";
@@ -1103,6 +1115,10 @@ function renderRows() {
         td.title = record.railApprox === true ? "המרחק משוער" : "המרחק בקו אווירי";
       } else if (column.key === "rooms") {
         td.textContent = Number.isFinite(record.rooms) ? String(record.rooms) : "";
+      } else if (column.key === "floor") {
+        td.textContent = floorText(record);
+      } else if (column.key === "shelterMeters") {
+        td.textContent = Number.isFinite(record.shelterMeters) ? record.shelterMeters.toLocaleString("he-IL") : "";
       } else if (column.key === "sellerPressure") {
         const pressure = sellerPressure(record);
         td.title = pressureTitle(pressure);

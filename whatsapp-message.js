@@ -49,6 +49,12 @@ var LRWhatsAppMessage = (() => {
     return text || null;
   }
 
+  // "4" + 6 → "4 מתוך 6"
+  function floorWithTop(floor, topFloor) {
+    if (!floor) return null;
+    return Number.isFinite(topFloor) && topFloor > 0 && /^\d+$/.test(floor) ? `${floor} מתוך ${topFloor}` : floor;
+  }
+
   // listingCreatedAt בפורמט YYYY-MM-DD (או תאריך ISO מלא)
   function createdDate(createdAt) {
     const match = String(createdAt || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -75,7 +81,7 @@ var LRWhatsAppMessage = (() => {
       `מחיר: ${value(data.price)}`,
       `מ"ר: ${value(data.sqm)}`,
       `חדרים: ${value(data.rooms)}`,
-      `קומה: ${value(floorValue(data.floor))}`,
+      `קומה: ${value(floorWithTop(floorValue(data.floor), data.buildingTopFloor))}`,
       `תאריך פרסום: ${value(created && created.text)}`,
       `גיל המודעה: ${value(ageText(data.listingCreatedAt, now))}`,
       `מחיר למ"ר: ${value(data.pricePerSqm)}`,
@@ -93,6 +99,10 @@ var LRWhatsAppMessage = (() => {
       : [];
     if (missingAmenities.length) {
       lines.push(`שים לב חסר: ${missingAmenities.join(", ")}`);
+    }
+    // מרחק למקלט רק כשידוע (יד2 מציגה אותו בעמוד המודעה) – לא שורת "לא זוהה"
+    if (Number.isFinite(data.shelterMeters)) {
+      lines.push(`מרחק למקלט ציבורי: ${Math.round(data.shelterMeters).toLocaleString("he-IL")} מ׳`);
     }
     if (data.brokerage === true) {
       lines.push("שים לב מדובר במודעת תיווך!");
