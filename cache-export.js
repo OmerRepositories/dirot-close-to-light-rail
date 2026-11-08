@@ -114,6 +114,35 @@ var LRCacheExport = (() => {
     return history;
   }
 
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  function listingDateMs(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) return null;
+    const ms = Date.parse(value.length === 10 ? `${value}T00:00:00.000Z` : value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  // מתי השינוי קרה בפועל? רק נתוני האתר (src: "site") נותנים תאריך אמיתי. תצפית שלנו היא רק
+  // מתי שמנו לב: השינוי קרה בין התצפית הקודמת לזו. אם תאריך "עודכן" של המודעה נופל בטווח הזה
+  // הוא אומדן טוב יותר. dateKind: site | updated | detected | beforeFirstSeen
+  function changeDate(previous, point, updatedMs) {
+    if (point.src === "site") return { at: point.at, dateKind: "site" };
+    const notBefore = Number.isFinite(previous.at) ? previous.at : null;
+    if (
+      Number.isFinite(updatedMs) &&
+      updatedMs <= point.at &&
+      (notBefore === null || updatedMs + DAY_MS > notBefore)
+    ) {
+      return { at: Math.max(updatedMs, notBefore || updatedMs), dateKind: "updated", detectedAt: point.at, notBefore };
+    }
+    return {
+      at: point.at,
+      dateKind: notBefore === null ? "beforeFirstSeen" : "detected",
+      detectedAt: point.at,
+      notBefore,
+    };
+  }
+
   function getPriceTimelineEvents(cache) {
     const events = [];
     for (const [key, record] of getRecords(cache)) {
@@ -122,6 +151,7 @@ var LRCacheExport = (() => {
       const history = validPriceHistory(record);
       if (!history.length) continue;
       const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
+      const updatedMs = listingDateMs(record.listingUpdatedAt);
       const listing = {
         key,
         site,
@@ -153,6 +183,7 @@ var LRCacheExport = (() => {
         const shared = {
           ...listing,
           at: point.at,
+          ...(Number.isFinite(point.at) ? changeDate(previous, point, updatedMs) : {}),
           fromPrice: previous.price,
           toPrice: point.price,
           ...(Number.isFinite(baselineEstimatedAt)

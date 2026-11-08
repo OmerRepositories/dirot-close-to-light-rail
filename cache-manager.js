@@ -1328,6 +1328,40 @@ function timelineEventsFor(currentCache) {
 const TIMELINE_PAGE_SIZE = 150;
 let timelineLimit = TIMELINE_PAGE_SIZE;
 
+// תאריך השינוי כפי שאפשר לדעת אותו באמת – לא להציג את תאריך האינדוקס כאילו הוא תאריך הירידה
+function timelineDateText(change) {
+  if (!Number.isFinite(change.at)) return { text: "תאריך לא ידוע" };
+  const at = displayHistoryDate(change.at);
+  const detected = Number.isFinite(change.detectedAt) ? displayHistoryDate(change.detectedAt) : at;
+  const from = Number.isFinite(change.notBefore) ? displayHistoryDate(change.notBefore) : "";
+  switch (change.dateKind) {
+    case "site":
+      return { text: at, badge: "תאריך מהאתר", title: "תאריך השינוי כפי שהאתר מפרסם אותו." };
+    case "updated":
+      return {
+        text: at,
+        badge: "משוער",
+        title: `לפי תאריך העדכון של המודעה (המודעה עשויה להתעדכן גם מסיבות אחרות). התוסף זיהה את השינוי ב־${detected}.`,
+      };
+    case "beforeFirstSeen":
+      return {
+        text: `עד ${detected}`,
+        badge: "תאריך לא ידוע",
+        title: `המחיר הקודם ידוע (למשל מ„ירד ב־” בכרטיס), אבל לא מתי השתנה – רק שזה קרה לפני ${detected}, כשהתוסף ראה את המודעה לראשונה.`,
+      };
+    case "detected":
+      return from && from !== detected
+        ? {
+            text: `בין ${from} ל־${detected}`,
+            badge: "זוהה ברענון",
+            title: `המחיר עוד היה הקודם ב־${from} והשתנה עד ${detected}, כשהתוסף ראה את המודעה שוב.`,
+          }
+        : { text: detected, badge: "זוהה ברענון", title: "התוסף ראה את השינוי ביום הזה." };
+    default:
+      return { text: at };
+  }
+}
+
 // קורא את ערכי המסננים פעם אחת לכל רינדור (ולא פעם לכל אירוע – זה מה שהיה כבד)
 function readTimelineFilters() {
   const ranges = [];
@@ -1370,11 +1404,20 @@ function renderPriceTimeline() {
     metadata.className = "timeline-meta";
     const date = Number.isFinite(change.at) ? document.createElement("time") : document.createElement("span");
     if (Number.isFinite(change.at)) date.dateTime = new Date(change.at).toISOString();
-    date.textContent = Number.isFinite(change.at) ? displayHistoryDate(change.at) : "תאריך לא ידוע";
+    const dateInfo = timelineDateText(change);
+    date.textContent = dateInfo.text;
+    if (dateInfo.title) date.title = dateInfo.title;
     const site = document.createElement("span");
     site.className = "timeline-site";
     site.textContent = change.site === "yad2" ? "יד2" : change.site === "madlan" ? "מדלן" : change.site;
     metadata.append(date, site);
+    if (dateInfo.badge) {
+      const badge = document.createElement("span");
+      badge.className = `timeline-date-kind ${change.dateKind || ""}`;
+      badge.textContent = dateInfo.badge;
+      if (dateInfo.title) badge.title = dateInfo.title;
+      metadata.appendChild(badge);
+    }
 
     const title = document.createElement("h3");
     if (/^https?:\/\//i.test(change.url)) {
@@ -1398,9 +1441,6 @@ function renderPriceTimeline() {
     } else if (change.kind === "uncertain") {
       summary.textContent = "תצפית ראשונית — השינוי הקודם לא ודאי";
       detail.textContent = `${displayPrice(change.fromPrice)} ← ${displayPrice(change.toPrice)}`;
-    }
-    if (change.baselineDateEstimated && Number.isFinite(change.baselineEstimatedAt)) {
-      detail.textContent += ` (תאריך המחיר הקודם משוער: ${displayHistoryDate(change.baselineEstimatedAt)})`;
     }
     const address = document.createElement("p");
     address.className = "timeline-address";

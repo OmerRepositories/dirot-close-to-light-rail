@@ -385,6 +385,60 @@ test("price timeline classifies uncertain baseline changes as estimated", () => 
   })[0].kind, "increase");
 });
 
+test("price timeline dates say how certain they are instead of using the indexing date", () => {
+  const indexed = Date.UTC(2026, 10, 5, 10);
+  const refreshed = Date.UTC(2026, 10, 9, 10);
+  const events = CacheExport.getPriceTimelineEvents({
+    // "ירד ב־" מכרטיס: המחיר הקודם בלי תאריך – ידוע רק שהשינוי קרה לפני שנשמרה
+    "yad2:card": {
+      title: "card",
+      priceHistory: [
+        { price: 2_000_000, at: null, baselineUnknown: true, src: "card" },
+        { price: 1_900_000, at: indexed, src: "search" },
+      ],
+    },
+    // אותו מקרה, אבל עם תאריך עדכון של המודעה לפני שנשמרה – זה האומדן
+    "yad2:updated": {
+      title: "updated",
+      listingUpdatedAt: "2026-10-20",
+      priceHistory: [
+        { price: 2_000_000, at: null, baselineUnknown: true, src: "card" },
+        { price: 1_900_000, at: indexed, src: "page" },
+      ],
+    },
+    // שינוי שזוהה ברענון: קרה בין שתי התצפיות
+    "yad2:detected": {
+      title: "detected",
+      listingUpdatedAt: "2026-10-01", // לפני התצפית הקודמת → לא רלוונטי לשינוי הזה
+      priceHistory: [
+        { price: 2_000_000, at: indexed, baselineKnown: true },
+        { price: 1_950_000, at: refreshed },
+      ],
+    },
+    // מדלן: תאריך אמיתי מהאתר
+    "madlan:site": {
+      title: "site",
+      priceHistory: [
+        { price: 2_000_000, at: Date.UTC(2026, 8, 1), src: "site", baselineKnown: true },
+        { price: 1_800_000, at: Date.UTC(2026, 9, 1), src: "site" },
+      ],
+    },
+  });
+  const byTitle = Object.fromEntries(events.map((event) => [event.title, event]));
+  assert.equal(byTitle.card.dateKind, "beforeFirstSeen");
+  assert.equal(byTitle.card.detectedAt, indexed);
+  assert.equal(byTitle.updated.dateKind, "updated");
+  assert.equal(byTitle.updated.at, Date.UTC(2026, 9, 20));
+  assert.equal(byTitle.updated.detectedAt, indexed);
+  assert.equal(byTitle.detected.dateKind, "detected");
+  assert.equal(byTitle.detected.notBefore, indexed);
+  assert.equal(byTitle.detected.at, refreshed);
+  assert.equal(byTitle.site.dateKind, "site");
+  assert.equal(byTitle.site.at, Date.UTC(2026, 9, 1));
+  // מיון לפי תאריך השינוי המשוער, לא לפי תאריך השמירה
+  assert.deepEqual(events.map((event) => event.title), ["detected", "card", "updated", "site"]);
+});
+
 test("price timeline events include saved listing details", () => {
   const first = Date.UTC(2026, 10, 1, 10);
   const second = Date.UTC(2026, 10, 2, 10);

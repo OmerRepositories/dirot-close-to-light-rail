@@ -541,6 +541,9 @@ tbody tr[aria-selected="true"] td { background: var(--action-soft); }
   background: var(--surface);
 }
 .timeline-controls { display: grid; justify-items: end; gap: 8px; }
+.timeline-date-kind { padding: 1px 8px; border-radius: 999px; color: var(--muted); background: var(--surface-sunk); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: help; }
+.timeline-date-kind.site { color: var(--ok); background: var(--ok-soft); }
+.timeline-date-kind.beforeFirstSeen { color: var(--warn); background: var(--warn-soft); }
 #timelinePreferences[aria-pressed="true"] { border-color: var(--action); color: var(--action); background: var(--action-soft); }
 .timeline-filters { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-alt); }
 .timeline-filters button { min-height: 30px; padding: 4px 12px; border-color: transparent; color: var(--muted); background: transparent; }
