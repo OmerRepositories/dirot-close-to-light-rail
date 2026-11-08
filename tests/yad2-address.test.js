@@ -311,6 +311,43 @@ test("Yad2 listing status marks a listing active only with matching listing data
   );
 });
 
+test("Yad2 brokerage comes from the page data's adType (private / commercial)", () => {
+  const listings = [
+    { token: "priv1", adType: "private", address: { city: { text: "פתח תקווה" } } },
+    { token: "agent1", adType: "commercial", address: { city: { text: "פתח תקווה" } } },
+    { token: "proj1", adType: "yad1", address: { city: { text: "פתח תקווה" } } },
+  ];
+  const makeContext = (pathname) => ({
+    LR,
+    URL,
+    document: {
+      querySelector: (selector) =>
+        selector === "script#__NEXT_DATA__"
+          ? { textContent: JSON.stringify({ props: { pageProps: { feed: listings } } }) }
+          : null,
+    },
+    location: { pathname, href: `https://www.yad2.co.il${pathname}` },
+  });
+  const page = makeContext("/realestate/item/center-and-sharon/priv1");
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"), page);
+  // עמוד מודעה פרטית: לא תיווך, גם אם בתפריט של האתר כתוב "נדל״ן"
+  assert.equal(page.LRYad2.brokerageFromData(page.document), false);
+
+  const feed = makeContext("/realestate/forsale");
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"), feed);
+  const card = (id) => ({
+    querySelector: (selector) =>
+      selector.includes("/realestate/item/")
+        ? { href: `https://www.yad2.co.il/realestate/item/center-and-sharon/${id}` }
+        : null,
+  });
+  assert.equal(feed.LRYad2.brokerageFromData(card("agent1")), true);
+  assert.equal(feed.LRYad2.brokerageFromData(card("priv1")), false);
+  // פרויקט, או מודעה שלא נמצאת בנתונים (עמוד 2 ואילך) – לא ידוע, בודקים לפי הטקסט
+  assert.equal(feed.LRYad2.brokerageFromData(card("proj1")), null);
+  assert.equal(feed.LRYad2.brokerageFromData(card("missing")), null);
+});
+
 test("Yad2 listing status stays unknown without explicit removal or listing data", () => {
   const unknownContext = {
     LR,

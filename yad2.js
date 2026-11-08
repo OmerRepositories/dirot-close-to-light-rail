@@ -284,6 +284,19 @@ var LRYad2 = (() => {
     return price && amount ? price + amount : null;
   }
 
+  // סוג המפרסם מנתוני הדף: "private" = פרטי, "commercial" = משרד תיווך (נבדק מול תווית המשרד בכרטיס),
+  // "yad1" = פרויקט. מחזיר true/false רק כשהנתונים ודאיים, אחרת null (ואז בודקים לפי הטקסט).
+  // הנתונים מתאימים רק לעמוד הראשון שנטען, לכן מחפשים לפי מזהה המודעה – מודעה שלא נמצאה מחזירה null.
+  function brokerageFromData(root) {
+    const id = listingId(root);
+    const index = id ? getPageListingsById() : null;
+    const data = index && index.get(id);
+    if (!data) return null;
+    if (data.adType === "commercial") return true;
+    if (data.adType === "private") return false;
+    return null;
+  }
+
   function listingExportData(root) {
     const id = listingId(root);
     const index = id ? getPageListingsById() : null;
@@ -537,6 +550,7 @@ var LRYad2 = (() => {
     extractPriceSqm,
     readAddress,
     listingExportData,
+    brokerageFromData,
     listingPageStatus,
     projectExportData,
     readAmenities,

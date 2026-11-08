@@ -270,8 +270,14 @@
     }
   }
 
-  function hasBrokerageSignal(root) {
+  // dataRoot: לפיו מזהים את המודעה בנתוני הדף (בעמוד מודעה – document). root: האזור שהטקסט שלו נבדק –
+  // בעמוד מודעה רק main, כי בתפריט ובכותרת התחתונה של יד2 מופיע "נדל״ן" ואז כל מודעה נראתה כתיווך.
+  function hasBrokerageSignal(root, dataRoot = root) {
     if (!root) return false;
+    if (IS_YAD2) {
+      const fromData = LRYad2.brokerageFromData(dataRoot);
+      if (fromData !== null) return fromData;
+    }
     const agentLabel = root.querySelector('[data-testid="ad-card-above-price"]');
     if (agentLabel && agentLabel.textContent.trim()) return true;
 
@@ -877,11 +883,14 @@
       pricePerSqm: Number.isFinite(stats.ppsm) ? `₪${fmtNum(stats.ppsm)}` : null,
       railDistance,
       missingAmenities,
+      // נתוני הדף של יד2 קובעים; רק כשאין בהם תשובה נעזרים גם במה שנשמר על המודעה
       brokerage:
-        hasBrokerageSignal(
-          root === document ? document.querySelector("main") || document.body : root
-        ) ||
-        Boolean(listingRecord && listingRecord.brokerage === true),
+        (IS_YAD2 && LRYad2.brokerageFromData(root) !== null)
+          ? LRYad2.brokerageFromData(root)
+          : hasBrokerageSignal(
+              root === document ? document.querySelector("main") || document.body : root,
+              root
+            ) || Boolean(listingRecord && listingRecord.brokerage === true),
       url: parser.listingUrl(root) || location.href,
     };
   }
@@ -1567,7 +1576,10 @@
         (listingMetadata.listingUpdatedAt &&
           normalizeListingDate(listingMetadata.listingUpdatedAt)) ||
         previous.listingUpdatedAt,
-      brokerage: hasBrokerageSignal(root),
+      brokerage: hasBrokerageSignal(
+        root === document ? document.querySelector("main") || document.body : root,
+        root
+      ),
       ...listingAgeFields(
         (listingMetadata.listingCreatedAt && normalizeListingDate(listingMetadata.listingCreatedAt)) ||
           previous.listingCreatedAt
@@ -1841,7 +1853,10 @@
       if (!highlightKey || highlightKey !== entry.lastHighlightKey) {
         entry.lastHighlightKey = highlightKey;
         highlightBrokerage(listingRoot, CFG.avoidBrokerage);
-        entry.brokerageWarning.hidden = !hasBrokerageSignal(listingRoot);
+        entry.brokerageWarning.hidden = !hasBrokerageSignal(
+          listingRoot,
+          entry.kind === "single" ? document : entry.card
+        );
       }
       if (entry.kind === "single") {
         const missing = CFG.requiredAmenities
