@@ -965,6 +965,7 @@ function renderBoolean(value) {
 function renderRows() {
   const searchMode = activeTab === "search";
   const query = $(searchMode ? "listingSearchQuery" : "searchInput").value.trim().toLocaleLowerCase("he");
+  const queryWords = searchWords(query);
   const site = $(searchMode ? "listingSearchSite" : "siteFilter").value;
   const type = $(searchMode ? "listingSearchType" : "typeFilter").value;
   const boolFilters = searchMode ? [] : [...document.querySelectorAll("[data-boolean-filter]")]
@@ -988,14 +989,18 @@ function renderRows() {
   const searchDates = [...document.querySelectorAll("[data-search-date-min], [data-search-date-max]")]
     .some((input) => input.value);
   const searchStatuses = searchMode ? multiSelectValues("listingSearchStatus") : [];
+  // עיר: כתיב מלא או חסר לא משנה ("פתח תקוה" = "פתח תקווה"), וחלק מהשם מספיק ("רמת" = רמת גן / רמת השרון)
+  const searchCity = searchMode ? $("listingSearchCity").value.trim() : "";
+  if (searchMode) fillListingCities();
   searchWaiting = searchMode && !(
-    query || site || type || searchStatuses.length ||
+    query || site || type || searchStatuses.length || searchCity ||
     searchBoolFilters.length || amenityFilters.length || ranges.size || searchDates
   );
   visibleRecords = searchWaiting ? [] : Object.entries(cache)
     .filter(([key, record]) => {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (site && recordSite(key) !== site) return false;
+      if (searchCity && !LRStreetFilter.cityAllowed([searchCity], record.city || "")) return false;
       if (type && recordType(record) !== type) return false;
       if (searchStatuses.length) {
         // סטטוס אחד לכל מודעה: "פעילה" לא כוללת מודעות שסומנו לא רלוונטיות
@@ -1013,7 +1018,7 @@ function renderRows() {
       )) return false;
       if (!matchesNumericFilters(record, ranges)) return false;
       if (searchMode && !matchesSearchDateFilters(record)) return false;
-      if (query && !recordHaystack(key, record).includes(query)) return false;
+      if (query && !matchesSearchWords(key, record, queryWords)) return false;
       return columnFilters.every(([field, value]) =>
         columnFilterText(field, record, key, priceRanks)
           .toLocaleLowerCase("he")
@@ -1258,13 +1263,57 @@ const haystackCache = new WeakMap();
 let priceRanksMemo = { cache: null, size: -1, ranks: new Map() };
 let listingCountMemo = { cache: null, size: -1, count: 0 };
 
+// טקסט לחיפוש: בלי סימני פיסוק, גרשיים ומקפים, וכתיב מלא/חסר אחיד ("תקווה" = "תקוה", "יישוב" = "ישוב").
+// כך "פתח תקווה הדר גנים" מוצא את "הרב ישעיהו משורר, הדר גנים, פתח תקווה" – כל מילה בנפרד, בכל סדר.
+function searchText(value) {
+  return String(value || "")
+    .toLocaleLowerCase("he")
+    .replace(/[‎‏‪-‮]/g, "")
+    .replace(/["'`״׳]/g, "")
+    .replace(/[,.;:()\[\]{}\\/|_\-–־]+/g, " ")
+    .replace(/וו/g, "ו")
+    .replace(/יי/g, "י")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchWords(query) {
+  return searchText(query).split(" ").filter(Boolean);
+}
+
 function recordHaystack(key, record) {
   let text = haystackCache.get(record);
   if (text === undefined) {
-    text = `${key} ${JSON.stringify(record)}`.toLocaleLowerCase("he");
+    text = ` ${searchText(`${key} ${JSON.stringify(record)}`)} `;
     haystackCache.set(record, text);
   }
   return text;
+}
+
+// רשימת הערים להשלמה בשדה "עיר" בחיפוש מודעה – הערים שיש בהן מודעות שמורות, מהנפוצה לפחות נפוצה
+let listingCitiesMemo = { cache: null, size: -1 };
+function fillListingCities() {
+  const size = Object.keys(cache).length;
+  if (listingCitiesMemo.cache === cache && listingCitiesMemo.size === size) return;
+  listingCitiesMemo = { cache, size };
+  const counts = new Map();
+  for (const record of Object.values(cache)) {
+    const city = record && typeof record === "object" && String(record.city || "").trim();
+    if (city) counts.set(city, (counts.get(city) || 0) + 1);
+  }
+  const options = [...counts].sort((a, b) => b[1] - a[1]).map(([city, count]) => {
+    const option = document.createElement("option");
+    option.value = city;
+    option.label = `${count.toLocaleString("he-IL")} מודעות`;
+    return option;
+  });
+  $("listingSearchCities").replaceChildren(...options);
+}
+
+function matchesSearchWords(key, record, words) {
+  if (!words.length) return true;
+  const haystack = recordHaystack(key, record);
+  return words.every((word) => haystack.includes(word));
 }
 
 // מודעות שנשמרו לפני שהגיל נשמר ברשומה: משלימים פעם אחת לכל טעינת מטמון (בזיכרון בלבד);
@@ -1643,6 +1692,7 @@ function openSearchWith({ status = "", query = "", site = "" } = {}) {
     .forEach((input) => { input.value = ""; });
   $("listingSearchQuery").value = query;
   $("listingSearchSite").value = site;
+  $("listingSearchCity").value = "";
   $("listingSearchType").value = "listing";
   setMultiSelectValues("listingSearchStatus", status);
   setActiveTab("search");
@@ -4340,7 +4390,7 @@ document.addEventListener("keydown", (event) => {
     details.querySelector("summary").focus();
   });
 });
-for (const id of ["listingSearchQuery", "listingSearchSite", "listingSearchType", "listingSearchStatus"]) {
+for (const id of ["listingSearchQuery", "listingSearchCity", "listingSearchSite", "listingSearchType", "listingSearchStatus"]) {
   $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
 }
@@ -4364,6 +4414,7 @@ $("clearAdvancedFilters").addEventListener("click", () => {
 $("clearListingSearch").addEventListener("click", () => {
   $("listingSearchQuery").value = "";
   $("listingSearchSite").value = "";
+  $("listingSearchCity").value = "";
   $("listingSearchType").value = "";
   setMultiSelectValues("listingSearchStatus", []);
   document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max]").forEach((input) => {

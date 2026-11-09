@@ -121,6 +121,11 @@
           <input id="listingSearchQuery" type="search" placeholder="כתובת, עיר, שכונה, תחנה, הערה, קישור…">
         </label>
         <label class="search-choice">
+          <span>עיר</span>
+          <input id="listingSearchCity" type="search" list="listingSearchCities" placeholder="הקלידו עיר…" autocomplete="off">
+          <datalist id="listingSearchCities"></datalist>
+        </label>
+        <label class="search-choice">
           <span>אתר</span>
           <select id="listingSearchSite">
             <option value="">כל האתרים</option>
@@ -891,6 +896,7 @@
   <script src="cache-data.js"></script>
   <script src="page-walker.js"></script>
   <script src="deals-core.js"></script>
+  <script src="street-filter.js"></script>
   <script src="sync-core.js"></script>
   <script src="cache-export.js"></script>
   <script src="number-input.js"></script>
