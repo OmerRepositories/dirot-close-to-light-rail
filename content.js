@@ -42,6 +42,7 @@
     showListingAge: true, // להציג כמה זמן המודעה באוויר
     hideAds: true, // להסתיר פרסומות (באנרים של Google ופרויקטים ממומנים) ביד2
     blockedStreets: [], // רחובות שמודעות עליהם לא יוצגו לעולם
+    dealsPages: 10, // כמה עמודים (1000 עסקאות כל אחד) לקרוא מעסקאות האמת ביד2; 0 = כבוי, 10 = כל העמודים
   };
   const CFG = {
     ...DEFAULTS,
@@ -1570,7 +1571,9 @@
       loadRealDeals(entry);
     }
     if (IS_YAD2) {
-      if (yad2DealsRequested) return;
+      // מספר העמודים מההגדרות (ברירת מחדל: כל העמודים); 0 = לא לקרוא עסקאות מיד2
+      const maxPages = Math.min(10, Math.round(Number(CFG.dealsPages)));
+      if (yad2DealsRequested || !(maxPages > 0)) return;
       const query = LRYad2.dealsQuery(document);
       if (!query) return;
       yad2DealsRequested = true;
@@ -1583,7 +1586,7 @@
         const collected = [];
         try {
           let totalPages = query.maxPages;
-          for (let page = 1; page <= Math.min(totalPages, query.maxPages); page++) {
+          for (let page = 1; page <= Math.min(totalPages, query.maxPages, maxPages); page++) {
             if (page > 1) await new Promise((resolve) => setTimeout(resolve, DEALS_PAGE_DELAY_MS));
             const response = await fetch(query.pageUrl(page), { credentials: "include" });
             if (!response.ok) break;
@@ -2314,7 +2317,7 @@
   }
 
   // טוענים את ההגדרות לפני שמתחילים, ומעדכנים את הדף מיד כשהמשתמש משנה הגדרה
-  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "irrelevantMissingPct"];
+  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "irrelevantMissingPct", "dealsPages"];
   // רצפת שפיות קבועה למחיר מכרטיס חיפוש: מסננת שכירות וכרטיסים שעוד נטענים
   const SEARCH_INDEX_MIN_PRICE = 100000;
   const AMENITY_LABELS = {

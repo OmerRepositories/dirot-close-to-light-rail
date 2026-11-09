@@ -26,7 +26,10 @@ const DEFAULTS = {
   showListingAge: true,
   hideAds: true,
   blockedStreets: [],
+  dealsPages: 10,
 };
+
+const DEALS_PAGE_OPTIONS = [0, 1, 2, 3, 5, 10];
 
 const AMENITIES = [
   ["parking", "חניה"],
@@ -119,6 +122,7 @@ function fill(s) {
   for (const k of boolKeys) $(k).checked = Boolean(s[k]);
   $("listingIndexingMode").value =
     s.listingIndexingMode === "opened" ? "opened" : "encountered";
+  $("dealsPages").value = String(DEALS_PAGE_OPTIONS.includes(Number(s.dealsPages)) ? Number(s.dealsPages) : 10);
   const missingPct = String(Number.isFinite(Number(s.irrelevantMissingPct)) ? Number(s.irrelevantMissingPct) : 50);
   $("irrelevantMissingPct").value = [...$("irrelevantMissingPct").options].some((o) => o.value === missingPct)
     ? missingPct
@@ -155,6 +159,7 @@ function syncDisabled() {
   $("indexMinPrice").disabled = !$("saveListingData").checked;
   $("indexCities").disabled = !$("saveListingData").checked;
   $("indexMaxPrice").disabled = !$("saveListingData").checked;
+  $("dealsPages").disabled = !$("saveListingData").checked;
 }
 
 function read() {
@@ -168,6 +173,7 @@ function read() {
   for (const k of boolKeys) out[k] = $(k).checked;
   out.listingIndexingMode =
     $("listingIndexingMode").value === "opened" ? "opened" : "encountered";
+  out.dealsPages = DEALS_PAGE_OPTIONS.includes(Number($("dealsPages").value)) ? Number($("dealsPages").value) : 10;
   out.irrelevantMissingPct = Number($("irrelevantMissingPct").value) || 0;
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
@@ -203,6 +209,7 @@ for (const k of [...numberKeys, ...boolKeys]) {
   $(k).addEventListener("change", save);
 }
 $("listingIndexingMode").addEventListener("change", save);
+$("dealsPages").addEventListener("change", save);
 $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("indexCities").addEventListener("input", save);
