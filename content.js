@@ -1528,6 +1528,34 @@
     entry.realDealsEl.title = `${details.join("\n")}\nשלילי = הדירה זולה מהעסקאות. עסקאות מ-4 השנים האחרונות.${details.some((line) => line.includes("כל הגדלים")) ? "\n* אין מספיק עסקאות בגודל דומה – השוואה לכל הגדלים." : ""}`;
   }
 
+  // הודעה קטנה בפינת הדף: מה התוסף עושה עכשיו עם עסקאות האמת (טוען עמוד X מתוך Y, נשמרו N).
+  // לא חוסמת לחיצות על הדף, נעלמת לבד בסיום, ואפשר לסגור אותה.
+  let dealsToastEl = null;
+  let dealsToastTimer = null;
+  function dealsToast(text, { state = "busy", hideAfterMs = 0 } = {}) {
+    if (!dealsToastEl) {
+      dealsToastEl = document.createElement("div");
+      dealsToastEl.className = "lr-deals-toast";
+      dealsToastEl.setAttribute("role", "status");
+      dealsToastEl.setAttribute("aria-live", "polite");
+      const label = document.createElement("span");
+      label.className = "lr-deals-toast-text";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "lr-deals-toast-close";
+      close.textContent = "×";
+      close.setAttribute("aria-label", "סגירת ההודעה");
+      close.addEventListener("click", () => { dealsToastEl.hidden = true; });
+      dealsToastEl.append(label, close);
+      document.body.appendChild(dealsToastEl);
+    }
+    clearTimeout(dealsToastTimer);
+    dealsToastEl.dataset.state = state;
+    dealsToastEl.firstChild.textContent = text;
+    dealsToastEl.hidden = false;
+    if (hideAfterMs) dealsToastTimer = setTimeout(() => { dealsToastEl.hidden = true; }, hideAfterMs);
+  }
+
   // השוואת המודעה שבעמוד לעסקאות האמת השמורות (נטען אחרי כל שמירה של עסקאות חדשות)
   function loadRealDeals(entry) {
     if (!entry.listingId) return;
@@ -1544,23 +1572,35 @@
     });
   }
 
-  function saveDeals(items, entry) {
+  // onDone({ found, added, updated }) – כמה עסקאות התקבלו, כמה חדשות וכמה עודכנו (להודעה למשתמש)
+  function saveDeals(items, entry, onDone) {
     const valid = items.filter(Boolean);
     if (!valid.length) {
       if (entry) loadRealDeals(entry);
+      if (onDone) onDone({ found: 0, added: 0, updated: 0 });
       return;
     }
+    let result = { found: valid.length, added: 0, updated: 0 };
     // כתיבות באותה לשונית אחת אחרי השנייה, כדי ששתי שמירות לא ידרסו זו את זו
     dealsWrite = dealsWrite.then(() => new Promise((resolve) => {
       chrome.storage.local.get(LRDeals.STORAGE_KEY, (stored) => {
         if (chrome.runtime.lastError) return resolve();
         const merged = LRDeals.mergeAll(stored && stored[LRDeals.STORAGE_KEY], valid);
+        result = { found: valid.length, added: merged.added, updated: merged.updated };
         if (!merged.added && !merged.updated) return resolve();
         chrome.storage.local.set({ [LRDeals.STORAGE_KEY]: merged.store }, () => resolve());
       });
     })).then(() => {
       if (entry) loadRealDeals(entry);
+      if (onDone) onDone(result);
     });
+  }
+
+  const fmtCount = (value) => Number(value || 0).toLocaleString("he-IL");
+  function savedDealsText(result, source) {
+    if (!result.found) return `לא נמצאו עסקאות אמת ${source}`;
+    const fresh = result.added ? ` · ${fmtCount(result.added)} חדשות` : " · כולן כבר היו שמורות";
+    return `נשמרו ${fmtCount(result.found)} עסקאות אמת ${source}${fresh} ✓`;
   }
 
   function collectDeals(entry) {
@@ -1579,17 +1619,30 @@
       yad2DealsRequested = true;
       chrome.storage.local.get(LRDeals.FETCH_LOG_KEY, async (stored) => {
         const log = (stored && stored[LRDeals.FETCH_LOG_KEY]) || {};
-        if (Date.now() - (Number(log[query.throttleKey]) || 0) < DEALS_REFETCH_MS) return;
+        const lastFetched = Number(log[query.throttleKey]) || 0;
+        if (Date.now() - lastFetched < DEALS_REFETCH_MS) {
+          const days = Math.floor((Date.now() - lastFetched) / 86400000);
+          dealsToast(
+            `עסקאות האמת באזור כבר נטענו ${days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`} – מתעדכנות פעם בשבוע`,
+            { state: "done", hideAfterMs: 3500 }
+          );
+          return;
+        }
         // כל העמודים שה-API מדווח עליהם (עד 10 של 1000), שנייה וחצי בין בקשה לבקשה.
         // נשמר פעם אחת בסוף (גם אם נכשל באמצע) – שמירה של אלפי עסקאות אחרי כל עמוד מאטה את הדפדפן.
         let pages = 0;
+        let failed = false;
         const collected = [];
         try {
           let totalPages = query.maxPages;
           for (let page = 1; page <= Math.min(totalPages, query.maxPages, maxPages); page++) {
             if (page > 1) await new Promise((resolve) => setTimeout(resolve, DEALS_PAGE_DELAY_MS));
+            dealsToast(`טוען עסקאות אמת באזור, נא להמתין… עמוד ${page} מתוך ${Math.min(totalPages, query.maxPages, maxPages)}`);
             const response = await fetch(query.pageUrl(page), { credentials: "include" });
-            if (!response.ok) break;
+            if (!response.ok) {
+              failed = true;
+              break;
+            }
             const json = await response.json();
             const data = (json && json.data) || {};
             const results = Array.isArray(data.results) ? data.results : [];
@@ -1600,9 +1653,23 @@
             if (results.length < query.pageLimit) break;
           }
         } catch (error) {
+          failed = true;
           console.warn("[lightrail-ext] could not load Yad2 deals", error);
         } finally {
-          saveDeals(collected, entry);
+          if (pages || failed) dealsToast(`שומר ${fmtCount(collected.length)} עסקאות…`);
+          saveDeals(collected, entry, (result) => {
+            const pagesText = ` (${pages} ${pages === 1 ? "עמוד" : "עמודים"})`;
+            if (failed) {
+              dealsToast(
+                pages
+                  ? `טעינת העסקאות נעצרה אחרי ${pages} ${pages === 1 ? "עמוד" : "עמודים"} – נשמרו ${fmtCount(result.found)}. ננסה שוב בכניסה הבאה למודעה.`
+                  : "לא הצלחנו לטעון עסקאות אמת מיד2 – ננסה שוב בכניסה הבאה למודעה.",
+                { state: "error", hideAfterMs: 8000 }
+              );
+            } else {
+              dealsToast(savedDealsText(result, `מיד2${pagesText}`), { state: "done", hideAfterMs: 5000 });
+            }
+          });
         }
         // מסמנים את הרחוב כ"נבדק" רק אם הגיע לפחות עמוד אחד
         if (pages) chrome.storage.local.set({ [LRDeals.FETCH_LOG_KEY]: { ...log, [query.throttleKey]: Date.now() } });
@@ -1616,7 +1683,10 @@
     if (!address || !address.city) return;
     lastMadlanDealsJson = json;
     try {
-      saveDeals(JSON.parse(json).map((row) => LRDeals.fromMadlan(row, address.city)), entry);
+      saveDeals(JSON.parse(json).map((row) => LRDeals.fromMadlan(row, address.city)), entry, (result) => {
+        // מודיעים רק כשנוספו עסקאות חדשות (גם המעבר האוטומטי ל"בסביבה" מגיע לכאן)
+        if (result.added) dealsToast(savedDealsText(result, "ממדלן"), { state: "done", hideAfterMs: 5000 });
+      });
     } catch {}
   }
 

@@ -53,6 +53,40 @@
   cursor: help;
 }
 .lr-real-deals[hidden] { display: none; }
+
+/* הודעה קטנה על טעינת עסקאות אמת – בפינה, לא חוסמת את הדף */
+.lr-deals-toast {
+  position: fixed;
+  z-index: 2147483646;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  max-width: min(360px, calc(100vw - 32px));
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  color: #3730a3;
+  background: #eef2ff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  font: 600 13px/1.4 system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  direction: rtl;
+}
+.lr-deals-toast[hidden] { display: none; }
+.lr-deals-toast[data-state="done"] { border-color: #b7e4c7; color: #11722f; background: #e6f7ec; }
+.lr-deals-toast[data-state="error"] { border-color: #f5c2c2; color: #a12727; background: #fdecec; }
+.lr-deals-toast-close {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: 700 16px/1 system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.lr-deals-toast-close:hover { opacity: 1; }
 .lr-label[hidden], .lr-sub[hidden] { display: none; }
 
 .lr-copy-button {
