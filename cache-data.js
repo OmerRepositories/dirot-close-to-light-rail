@@ -526,6 +526,36 @@ var LRCacheData = (() => {
   //   ירידת מחיר   – עד 30 נק׳ (מהמחיר הגבוה שנצפה למחיר הנוכחי, מלא בירידה של 10%)
   //   מספר הורדות  – עד 10 נק׳ (מלא ב־3 הורדות)
   // רמה: גבוה ≥ 60, בינוני ≥ 30, אחרת נמוך. null כשאין גיל וגם אין היסטוריית מחירים.
+  // "משחק מחירים": מוכרים מורידים מחיר ומחזירים אותו כדי לקפוץ למעלה בתוצאות. מחיר B שהופיע בין שני
+  // מחירים זהים A → B → A והחזיק עד maxDays ימים הוא לא שינוי אמיתי – B והחזרה ל-A מוסרים.
+  // ההיסטוריה השמורה לא משתנה; זה רק לניתוח ולתצוגה. חוזר עד שאין עוד קפיצות כאלה.
+  const PRICE_BOUNCE_MAX_DAYS = 14;
+  function withoutPriceBounces(history, maxDays = PRICE_BOUNCE_MAX_DAYS) {
+    let points = Array.isArray(history) ? history.filter((point) => point && Number.isFinite(point.price)) : [];
+    let removed = 0;
+    for (let changed = true; changed;) {
+      changed = false;
+      for (let index = 1; index + 1 < points.length; index++) {
+        const before = points[index - 1];
+        const bounce = points[index];
+        const after = points[index + 1];
+        if (
+          before.price === after.price &&
+          bounce.price !== before.price &&
+          Number.isFinite(bounce.at) &&
+          Number.isFinite(after.at) &&
+          after.at - bounce.at <= maxDays * 86400000
+        ) {
+          points = [...points.slice(0, index), ...points.slice(index + 2)];
+          removed++;
+          changed = true;
+          break;
+        }
+      }
+    }
+    return { history: points, removed };
+  }
+
   const PRESSURE_FULL_AGE_DAYS = 120;
   const PRESSURE_FULL_DROP = 0.1;
   const PRESSURE_FULL_DROPS = 3;
@@ -536,9 +566,10 @@ var LRCacheData = (() => {
       const created = Date.parse(record.listingCreatedAt);
       if (Number.isFinite(created)) ageDays = Math.max(0, Math.floor((now - created) / 86400000));
     }
-    const prices = (Array.isArray(record.priceHistory) ? record.priceHistory : [])
-      .map((point) => point && point.price)
-      .filter((price) => Number.isFinite(price) && price > 0);
+    // הורדה זמנית שחזרה למחיר הקודם לא נספרת כהורדה ולא כירידה מהשיא
+    const prices = withoutPriceBounces(record.priceHistory).history
+      .map((point) => point.price)
+      .filter((price) => price > 0);
     if (ageDays === null && prices.length < 2) return null;
     let drops = 0;
     for (let index = 1; index < prices.length; index++) {
@@ -562,6 +593,8 @@ var LRCacheData = (() => {
     cleanPriceOutliers,
     isSuspiciousPrice,
     sellerPressure,
+    withoutPriceBounces,
+    PRICE_BOUNCE_MAX_DAYS,
     PRESSURE_LABELS,
     amenityRelevance,
     hasUncertainInitialPriceBaseline,

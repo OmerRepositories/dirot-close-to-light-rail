@@ -463,6 +463,21 @@ test("price timeline dates say how certain they are instead of using the indexin
   );
 });
 
+test("price timeline hides a drop that was reversed within two weeks", () => {
+  const t0 = Date.UTC(2026, 10, 9, 8);
+  const events = CacheExport.getPriceTimelineEvents({
+    "madlan:bounce": {
+      title: "עגנון",
+      priceHistory: [
+        { price: 2_670_000, at: t0, baselineKnown: true },
+        { price: 1_990_000, at: t0 + 3_600_000 },
+        { price: 2_670_000, at: t0 + 7_200_000 },
+      ],
+    },
+  });
+  assert.equal(events.length, 0);
+});
+
 test("price timeline events include saved listing details", () => {
   const first = Date.UTC(2026, 10, 1, 10);
   const second = Date.UTC(2026, 10, 2, 10);

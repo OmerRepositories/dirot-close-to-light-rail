@@ -296,6 +296,33 @@ test("amenityRelevance ignores unknown amenities, projects and empty requirement
   assert.equal(CacheData.amenityRelevance(listing, ["parking"], 100).irrelevant, true);
 });
 
+test("a temporary price drop that returns within two weeks is not a price change", () => {
+  const day = 86_400_000;
+  const t0 = Date.UTC(2026, 10, 1);
+  const history = [
+    { price: 2_670_000, at: t0 },
+    { price: 1_990_000, at: t0 + 8 * day },
+    { price: 2_670_000, at: t0 + 8 * day + 3_600_000 }, // חזר באותו יום
+    { price: 2_600_000, at: t0 + 30 * day }, // ירידה אמיתית
+  ];
+  const result = CacheData.withoutPriceBounces(history);
+  assert.equal(result.removed, 1);
+  assert.deepEqual(result.history.map((point) => point.price), [2_670_000, 2_600_000]);
+  // מחיר שהחזיק יותר משבועיים לפני שחזר – כן שינוי אמיתי
+  const longDrop = [{ price: 2_000_000, at: t0 }, { price: 1_900_000, at: t0 + day }, { price: 2_000_000, at: t0 + 40 * day }];
+  assert.equal(CacheData.withoutPriceBounces(longDrop).removed, 0);
+  // כמה קפיצות ברצף נעלמות כולן
+  const repeated = [
+    { price: 2_000_000, at: t0 }, { price: 1_900_000, at: t0 + day }, { price: 2_000_000, at: t0 + 2 * day },
+    { price: 1_900_000, at: t0 + 3 * day }, { price: 2_000_000, at: t0 + 4 * day },
+  ];
+  assert.deepEqual(CacheData.withoutPriceBounces(repeated).history.map((point) => point.price), [2_000_000]);
+  // מדד הלחץ למכור לא סופר את הקפיצה כהורדה
+  const pressure = CacheData.sellerPressure({ listingAgeDays: 10, priceHistory: history.slice(0, 3) });
+  assert.equal(pressure.drops, 0);
+  assert.equal(pressure.dropPct, 0);
+});
+
 test("deletion filter can select irrelevant listings on any site", () => {
   const cache = {
     "yad2:a": { recordType: "listing", amenities: { parking: false } },

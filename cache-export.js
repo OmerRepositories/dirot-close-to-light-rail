@@ -157,7 +157,8 @@ var LRCacheExport = (() => {
     for (const [key, record] of getRecords(cache)) {
       if (record.recordType === "project") continue;
       const { site, listingId } = parseCacheKey(key);
-      const history = validPriceHistory(record);
+      // הורדה והחזרה למחיר הקודם תוך שבועיים ("משחק מחירים" לקפיצה בתוצאות) לא מוצגות כשינויים
+      const history = LRCacheData.withoutPriceBounces(validPriceHistory(record)).history;
       if (!history.length) continue;
       const uncertainBaseline = LRCacheData.hasUncertainInitialPriceBaseline(history);
       const updatedMs = reliableUpdatedMs(site, record);
