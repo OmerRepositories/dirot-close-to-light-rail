@@ -433,7 +433,7 @@ test("Yad2 deals request uses the listing's address ids, recent years and 50 res
   const query = context.LRYad2.dealsQuery(context.document, { now: new Date(2026, 10, 9) });
   const url = new URL(query.url);
   assert.equal(url.origin + url.pathname, "https://gw.yad2.co.il/latest-deals-completed/");
-  assert.equal(url.searchParams.get("limit"), "100");
+  assert.equal(url.searchParams.get("limit"), "1000");
   assert.equal(url.searchParams.get("page"), "1");
   assert.equal(query.maxPages, 10);
   assert.equal(new URL(query.pageUrl(7)).searchParams.get("page"), "7");
@@ -441,7 +441,7 @@ test("Yad2 deals request uses the listing's address ids, recent years and 50 res
   assert.equal(url.searchParams.get("coords"), "32.085336,34.897159");
   assert.equal(url.searchParams.get("minSaleYear"), "2023");
   assert.equal(url.searchParams.get("maxSaleYear"), "2026");
-  assert.equal(query.throttleKey, "yad2|7900|0446");
+  assert.equal(query.throttleKey, "yad2|7900|763", "once a week per neighborhood");
 });
 
 test("Yad2 listing status stays unknown without explicit removal or listing data", () => {

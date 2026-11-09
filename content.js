@@ -1492,7 +1492,7 @@
   // יד2: בקשה אחת לאותו API שהעמוד משתמש בו, לשנים האחרונות, לכל היותר פעם בשבוע לכל רחוב.
   // מדלן: קוראים את מה שהסקריפט שבתוך הדף העתיק מטבלת העסקאות שכבר נטענה.
   const DEALS_REFETCH_MS = 7 * 24 * 60 * 60 * 1000;
-  const DEALS_PAGE_DELAY_MS = 1000;
+  const DEALS_PAGE_DELAY_MS = 1500;
   let dealsWrite = Promise.resolve();
   let yad2DealsRequested = false;
   let lastMadlanDealsJson = "";
@@ -1577,21 +1577,29 @@
       chrome.storage.local.get(LRDeals.FETCH_LOG_KEY, async (stored) => {
         const log = (stored && stored[LRDeals.FETCH_LOG_KEY]) || {};
         if (Date.now() - (Number(log[query.throttleKey]) || 0) < DEALS_REFETCH_MS) return;
-        // עד 10 עמודים של 100 עסקאות, שנייה בין בקשה לבקשה; כל עמוד נשמר מיד. עמוד חלקי = אין עוד.
+        // כל העמודים שה-API מדווח עליהם (עד 10 של 1000), שנייה וחצי בין בקשה לבקשה.
+        // נשמר פעם אחת בסוף (גם אם נכשל באמצע) – שמירה של אלפי עסקאות אחרי כל עמוד מאטה את הדפדפן.
         let pages = 0;
+        const collected = [];
         try {
-          for (let page = 1; page <= query.maxPages; page++) {
+          let totalPages = query.maxPages;
+          for (let page = 1; page <= Math.min(totalPages, query.maxPages); page++) {
             if (page > 1) await new Promise((resolve) => setTimeout(resolve, DEALS_PAGE_DELAY_MS));
             const response = await fetch(query.pageUrl(page), { credentials: "include" });
             if (!response.ok) break;
             const json = await response.json();
-            const results = json && json.data && Array.isArray(json.data.results) ? json.data.results : [];
+            const data = (json && json.data) || {};
+            const results = Array.isArray(data.results) ? data.results : [];
+            const reported = Number(data.pagination && data.pagination.totalPages);
+            if (Number.isFinite(reported) && reported > 0) totalPages = reported;
             pages++;
-            saveDeals(results.map(LRDeals.fromYad2), entry);
+            for (const result of results) collected.push(LRDeals.fromYad2(result));
             if (results.length < query.pageLimit) break;
           }
         } catch (error) {
           console.warn("[lightrail-ext] could not load Yad2 deals", error);
+        } finally {
+          saveDeals(collected, entry);
         }
         // מסמנים את הרחוב כ"נבדק" רק אם הגיע לפחות עמוד אחד
         if (pages) chrome.storage.local.set({ [LRDeals.FETCH_LOG_KEY]: { ...log, [query.throttleKey]: Date.now() } });

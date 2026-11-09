@@ -4,7 +4,8 @@
 var LRDeals = (() => {
   const STORAGE_KEY = "lightrailDeals";
   const FETCH_LOG_KEY = "lightrailDealsFetched";
-  const MAX_DEALS = 60000;
+  // כל מודעה ביד2 מביאה עד 10,000 עסקאות; אזורים חופפים, אז בפועל הרבה פחות עסקאות ייחודיות
+  const MAX_DEALS = 200000;
   const DAY_MS = 24 * 60 * 60 * 1000;
   // מילים שמופיעות לפעמים לפני שם הרחוב ולפעמים לא
   const STREET_PREFIXES = new Set(["רחוב", "רח", "שדרות", "שד", "שדרת", "דרך", "סמטת", "סמ"]);
