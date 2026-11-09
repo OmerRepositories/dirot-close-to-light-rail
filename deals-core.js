@@ -445,8 +445,64 @@ var LRDeals = (() => {
     { label: "2000–2014", min: 2000, max: 2014 },
     { label: "2015 ואילך", min: 2015, max: Infinity },
   ];
+  const SIZE_BUCKETS = [
+    { label: "עד 60 מ״ר", min: 0, max: 60 },
+    { label: "61–80 מ״ר", min: 60.01, max: 80 },
+    { label: "81–100 מ״ר", min: 80.01, max: 100 },
+    { label: "101–130 מ״ר", min: 100.01, max: 130 },
+    { label: "131+ מ״ר", min: 130.01, max: Infinity },
+  ];
   // שנה שיש בה פחות עסקאות מזה לא נכנסת לחישוב שינוי שנתי (חציון של 1–2 עסקאות לא מייצג)
   const TREND_MIN_DEALS = 3;
+
+  // שינוי בחציון המחיר למ״ר בין שתי השנים האחרונות שיש בהן מספיק עסקאות (לקבוצה: עיר, שכונה, רחוב)
+  function yearOverYear(deals) {
+    const byYear = new Map();
+    for (const deal of deals) {
+      const ppsm = dealPpsm(deal);
+      const year = Number(String(deal.date).slice(0, 4));
+      if (!Number.isFinite(ppsm) || !(year > 1900)) continue;
+      if (!byYear.has(year)) byYear.set(year, []);
+      byYear.get(year).push(ppsm);
+    }
+    const years = [...byYear.keys()].filter((year) => byYear.get(year).length >= TREND_MIN_DEALS).sort((a, b) => a - b);
+    if (years.length < 2) return null;
+    const last = years[years.length - 1];
+    const previous = years[years.length - 2];
+    const lastMedian = median(byYear.get(last));
+    const previousMedian = median(byYear.get(previous));
+    return { fromYear: previous, toYear: last, pct: Math.round((lastMedian / previousMedian - 1) * 1000) / 10 };
+  }
+
+  // קיבוץ לפי מפתח (עיר / שכונה / רחוב / סוג נכס), עם מדדים ושינוי שנתי, מהגדול לקטן
+  function groupBy(deals, keyOf, fieldsOf) {
+    const groups = new Map();
+    for (const deal of deals) {
+      const key = keyOf(deal);
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, { ...fieldsOf(deal), deals: [] });
+      groups.get(key).deals.push(deal);
+    }
+    return [...groups.values()]
+      .map(({ deals: groupDeals, ...fields }) => {
+        const latest = groupDeals.reduce((best, deal) => (String(deal.date) > String(best.date) ? deal : best));
+        return { ...fields, ...groupStats(groupDeals), change: yearOverYear(groupDeals), lastDate: latest.date || null };
+      })
+      .sort((a, b) => b.count - a.count);
+  }
+
+  // רבעונים אחרונים: כמות וחציון למ״ר בכל רבעון – מגמה טרייה יותר משנתית
+  function byQuarter(deals, count = 12) {
+    const quarters = new Map();
+    for (const deal of deals) {
+      const match = String(deal.date).match(/^(\d{4})-(\d{2})/);
+      if (!match) continue;
+      const key = `${match[1]}-Q${Math.ceil(Number(match[2]) / 3)}`;
+      if (!quarters.has(key)) quarters.set(key, []);
+      quarters.get(key).push(deal);
+    }
+    return [...quarters.keys()].sort().slice(-count).map((key) => ({ label: key.replace("-Q", " רבעון "), key, ...groupStats(quarters.get(key)) }));
+  }
 
   // list: [[key, deal], ...] כפי ש-filterDeals מחזירה
   function analyzeDeals(list) {
@@ -521,6 +577,21 @@ var LRDeals = (() => {
       byRooms: bucketStats(deals, ROOM_BUCKETS, (deal) => deal.rooms),
       byFloor: bucketStats(deals, FLOOR_BUCKETS, (deal) => deal.floor),
       byBuildYear: bucketStats(deals, BUILD_BUCKETS, (deal) => deal.buildYear),
+      bySize: bucketStats(deals, SIZE_BUCKETS, (deal) => deal.sqm),
+      byType: groupBy(deals, (deal) => deal.propertyType || "", (deal) => ({ label: deal.propertyType })),
+      byCity: groupBy(deals, (deal) => normCity(deal.city), (deal) => ({ city: deal.city })),
+      byNeighborhood: groupBy(
+        deals,
+        (deal) => (deal.neighborhood ? `${normCity(deal.city)}|${cleanText(deal.neighborhood)}` : ""),
+        (deal) => ({ city: deal.city, neighborhood: deal.neighborhood })
+      ),
+      byStreet: groupBy(
+        deals,
+        (deal) => (deal.street ? `${normCity(deal.city)}|${normStreet(deal.street)}` : ""),
+        (deal) => ({ city: deal.city, street: deal.street })
+      ),
+      byQuarter: byQuarter(dated),
+      withNeighborhood: deals.filter((deal) => deal.neighborhood).length,
       byBuilding,
       streetCount: new Set([...buildings.values()].map((building) => `${normCity(building.city)}|${normStreet(building.street)}`)).size,
       points,

@@ -157,6 +157,32 @@ test("deal search understands house numbers and ranges: 'בלוי 28-30', 'בל�
   assert.equal(houses("בלוי").length, 8);
 });
 
+test("deal analysis breaks down by city, neighborhood, street, size, type and quarter with yearly change", () => {
+  const make = (city, hood, street, house, price, sqm, date, type) => Deals.fromYad2({
+    ...yad2Result,
+    address: { ...yad2Result.address, city: { text: city }, neighborhood: hood ? { text: hood } : undefined, street: { text: street }, houseNumber: house },
+    price, buildingMR: sqm, saleDate: date, propertyType: type,
+  });
+  const items = [];
+  // עין גנים: 3 עסקאות ב-2024 ב-20K למ״ר, 3 ב-2025 ב-22K – עלייה של 10%
+  for (let i = 0; i < 3; i++) items.push(make("פתח תקווה", "עין גנים", "אמיר בנימיני", 10 + i, 2_000_000, 100, `2024-0${i + 1}-15`, "דירה"));
+  for (let i = 0; i < 3; i++) items.push(make("פתח תקווה", "עין גנים", "אמיר בנימיני", 20 + i, 2_200_000, 100, `2025-0${i + 4}-15`, "דירה"));
+  items.push(make("פתח תקווה", "כפר גנים", "הרצל", 1, 3_000_000, 140, "2025-08-01", "פנטהאוז"));
+  items.push(make("רמת גן", "הבורסה", "ז'בוטינסקי", 5, 2_500_000, 70, "2025-09-01", "דירה"));
+  const store = Deals.mergeAll({}, items, 1).store;
+  const stats = Deals.analyzeDeals(Deals.filterDeals(store));
+  assert.equal(stats.byCity.length, 2);
+  assert.equal(stats.byCity[0].city, "פתח תקווה");
+  const ein = stats.byNeighborhood.find((row) => row.neighborhood === "עין גנים");
+  assert.equal(ein.count, 6);
+  assert.deepEqual(ein.change, { fromYear: 2024, toYear: 2025, pct: 10 });
+  assert.equal(stats.byStreet[0].street, "אמיר בנימיני");
+  assert.deepEqual(stats.bySize.map((row) => [row.label, row.count]), [["61–80 מ״ר", 1], ["81–100 מ״ר", 6], ["131+ מ״ר", 1]]);
+  assert.equal(stats.byType.find((row) => row.label === "פנטהאוז").count, 1);
+  assert.deepEqual(stats.byQuarter.map((row) => row.key), ["2024-Q1", "2025-Q2", "2025-Q3"]);
+  assert.equal(stats.withNeighborhood, 8);
+});
+
 test("deals by city and neighborhood count only recent years and give medians", () => {
   const now = Date.UTC(2026, 10, 9);
   const make = (city, hood, house, price, date) => Deals.fromYad2({

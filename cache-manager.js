@@ -3706,6 +3706,7 @@ function dealsStatsTable(columns, rows, onRowClick) {
       const value = column.value(row);
       td.textContent = value === null || value === undefined ? "—" : String(value);
       if (column.className) td.className = column.className;
+      if (column.title) td.title = column.title(row);
     }
     if (onRowClick) {
       tr.tabIndex = 0;
@@ -3723,7 +3724,9 @@ function dealsStatsTable(columns, rows, onRowClick) {
 function renderDealsStats(list) {
   const host = $("dealsStats");
   const filters = readDealsFilters();
-  if (!dealsFiltersActive(filters) || !list.length) {
+  // בלי מסננים: סקירה כללית של כל העסקאות (ערים, שכונות, פילוחים) – בלי גרף הנקודות הכבד
+  const overview = !dealsFiltersActive(filters);
+  if (!list.length) {
     host.hidden = true;
     host.replaceChildren();
     dealsStatsKey = "";
@@ -3781,8 +3784,12 @@ function renderDealsStats(list) {
   );
   parts.push(tiles);
 
+  if (overview) {
+    parts.push(el("p", "deals-card-note", "סקירה של כל העסקאות שנאספו. חפשו עיר, רחוב או שכונה (או לחצו על שורה בטבלאות) כדי לראות גם גרף של כל העסקאות."));
+  }
   const chartYears = stats.byYear.filter((row) => Number.isFinite(row.medianPpsm));
-  if (chartYears.length && stats.points.length >= 2) {
+  // גרף הנקודות מצייר כל עסקה – עם עשרות אלפי עסקאות הוא מכביד, אז רק בחיפוש ממוקד
+  if (!overview && chartYears.length && stats.points.length >= 2 && stats.points.length <= 6000) {
     const box = card("מחיר למ״ר לאורך זמן");
     const { svg, outside } = dealsPpsmChart(stats, chartWidth);
     const key = el("div", "split-legend deals-chart-key");
@@ -3884,7 +3891,81 @@ function renderDealsStats(list) {
       box.append(dealsStatsTable(breakdownColumns(label), rows));
       grid.appendChild(box);
     }
+    for (const [title, rows, label] of [
+      ["לפי גודל דירה", periodStats.bySize, "שטח"],
+      ["לפי סוג נכס", periodStats.byType, "סוג"],
+    ]) {
+      if (!rows.length || (rows.length === 1 && title === "לפי סוג נכס")) continue;
+      const box = card(title);
+      box.append(dealsStatsTable(breakdownColumns(label), rows));
+      grid.appendChild(box);
+    }
     if (grid.childElementCount) sections.push(grid);
+
+    // ערים, שכונות ורחובות – עם שינוי שנתי בחציון למ״ר; לחיצה מסננת אליהם
+    const changeColumn = {
+      label: "שינוי שנתי למ״ר",
+      value: (row) => (row.change ? signedPct(row.change.pct) : null),
+      title: (row) => (row.change ? `חציון ${row.change.toYear} מול ${row.change.fromYear} (רק שנים עם 3+ עסקאות)` : "אין מספיק עסקאות בשתי שנים"),
+    };
+    const groupColumns = (label, nameOf) => [
+      { label, value: nameOf, className: "city-name" },
+      { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
+      { label: "חציון למ״ר", value: (row) => displayPrice(row.medianPpsm) || null },
+      { label: "מחיר חציוני", value: (row) => (Number.isFinite(row.medianPrice) ? shortShekels(row.medianPrice) : null) },
+      changeColumn,
+      { label: "שטח", value: (row) => (Number.isFinite(row.medianSqm) ? row.medianSqm : null) },
+      { label: "עסקה אחרונה", value: (row) => (row.lastDate ? dealDateText(row.lastDate) : null) },
+    ];
+    const filterTo = (city, query) => {
+      $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === city) ? city : "";
+      $("dealsQuery").value = query;
+      scheduleDealsRender();
+    };
+    if (periodStats.byCity.length > 1) {
+      const box = card("לפי עיר", "לחיצה על עיר מציגה רק את העסקאות שלה.");
+      box.append(dealsStatsTable(groupColumns("עיר", (row) => row.city), periodStats.byCity.slice(0, 20), (row) => filterTo(row.city, "")));
+      sections.push(box);
+    }
+    if (periodStats.byNeighborhood.length) {
+      const multiCity = periodStats.byCity.length > 1;
+      const missing = periodStats.overall.count - periodStats.withNeighborhood;
+      const box = card(
+        multiCity ? "לפי שכונה בכל עיר" : "לפי שכונה",
+        "לחיצה על שכונה מציגה רק את העסקאות שלה." +
+          (missing > 0 ? ` ${missing.toLocaleString("he-IL")} עסקאות בלי שכונה (בעיקר ממדלן, שלא מציינת שכונה) לא נכללות כאן.` : "")
+      );
+      const rows = multiCity
+        ? [...periodStats.byNeighborhood].sort((a, b) => a.city.localeCompare(b.city, "he") || b.count - a.count).slice(0, 40)
+        : periodStats.byNeighborhood.slice(0, 25);
+      box.append(dealsStatsTable(
+        groupColumns("שכונה", (row) => (multiCity ? `${row.neighborhood} · ${row.city}` : row.neighborhood)),
+        rows,
+        (row) => filterTo(row.city, row.neighborhood)
+      ));
+      sections.push(box);
+    }
+    if (periodStats.byStreet.length > 1) {
+      const box = card("הרחובות עם הכי הרבה עסקאות", "לחיצה על רחוב מציגה רק את העסקאות שלו.");
+      box.append(dealsStatsTable(
+        groupColumns("רחוב", (row) => (periodStats.byCity.length > 1 ? `${row.street}, ${row.city}` : row.street)),
+        periodStats.byStreet.slice(0, 15),
+        (row) => filterTo(row.city, row.street)
+      ));
+      sections.push(box);
+    }
+    if (periodStats.byQuarter.length >= 2) {
+      const box = card("לפי רבעון", "מגמה טרייה יותר משנתית. רבעון עם מעט עסקאות פחות מייצג.");
+      const quarterRows = periodStats.byQuarter.slice().reverse();
+      box.append(dealsStatsTable([
+        { label: "רבעון", value: (row) => row.label, className: "city-name" },
+        { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
+        { label: "חציון למ״ר", value: (row) => displayPrice(row.medianPpsm) || null },
+        { label: "מחיר חציוני", value: (row) => (Number.isFinite(row.medianPrice) ? shortShekels(row.medianPrice) : null) },
+        { label: "שטח", value: (row) => (Number.isFinite(row.medianSqm) ? row.medianSqm : null) },
+      ], quarterRows));
+      sections.push(box);
+    }
 
     // בניינים: רק כשהחיפוש כולל יותר מבניין אחד
     if (periodStats.byBuilding.length > 1) {
