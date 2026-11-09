@@ -139,6 +139,24 @@ test("a listing gets a separate comparison for building, street, neighborhood an
   assert.equal(lonely.street.count, 5);
 });
 
+test("deal search understands house numbers and ranges: 'בלוי 28-30', 'בלוי 28 עד 30', exact 28", () => {
+  const make = (house) => Deals.fromYad2({
+    ...yad2Result,
+    address: { ...yad2Result.address, street: { text: "בלוי" }, houseNumber: house },
+    saleDate: "2025-01-01", price: 2_000_000 + Number(String(house).replace(/\D/g, "")),
+  });
+  const store = Deals.mergeAll({}, [make(27), make(28), make("28א"), make(29), make(30), make(31), make(280), make(128)], 1).store;
+  const houses = (query, extra = {}) => Deals.filterDeals(store, { query, ...extra }).map(([, deal]) => deal.house).sort();
+  assert.deepEqual(houses("בלוי 28-30"), ["28", "28א", "29", "30"]);
+  assert.deepEqual(houses("בלוי 28–30"), ["28", "28א", "29", "30"]);
+  assert.deepEqual(houses("בלוי 28 עד 30"), ["28", "28א", "29", "30"]);
+  assert.deepEqual(houses("בלוי 30-28"), ["28", "28א", "29", "30"], "reversed range");
+  assert.deepEqual(houses("בלוי 28"), ["28", "28א"], "not 280 or 128");
+  assert.deepEqual(houses("בלוי 28א"), ["28א"]);
+  assert.deepEqual(houses("בלוי", { house: { min: 29, max: 31 } }), ["29", "30", "31"]);
+  assert.equal(houses("בלוי").length, 8);
+});
+
 test("deals by city and neighborhood count only recent years and give medians", () => {
   const now = Date.UTC(2026, 10, 9);
   const make = (city, hood, house, price, date) => Deals.fromYad2({

@@ -293,9 +293,31 @@ var LRDeals = (() => {
     (!Number.isFinite(min) || (Number.isFinite(value) && value >= min)) &&
     (!Number.isFinite(max) || (Number.isFinite(value) && value <= max));
 
-  // filters: { query, city, source ("yad2" | "madlan" | "both"), rooms/sqm/price/ppsm/year: { min, max } }
+  // טקסט החיפוש: מספר בית או טווח ("בלוי 28-30", "בלוי 28–30", "בלוי 28 עד 30") מתאים למספר הבית
+  // בדיוק (28 מתאים גם ל-28א, לא ל-280); שאר המילים מחפשות בעיר, ברחוב ובשכונה.
+  function parseDealsQuery(query) {
+    let text = String(query || "");
+    let houseRange = null;
+    const rangeMatch = text.match(/(\d{1,4})\s*(?:-|–|־|עד)\s*(\d{1,4})/);
+    if (rangeMatch) {
+      const a = Number(rangeMatch[1]);
+      const b = Number(rangeMatch[2]);
+      houseRange = { min: Math.min(a, b), max: Math.max(a, b) };
+      text = text.replace(rangeMatch[0], " ");
+    }
+    const words = cleanText(text).split(" ").filter(Boolean);
+    const numbers = words.filter((word) => /^\d{1,4}[א-ת]?$/.test(word));
+    return { words: words.filter((word) => !numbers.includes(word)), numbers, houseRange };
+  }
+
+  const houseNumber = (house) => {
+    const match = String(house || "").match(/^(\d{1,4})/);
+    return match ? Number(match[1]) : null;
+  };
+
+  // filters: { query, city, source ("yad2" | "madlan" | "both"), rooms/sqm/price/ppsm/year/house: { min, max } }
   function filterDeals(store, filters = {}) {
-    const words = cleanText(filters.query).split(" ").filter(Boolean);
+    const { words, numbers, houseRange } = parseDealsQuery(filters.query);
     const city = filters.city ? normCity(filters.city) : "";
     const range = (name) => filters[name] || {};
     const out = [];
@@ -305,9 +327,16 @@ var LRDeals = (() => {
       const sources = deal.sources || [];
       if (filters.source === "both" ? sources.length < 2 : filters.source && !sources.includes(filters.source)) continue;
       if (words.length) {
-        const haystack = cleanText(`${deal.city} ${deal.street} ${deal.house} ${deal.neighborhood || ""}`);
+        const haystack = cleanText(`${deal.city} ${deal.street} ${deal.neighborhood || ""}`);
         if (!words.every((word) => haystack.includes(word))) continue;
       }
+      const house = houseNumber(deal.house);
+      // מספר בודד: 28 = 28 / 28א; עם אות ("28א") – בדיוק אותו בית
+      if (numbers.length && !numbers.some((number) =>
+        /[א-ת]$/.test(number) ? normHouse(deal.house) === normHouse(number) : house === Number(number)
+      )) continue;
+      if (houseRange && !inRange(house, houseRange.min, houseRange.max)) continue;
+      if (!inRange(house, range("house").min, range("house").max)) continue;
       if (!inRange(deal.rooms, range("rooms").min, range("rooms").max)) continue;
       if (!inRange(deal.sqm, range("sqm").min, range("sqm").max)) continue;
       if (!inRange(deal.price, range("price").min, range("price").max)) continue;

@@ -443,7 +443,7 @@
       <div class="listing-search-grid">
         <label class="search-field">
           <span>עיר, רחוב או שכונה</span>
-          <input id="dealsQuery" type="search" placeholder="למשל: רוטשילד, עין גנים…">
+          <input id="dealsQuery" type="search" placeholder="למשל: רוטשילד, עין גנים, בלוי 28-30…">
         </label>
         <label class="search-choice">
           <span>עיר</span>
@@ -457,6 +457,13 @@
             <option value="madlan">מדלן</option>
             <option value="both">שני האתרים</option>
           </select>
+        </label>
+        <label class="range-filter" title="אפשר גם לכתוב בחיפוש: בלוי 28-30">
+          <span>מספר בית</span>
+          <span class="range-inputs">
+            <input data-deals-min="house" type="number" min="1" max="9999" step="1" placeholder="מ־" aria-label="מספר בית מינימלי">
+            <input data-deals-max="house" type="number" min="1" max="9999" step="1" placeholder="עד" aria-label="מספר בית מקסימלי">
+          </span>
         </label>
         <label class="range-filter">
           <span>שנת עסקה</span>
