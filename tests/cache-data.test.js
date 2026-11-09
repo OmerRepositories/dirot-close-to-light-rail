@@ -358,6 +358,20 @@ test("status filter: active excludes irrelevant listings and several statuses ca
   assert.equal(CacheData.hasListingDeletionFilters({ status: ["active"] }), true);
 });
 
+test("deletion filter selects by floor range; listings without a known floor are never selected by floor", () => {
+  const cache = {
+    "yad2:ground": { recordType: "listing", floor: 0 },
+    "yad2:third": { recordType: "listing", floor: 3 },
+    "yad2:high": { recordType: "listing", floor: 12 },
+    "madlan:unknown": { recordType: "listing" },
+  };
+  const keys = (range) => CacheData.filterListingsForDeletion(cache, { ranges: { floor: range } }).map(([key]) => key).sort();
+  assert.deepEqual(keys({ min: 0, max: 0 }), ["yad2:ground"]);
+  assert.deepEqual(keys({ min: 1, max: 5 }), ["yad2:third"]);
+  assert.deepEqual(keys({ min: 10 }), ["yad2:high"]);
+  assert.deepEqual(keys({ max: 3 }), ["yad2:ground", "yad2:third"]);
+});
+
 test("a missing deal-breaker amenity makes a listing irrelevant regardless of the threshold", () => {
   const record = {
     recordType: "listing",

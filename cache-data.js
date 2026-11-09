@@ -448,6 +448,8 @@ var LRCacheData = (() => {
         price: priceRange,
         sqm: areaRange,
         rooms: record.rooms,
+        // קומה (קרקע = 0). מודעה בלי קומה ידועה לא עוברת סינון קומה – כלומר לא תימחק בגללו
+        floor: record.floor,
         railMeters: record.railMeters,
         pricePerSqm: ppsmRange,
       };
