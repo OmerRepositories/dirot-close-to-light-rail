@@ -494,7 +494,9 @@ const LISTINGS_FULL_PULL_VERSION = 1;
 
 async function syncPull(settings) {
   const fullPull = settings.listingsFullPull !== LISTINGS_FULL_PULL_VERSION;
-  let cursor = fullPull ? null : settings.cursor || null;
+  // ההתקדמות נשמרת אחרי כל עמוד: עם אלפי מודעות סבב שנקטע באמצע (Chrome עוצר את הרקע, אין רשת)
+  // היה מתחיל שוב מאפס בכל פעם ולא מסתיים לעולם. משיכה מלאה ממשיכה מאיפה שנעצרה.
+  let cursor = fullPull ? settings.listingsFullPullCursor || null : settings.cursor || null;
   let since = cursor
     ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
     : "1970-01-01T00:00:00Z";
@@ -528,11 +530,12 @@ async function syncPull(settings) {
     const last = rows[rows.length - 1].updated_at;
     if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
     since = last;
+    await saveSyncSettings(fullPull ? { listingsFullPullCursor: cursor } : { cursor });
     if (rows.length < LRSync.PULL_PAGE) break;
   }
   await saveSyncSettings({
     ...(cursor ? { cursor } : {}),
-    ...(fullPull ? { listingsFullPull: LISTINGS_FULL_PULL_VERSION } : {}),
+    ...(fullPull ? { listingsFullPull: LISTINGS_FULL_PULL_VERSION, listingsFullPullCursor: null } : {}),
   });
   return applied;
 }
@@ -576,9 +579,10 @@ async function syncDeals(settings) {
     const last = rows[rows.length - 1].updated_at;
     if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
     since = last;
+    // התקדמות נשמרת אחרי כל עמוד (אלפי עסקאות), כדי שסבב שנקטע ימשיך מאותה נקודה
+    await saveSyncSettings({ dealsCursor: cursor });
     if (rows.length < LRSync.PULL_PAGE) break;
   }
-  if (cursor) await saveSyncSettings({ dealsCursor: cursor });
 
   // שליחה: רק עסקאות שהשתנו מאז הסנכרון האחרון
   const stored = await chrome.storage.local.get([LRSync.DEALS_KEY, LRSync.DEAL_HASHES_KEY]);

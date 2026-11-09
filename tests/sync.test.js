@@ -305,6 +305,40 @@ test("real deals sync through their own table: one row per deal, sources merged,
   assert.equal(Object.keys(a.deals()).length, 2);
 });
 
+test("an interrupted large deals pull resumes where it stopped instead of starting over", async () => {
+  const server = fakeSupabase({ withDeals: true });
+  const base = Date.parse("2026-11-01T00:00:00Z");
+  for (let index = 0; index < 2500; index++) {
+    const key = `פתח תקווה|רוטשילד|${index + 1}|2025-01-01|${2_000_000 + index}`;
+    server.dealRows.set(`user-1|${key}`, {
+      user_id: "user-1", deal_key: key, city: "פתח תקווה", street: "רוטשילד", house: String(index + 1),
+      sale_date: "2025-01-01", price: 2_000_000 + index, sqm: 100, rooms: 4, floor: null, total_floors: null,
+      build_year: null, neighborhood: null, property_type: null, sources: ["yad2"],
+      updated_at: new Date(base + index * 1000).toISOString(),
+    });
+  }
+  // הבקשה השנייה של עמוד עסקאות נכשלת פעם אחת – כמו סבב שנקטע באמצע
+  const dealGets = [];
+  let failNext = 2;
+  const originalFetch = server.fetch;
+  server.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/rest/v1/lightrail_deals" && (options.method || "GET") === "GET" && parsed.searchParams.get("updated_at")) {
+      dealGets.push(parsed.searchParams.get("updated_at"));
+      if (--failNext === 0) throw new TypeError("Failed to fetch");
+    }
+    return originalFetch(url, options);
+  };
+  const a = computer(server, {});
+  await a.connect(); // נקטע אחרי העמוד הראשון (1000 עסקאות)
+  assert.equal(Object.keys(a.deals()).length, 1000);
+  const firstRoundGets = dealGets.length;
+  await a.syncNow();
+  assert.equal(Object.keys(a.deals()).length, 2500);
+  // הסבב השני התחיל מהנקודה שנשמרה, לא מההתחלה
+  assert.doesNotMatch(dealGets[firstRoundGets], /1970-01-01/);
+});
+
 test("without the deals table, listings still sync and the setup SQL is shown again", async () => {
   const server = fakeSupabase();
   const a = computer(server, { "yad2:a": { title: "A", price: 1, updatedAt: 1 } });
