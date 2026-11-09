@@ -48,6 +48,24 @@ test("remote rows merge by newest updatedAt, tombstones delete older local copie
   assert.equal(cache.take.title, "local older", "input is not mutated");
 });
 
+test("a request the server never answers times out instead of blocking every later sync", async () => {
+  const originalFetch = globalThis.fetch;
+  // שרת שלא עונה בכלל: הבקשה נגמרת רק כשמבטלים אותה
+  globalThis.fetch = (_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(new Error("aborted")));
+  });
+  try {
+    const started = Date.now();
+    await assert.rejects(
+      LRSync.checkTable({ url: "https://demo.example.test", apiKey: "k", accessToken: "t", requestTimeoutMs: 50 }),
+      (error) => error.timedOut === true && /לא ענה בזמן/.test(error.message)
+    );
+    assert.ok(Date.now() - started < 2000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("the setup SQL creates one table with row level security and no fixed project details", () => {
   assert.match(LRSync.SETUP_SQL, /create table if not exists public\.lightrail_records/);
   assert.match(LRSync.SETUP_SQL, /enable row level security/);

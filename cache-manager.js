@@ -4671,7 +4671,10 @@ async function renderSyncPanel() {
         : state.lastDealsPushed || state.lastDealsPulled
           ? ` עסקאות אמת בסבב האחרון: ${state.lastDealsPushed} נשלחו, ${state.lastDealsPulled} התקבלו.`
           : "");
-    if (state.lastError) setSyncStatus("syncConnectedStatus", `הסנכרון האחרון נכשל: ${state.lastError}`, true);
+    // בזמן שסבב רץ לא מציגים את השגיאה של הסבב הקודם מעל "מסנכרן…"
+    if (state.lastError && !$("syncNow").disabled) {
+      setSyncStatus("syncConnectedStatus", `הסנכרון האחרון נכשל: ${state.lastError} אפשר ללחוץ על „סנכרון עכשיו” כדי לנסות שוב.`, true);
+    }
     badge.textContent = state.lastError ? "שגיאת סנכרון" : "מחובר";
     badge.dataset.state = state.lastError ? "error" : "on";
   } else {
@@ -4713,23 +4716,41 @@ async function connectOnlineSync() {
   }
 }
 
+// סבב סנכרון שלא מסתיים לא נועל את הכפתור: אחרי 2 דקות הכפתור חוזר והמשתמש יכול לנסות שוב
+const SYNC_UI_TIMEOUT_MS = 120_000;
+
 async function runOnlineSyncNow(quiet = false) {
   const button = $("syncNow");
+  if (button.disabled) return;
   button.disabled = true;
-  if (!quiet) setSyncStatus("syncConnectedStatus", "מסנכרן…");
+  button.textContent = "מסנכרן…";
+  // גם בסנכרון האוטומטי בפתיחת העמוד מראים שהוא רץ – אחרת השגיאה הישנה נשארת והכפתור נראה תקוע
+  setSyncStatus("syncConnectedStatus", quiet ? "מסנכרן ברקע…" : "מסנכרן…");
   try {
-    const result = await sendSyncMessage("lightrail:sync-now");
-    if (result.skipped) return;
-    if (!quiet || !result.ok) {
-      setSyncStatus(
-        "syncConnectedStatus",
-        result.ok ? `הסנכרון הושלם · ${syncSummary(result)}` : `הסנכרון נכשל: ${result.error}`,
-        !result.ok
-      );
+    const result = await Promise.race([
+      sendSyncMessage("lightrail:sync-now"),
+      new Promise((resolve) => setTimeout(() => resolve({
+        ok: false,
+        error: "הסנכרון לוקח יותר מדי זמן. אפשר לנסות שוב – אם השרת עדיין לא עונה, הסבב יופסק אוטומטית.",
+      }), SYNC_UI_TIMEOUT_MS)),
+    ]);
+    if (result.skipped) {
+      setSyncStatus("syncConnectedStatus", "");
+      return;
     }
+    if (result.skipped) return;
+    // קודם מרעננים את הפאנל (הוא מציג את השגיאה הקודמת מההגדרות), ורק אז את תוצאת הסבב הזה
     await renderSyncPanel();
+    setSyncStatus(
+      "syncConnectedStatus",
+      result.ok
+        ? quiet ? "" : `הסנכרון הושלם · ${syncSummary(result)}`
+        : `הסנכרון נכשל: ${result.error} אפשר ללחוץ שוב על „סנכרון עכשיו”.`,
+      !result.ok
+    );
   } finally {
     button.disabled = false;
+    button.textContent = "סנכרון עכשיו";
   }
 }
 

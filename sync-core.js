@@ -254,8 +254,15 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
 
   // ---------- גישה ל-Supabase (Auth + REST) ----------
 
+  // בקשה שלא נענית לא נשארת תלויה לנצח: בלי זה סבב סנכרון אחד תקוע חסם את כל הסבבים הבאים
+  // (הם מחכים בתור) ואת כפתור "סנכרון עכשיו"
+  const REQUEST_TIMEOUT_MS = 30_000;
+
   async function call(settings, path, { method = "GET", body, token, headers = {} } = {}) {
     let response;
+    let text;
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), settings.requestTimeoutMs || REQUEST_TIMEOUT_MS) : null;
     try {
       response = await fetch(`${settings.url}${path}`, {
         method,
@@ -266,11 +273,20 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
           ...headers,
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        ...(controller ? { signal: controller.signal } : {}),
       });
+      text = await response.text();
     } catch (error) {
-      throw Object.assign(new Error("אין חיבור לשרת הסנכרון."), { offline: true, cause: error });
+      const timedOut = controller && controller.signal.aborted;
+      throw Object.assign(
+        new Error(timedOut
+          ? "שרת הסנכרון לא ענה בזמן (30 שניות). ננסה שוב בסבב הבא."
+          : "אין חיבור לשרת הסנכרון – בדוק את חיבור האינטרנט, או שהפרויקט ב-Supabase מושהה."),
+        { offline: true, timedOut: Boolean(timedOut), cause: error }
+      );
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    const text = await response.text();
     let data = null;
     try {
       data = text ? JSON.parse(text) : null;
