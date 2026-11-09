@@ -67,6 +67,7 @@
     const areaTab = table.querySelector('[data-auto="area"]');
     if (!areaTab) {
       areaDoneFor = listing;
+      document.documentElement.setAttribute("data-lr-deals-area-done", listing);
       return;
     }
     // הלשונית הראשונה כבר נטענה (יש לה שורות) ונשמרה – רק אז עוברים
@@ -74,6 +75,8 @@
     const original = currentTab(table, areaTab);
     if (!original || original === areaTab) return;
     areaRunning = true;
+    // סקריפט התוכן קורא את זה כדי שרענון אוטומטי לא יעבור למודעה הבאה באמצע
+    document.documentElement.setAttribute("data-lr-deals-busy", "area");
     try {
       const before = state.rows;
       areaTab.click();
@@ -97,6 +100,8 @@
       areaDoneFor = listing;
     } finally {
       areaRunning = false;
+      document.documentElement.removeAttribute("data-lr-deals-busy");
+      document.documentElement.setAttribute("data-lr-deals-area-done", areaDoneFor);
     }
   }
 

@@ -13,6 +13,8 @@ const MIN_FONT_SCALE = 0.8;
 const MAX_FONT_SCALE = 1.5;
 const FONT_SCALE_STEP = 0.1;
 const REFRESH_LOAD_TIMEOUT_MS = 90000;
+const REFRESH_DEALS_MAX_WAIT_MS = 5 * 60 * 1000;
+const REFRESH_DEALS_PENDING_WAIT_MS = 30 * 1000;
 const AMENITIES = [
   ["parking", "חניה"],
   ["secureRoom", "ממ״ד"],
@@ -39,6 +41,9 @@ let writing = false;
 let sort = { key: "updatedAt", direction: -1 };
 let refreshQueue = [];
 let refreshIndex = 0;
+let refreshItemStartedAt = 0;
+let refreshLoadMs = 0;
+let refreshLoadCount = 0;
 let refreshTabId = null;
 let refreshTimer = null;
 let loadTimeout = null;
@@ -2793,14 +2798,68 @@ async function changeFontScale(delta) {
   }
 }
 
+// "שעה ו־50 דקות", "2 שעות ו־5 דקות", "12 דקות", "פחות מדקה"
+function durationText(ms) {
+  const totalMinutes = Math.round(ms / 60000);
+  if (totalMinutes < 1) return "פחות מדקה";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const hoursText = hours === 1 ? "שעה" : hours === 2 ? "שעתיים" : `${hours.toLocaleString("he-IL")} שעות`;
+  const minutesText = minutes === 1 ? "דקה" : `${minutes} דקות`;
+  if (!hours) return minutesText;
+  return minutes ? `${hoursText} ו־${minutesText}` : hoursText;
+}
+
+// הערכת זמן שנותר: (מספר הפריטים שנותרו) × (ההשהיה + זמן הטעינה הממוצע שנמדד עד עכשיו)
+function remainingText(remaining, delaySec, workMs, workCount) {
+  if (!(remaining > 0)) return "";
+  const perItem = delaySec * 1000 + (workCount ? workMs / workCount : 0);
+  const ms = remaining * perItem;
+  return ` נותרו ${remaining.toLocaleString("he-IL")} · ${ms < 60000 ? "פחות מדקה" : `עוד כ־${durationText(ms)}`}.`;
+}
+
+function refreshRemainingText() {
+  return remainingText(refreshQueue.length - refreshIndex - 1, refreshDelaySec, refreshLoadMs, refreshLoadCount);
+}
+
 function delayBetweenPages() {
   if (refreshPaused || !refreshQueue.length) return;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
+    advanceWhenDealsSaved(Date.now());
+  }, refreshDelaySec * 1000);
+}
+
+// לא עוברים למודעה הבאה כל עוד הדף הנוכחי אוסף ושומר עסקאות אמת (יד2: כל העמודים, מדלן: "בסביבה").
+// בודקים כל 2 שניות; עד 5 דקות כשהאיסוף רץ, ועד 30 שניות כשמדלן עוד לא התחילה לעבור ל"בסביבה".
+function advanceWhenDealsSaved(waitStartedAt) {
+  if (refreshPaused || !refreshQueue.length) return;
+  const attemptId = refreshAttemptId;
+  const next = () => {
+    refreshLoadMs += Date.now() - waitStartedAt; // זמן ההמתנה נכנס להערכת הזמן שנותר
     refreshIndex++;
     openNextListing();
-  }, refreshDelaySec * 1000);
+  };
+  if (refreshTabId == null) return next();
+  chrome.tabs.sendMessage(refreshTabId, { type: "lightrail:deals-status" }, (status) => {
+    void chrome.runtime.lastError;
+    if (attemptId !== refreshAttemptId || refreshPaused || !refreshQueue.length) return;
+    const waited = Date.now() - waitStartedAt;
+    const keepWaiting = status && (
+      (status.busy && waited < REFRESH_DEALS_MAX_WAIT_MS) ||
+      (status.pending && waited < REFRESH_DEALS_PENDING_WAIT_MS)
+    );
+    if (!keepWaiting) return next();
+    setRefreshStatus(
+      `הדף ${refreshIndex + 1}/${refreshQueue.length}: ממתין לסיום איסוף ושמירת עסקאות האמת (${Math.round(waited / 1000)} שניות)…${refreshRemainingText()}`
+    );
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      advanceWhenDealsSaved(waitStartedAt);
+    }, 2000);
+  });
 }
 
 function skipRefreshListing(error, resetTab = false) {
@@ -2830,7 +2889,7 @@ function skipRefreshListing(error, resetTab = false) {
     return;
   }
   setRefreshStatus(
-    `המודעה ${refreshIndex + 1}/${refreshQueue.length} דולגה (${title}). ממשיך למודעה הבאה בעוד ${refreshDelaySec} שניות.`,
+    `המודעה ${refreshIndex + 1}/${refreshQueue.length} דולגה (${title}). ממשיך למודעה הבאה בעוד ${refreshDelaySec} שניות.${refreshRemainingText()}`,
     true
   );
   delayBetweenPages();
@@ -2846,6 +2905,11 @@ function onRefreshTabUpdated(tabId, changeInfo, tab) {
   clearTimeout(loadTimeout);
   loadTimeout = null;
   currentPageLoaded = true;
+  if (refreshItemStartedAt) {
+    refreshLoadMs += Math.min(Date.now() - refreshItemStartedAt, REFRESH_LOAD_TIMEOUT_MS);
+    refreshLoadCount++;
+    refreshItemStartedAt = 0;
+  }
   const [key, record] = refreshQueue[refreshIndex];
   logListingRefreshed(key);
   if (recordSite(key) === "yad2") {
@@ -2856,7 +2920,7 @@ function onRefreshTabUpdated(tabId, changeInfo, tab) {
     return;
   }
   setRefreshStatus(
-    `הדף ${refreshIndex + 1}/${refreshQueue.length} נטען. ממתין ${refreshDelaySec} שניות לפני הבא…`
+    `הדף ${refreshIndex + 1}/${refreshQueue.length} נטען. ממתין ${refreshDelaySec} שניות לפני הבא…${refreshRemainingText()}`
   );
   delayBetweenPages();
 }
@@ -2895,6 +2959,7 @@ function openNextListing() {
     return;
   }
   currentPageLoaded = false;
+  refreshItemStartedAt = Date.now();
   setRefreshStatus(`פותח מודעה ${refreshIndex + 1}/${refreshQueue.length}: ${record.title || key}`);
   const onError = (error, resetTab) => {
     if (attemptId !== refreshAttemptId || !refreshQueue.length) return;
@@ -2980,6 +3045,8 @@ async function startRefresh(options = {}) {
   ).length;
   refreshIndex = 0;
   refreshSkippedCount = 0;
+  refreshLoadMs = 0;
+  refreshLoadCount = 0;
   refreshPaused = false;
   refreshRunScheduled = options.scheduled === true;
   const irrelevantNote = irrelevantSkipped
@@ -3041,7 +3108,7 @@ function toggleRefreshPause() {
     refreshTimer = null;
     setRefreshStatus("הרענון מושהה. אפשר להמשיך או לעצור.");
   } else if (currentPageLoaded) {
-    setRefreshStatus(`המשך: ממתין ${refreshDelaySec} שניות לפני המודעה הבאה…`);
+    setRefreshStatus(`המשך: ממתין ${refreshDelaySec} שניות לפני המודעה הבאה…${refreshRemainingText()}`);
     delayBetweenPages();
   } else {
     setRefreshStatus("הרענון ממשיך וממתין לסיום טעינת הדף הנוכחי.");
@@ -3059,8 +3126,12 @@ const WALKER_AFTER_LOAD_MS = 1500;
 const walker = {
   urls: [], index: 0, tabId: null, attempt: 0, phase: "idle", paused: false,
   sawLoading: false, timer: null, loadTimer: null, delaySec: 5, speed: "normal",
-  cards: 0, skipped: 0,
+  cards: 0, skipped: 0, pageStartedAt: 0, workMs: 0, workCount: 0,
 };
+
+function walkerRemainingText() {
+  return remainingText(walker.urls.length - walker.index - 1, walker.delaySec, walker.workMs, walker.workCount);
+}
 
 function walkerActive() {
   return walker.urls.length > 0;
@@ -3127,7 +3198,7 @@ function startWalker() {
   readWalkerDelay();
   saveWalkerSettings();
   Object.assign(walker, {
-    urls: built.urls, index: 0, paused: false, phase: "idle", cards: 0, skipped: 0,
+    urls: built.urls, index: 0, paused: false, phase: "idle", cards: 0, skipped: 0, pageStartedAt: 0, workMs: 0, workCount: 0,
   });
   updateWalkerButtons();
   openWalkerPage();
@@ -3158,6 +3229,7 @@ function openWalkerPage() {
   const { url } = walker.urls[walker.index];
   walker.phase = "loading";
   walker.sawLoading = false;
+  walker.pageStartedAt = Date.now();
   setWalkerStatus(`טוען ${walkerPageLabel()}…`);
   clearTimeout(walker.loadTimer);
   walker.loadTimer = setTimeout(() => {
@@ -3228,6 +3300,11 @@ function scrollWalkerPage(attempt, retries) {
       return;
     }
     if (result.reason === "stopped") return;
+    if (walker.pageStartedAt) {
+      walker.workMs += Date.now() - walker.pageStartedAt;
+      walker.workCount++;
+      walker.pageStartedAt = 0;
+    }
     walker.cards += Number(result.cards) || 0;
     if (!result.cards) {
       // אין מודעות: סוף התוצאות, או בדיקת "אני לא רובוט". עוצרים עד שהמשתמש מחליט
@@ -3244,7 +3321,7 @@ function scrollWalkerPage(attempt, retries) {
     const isLast = walker.index + 1 >= walker.urls.length;
     setWalkerStatus(
       `${walkerPageLabel()} נסרק (${result.cards} מודעות${result.reason === "timeout" ? ", הגלילה נעצרה אחרי זמן מרבי" : ""}).` +
-      (walker.paused ? " הדפדוף מושהה." : isLast ? "" : ` ממתין ${walker.delaySec} שניות לעמוד הבא…`)
+      (walker.paused ? " הדפדוף מושהה." : isLast ? "" : ` ממתין ${walker.delaySec} שניות לעמוד הבא…${walkerRemainingText()}`)
     );
     scheduleNextWalkerPage();
   });
@@ -3268,7 +3345,7 @@ function toggleWalkerPause() {
     setWalkerStatus(`סורק שוב את ${walkerPageLabel()}…`);
     scrollWalkerPage(++walker.attempt, 3);
   } else if (walker.phase === "waiting") {
-    setWalkerStatus(`ממשיך: ממתין ${walker.delaySec} שניות לעמוד הבא…`);
+    setWalkerStatus(`ממשיך: ממתין ${walker.delaySec} שניות לעמוד הבא…${walkerRemainingText()}`);
     scheduleNextWalkerPage();
   } else {
     setWalkerStatus("הדפדוף ממשיך.");

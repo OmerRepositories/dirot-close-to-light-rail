@@ -1496,6 +1496,9 @@
   const DEALS_PAGE_DELAY_MS = 1500;
   let dealsWrite = Promise.resolve();
   let yad2DealsRequested = false;
+  // איסוף עסקאות שעדיין רץ בעמוד (רענון אוטומטי ממתין לו לפני שעובר למודעה הבאה)
+  let yad2DealsRunning = false;
+  let dealsSavesPending = 0;
   let lastMadlanDealsJson = "";
 
   // "בניין −3% · רחוב +5% · שכונה +2% · עיר +10%" – רק הרמות שיש בהן מספיק עסקאות
@@ -1581,6 +1584,7 @@
       return;
     }
     let result = { found: valid.length, added: 0, updated: 0 };
+    dealsSavesPending++;
     // כתיבות באותה לשונית אחת אחרי השנייה, כדי ששתי שמירות לא ידרסו זו את זו
     dealsWrite = dealsWrite.then(() => new Promise((resolve) => {
       chrome.storage.local.get(LRDeals.STORAGE_KEY, (stored) => {
@@ -1591,6 +1595,7 @@
         chrome.storage.local.set({ [LRDeals.STORAGE_KEY]: merged.store }, () => resolve());
       });
     })).then(() => {
+      dealsSavesPending--;
       if (entry) loadRealDeals(entry);
       if (onDone) onDone(result);
     });
@@ -1633,6 +1638,7 @@
         let pages = 0;
         let failed = false;
         const collected = [];
+        yad2DealsRunning = true;
         try {
           let totalPages = query.maxPages;
           for (let page = 1; page <= Math.min(totalPages, query.maxPages, maxPages); page++) {
@@ -1658,6 +1664,7 @@
         } finally {
           if (pages || failed) dealsToast(`שומר ${fmtCount(collected.length)} עסקאות…`);
           saveDeals(collected, entry, (result) => {
+            yad2DealsRunning = false;
             const pagesText = ` (${pages} ${pages === 1 ? "עמוד" : "עמודים"})`;
             if (failed) {
               dealsToast(
@@ -2426,6 +2433,27 @@
       }
     }
   }
+
+  // האם העמוד עדיין אוסף/שומר עסקאות אמת. busy = רץ עכשיו; pending = מדלן עוד לא עברה ל"בסביבה"
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || message.type !== "lightrail:deals-status") return false;
+    const root = document.documentElement;
+    let busy = yad2DealsRunning || dealsSavesPending > 0;
+    let pending = false;
+    if (!IS_YAD2) {
+      if (root.hasAttribute("data-lr-deals-busy")) busy = true;
+      const table = document.querySelector('[data-auto="sold-listings-table"]');
+      // עסקאות שכבר הועתקו לטבלה אבל עוד לא נשמרו (כשהשמירה פעילה)
+      const unsaved = table && table.getAttribute("data-lr-deals");
+      pending = Boolean(
+        (CFG.saveListingData && unsaved && unsaved !== lastMadlanDealsJson) ||
+        (table && unsaved && table.querySelector('[data-auto="area"]') &&
+          root.getAttribute("data-lr-deals-area-done") !== location.pathname)
+      );
+    }
+    sendResponse({ busy, pending });
+    return false;
+  });
 
   if (IS_YAD2) {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
