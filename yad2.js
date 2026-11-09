@@ -376,7 +376,12 @@ var LRYad2 = (() => {
     };
   }
 
-  // כתובת הבקשה שהעמוד עצמו שולח לטבלת "נכסים שנמכרו באזור", אבל לשנים האחרונות ועם 50 תוצאות
+  // עד 10 עמודים של 100 עסקאות (נבדק: ה-API מחזיר 100 ו-200 בבקשה). העמודים ממוינים לפי מרחק,
+  // כך שעד 1000 העסקאות הקרובות ביותר מהשנים האחרונות. ה"10,000 תוצאות" של יד2 היא תקרה ולא כמות אמיתית.
+  const DEALS_PAGE_LIMIT = 100;
+  const DEALS_MAX_PAGES = 10;
+
+  // כתובת הבקשה שהעמוד עצמו שולח לטבלת "נכסים שנמכרו באזור", אבל לשנים האחרונות ועם יותר תוצאות
   // (ברירת המחדל של יד2 מציגה עסקאות ישנות, 2015–2016). רק בעמוד מודעה, עם מזהי הכתובת מנתוני הדף.
   function dealsQuery(root = document, { years = 4, now = new Date() } = {}) {
     if (root !== document) return null;
@@ -391,7 +396,7 @@ var LRYad2 = (() => {
     const coords = address.coords;
     if (!city || !street || !coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return null;
     const maxYear = now.getFullYear();
-    const params = new URLSearchParams({ limit: "50", page: "1", sortBy: "distance", order: "asc" });
+    const params = new URLSearchParams({ limit: String(DEALS_PAGE_LIMIT), page: "1", sortBy: "distance", order: "asc" });
     for (const [name, part] of [["topArea", address.topArea], ["area", address.area], ["city", address.city], ["neighborhood", address.neighborhood], ["street", address.street]]) {
       const value = idOf(part);
       if (value) params.set(name, value);
@@ -399,8 +404,15 @@ var LRYad2 = (() => {
     params.set("coords", `${coords.lat},${coords.lon}`);
     params.set("minSaleYear", String(maxYear - years + 1));
     params.set("maxSaleYear", String(maxYear));
+    const pageUrl = (page) => {
+      params.set("page", String(page));
+      return `https://gw.yad2.co.il/latest-deals-completed/?${params}`;
+    };
     return {
-      url: `https://gw.yad2.co.il/latest-deals-completed/?${params}`,
+      url: pageUrl(1),
+      pageUrl,
+      pageLimit: DEALS_PAGE_LIMIT,
+      maxPages: DEALS_MAX_PAGES,
       throttleKey: `yad2|${city}|${street}`,
     };
   }

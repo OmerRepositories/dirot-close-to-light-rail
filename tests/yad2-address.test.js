@@ -433,7 +433,10 @@ test("Yad2 deals request uses the listing's address ids, recent years and 50 res
   const query = context.LRYad2.dealsQuery(context.document, { now: new Date(2026, 10, 9) });
   const url = new URL(query.url);
   assert.equal(url.origin + url.pathname, "https://gw.yad2.co.il/latest-deals-completed/");
-  assert.equal(url.searchParams.get("limit"), "50");
+  assert.equal(url.searchParams.get("limit"), "100");
+  assert.equal(url.searchParams.get("page"), "1");
+  assert.equal(query.maxPages, 10);
+  assert.equal(new URL(query.pageUrl(7)).searchParams.get("page"), "7");
   assert.equal(url.searchParams.get("street"), "0446");
   assert.equal(url.searchParams.get("coords"), "32.085336,34.897159");
   assert.equal(url.searchParams.get("minSaleYear"), "2023");
