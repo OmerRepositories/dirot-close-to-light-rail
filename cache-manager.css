@@ -856,3 +856,9 @@ body:not([data-cloud="on"]) .cloud-col { display: none; }
 .deals-tip-row span:first-child { font-variant-numeric: tabular-nums; }
 .deals-tip-label { color: var(--muted); }
 .deals-tip-row:first-child .deals-tip-label { color: var(--ink); font-weight: 700; }
+.deals-period-section { display: grid; gap: 14px; }
+.deals-period-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.deals-period-bar .deals-card-note { margin: 0; }
+.deals-period-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+.deals-period-body { display: grid; gap: 14px; }
+.deals-period-bar .timeline-filters button:disabled { opacity: .45; cursor: default; }

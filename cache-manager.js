@@ -3434,6 +3434,33 @@ function renderDeals() {
 // מחיר חציוני לפי שנה, ופילוח לפי שנה, חדרים, קומה, שנת בנייה ובניין.
 const SVG_NS = "http://www.w3.org/2000/svg";
 let dealsStatsKey = "";
+const DEALS_PERIOD_KEY = "lightrailDealsPeriod";
+const DEALS_PERIODS = [
+  { years: 1, label: "שנה אחרונה" },
+  { years: 2, label: "שנתיים" },
+  { years: 3, label: "3 שנים" },
+  { years: 0, label: "הכל" },
+];
+let dealsPeriodYears = (() => {
+  try {
+    const saved = Number(localStorage.getItem(DEALS_PERIOD_KEY));
+    return DEALS_PERIODS.some((period) => period.years === saved) ? saved : 0;
+  } catch {
+    return 0;
+  }
+})();
+// תאריך ההתחלה (YYYY-MM-DD) של N השנים האחרונות, נכון להיום
+function dealsPeriodCutoff(years) {
+  const now = new Date();
+  const from = new Date(now.getFullYear() - years, now.getMonth(), now.getDate());
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}`;
+}
+function dealsInPeriod(list, years) {
+  if (!years) return list;
+  const cutoff = dealsPeriodCutoff(years);
+  return list.filter(([, deal]) => deal && /^\d{4}-\d{2}-\d{2}$/.test(String(deal.date)) && deal.date >= cutoff);
+}
 
 function dealsFiltersActive(filters) {
   return Object.entries(filters).some(([name, value]) =>
@@ -3805,46 +3832,86 @@ function renderDealsStats(list) {
     parts.push(box);
   }
 
-  // פילוחים: חדרים, קומה, שנת בנייה
-  const breakdownColumns = (label) => [
-    { label, value: (row) => (/\d/.test(row.label) && !/[\u0590-\u05ff]/.test(row.label) ? ltrText(row.label) : row.label), className: "city-name" },
-    { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
-    { label: "מחיר חציוני", value: (row) => (Number.isFinite(row.medianPrice) ? shortShekels(row.medianPrice) : null) },
-    { label: "חציון למ״ר", value: (row) => (Number.isFinite(row.medianPpsm) ? shortShekels(row.medianPpsm) : null) },
-    { label: "שטח", value: (row) => (Number.isFinite(row.medianSqm) ? row.medianSqm : null) },
-  ];
-  const grid = el("div", "dash-grid");
-  for (const [title, rows, label] of [
-    ["לפי מספר חדרים", stats.byRooms, "חדרים"],
-    ["לפי קומה", stats.byFloor, "קומה"],
-    ["לפי שנת בנייה", stats.byBuildYear, "נבנה"],
-  ]) {
-    if (!rows.length) continue;
-    const box = card(title);
-    box.append(dealsStatsTable(breakdownColumns(label), rows));
-    grid.appendChild(box);
+  // פילוחים ובניינים – לפי תקופה (שנה אחרונה / 2 / 3 / הכל)
+  const periodSection = el("div", "deals-period-section");
+  const periodBar = el("div", "deals-period-bar");
+  const periodButtons = el("div", "timeline-filters");
+  periodButtons.setAttribute("role", "group");
+  periodButtons.setAttribute("aria-label", "תקופה לפילוחים");
+  const periodBody = el("div", "deals-period-body");
+  const periodNote = el("span", "deals-card-note");
+  periodBar.append(el("span", "deals-period-label", "תקופה:"), periodButtons, periodNote);
+  const periodLists = new Map(DEALS_PERIODS.map((period) => [period.years, dealsInPeriod(list, period.years)]));
+  for (const period of DEALS_PERIODS) {
+    const count = periodLists.get(period.years).length;
+    const button = el("button", "", `${period.label} (${count.toLocaleString("he-IL")})`);
+    button.type = "button";
+    button.dataset.years = String(period.years);
+    button.disabled = !count;
+    button.addEventListener("click", () => {
+      dealsPeriodYears = period.years;
+      try { localStorage.setItem(DEALS_PERIOD_KEY, String(period.years)); } catch {}
+      renderPeriod();
+    });
+    periodButtons.appendChild(button);
   }
-  if (grid.childElementCount) parts.push(grid);
-
-  // בניינים: רק כשהחיפוש כולל יותר מבניין אחד
-  if (stats.byBuilding.length > 1) {
-    const box = card(
-      stats.streetCount > 1 ? "הבניינים עם הכי הרבה עסקאות" : "לפי בניין ברחוב",
-      "לחיצה על בניין מציגה רק את העסקאות שלו."
-    );
-    box.append(dealsStatsTable([
-      { label: "כתובת", value: (row) => `${row.street} ${row.house}${stats.streetCount > 1 ? `, ${row.city}` : ""}`, className: "city-name" },
+  const renderPeriod = () => {
+    let years = dealsPeriodYears;
+    if (!periodLists.get(years) || !periodLists.get(years).length) years = 0;
+    for (const button of periodButtons.children) button.setAttribute("aria-pressed", String(Number(button.dataset.years) === years));
+    const periodList = periodLists.get(years);
+    const periodStats = years ? LRDeals.analyzeDeals(periodList) : stats;
+    periodNote.textContent = years
+      ? `עסקאות מ־${dealDateText(dealsPeriodCutoff(years))} ואילך · ${periodList.length.toLocaleString("he-IL")} עסקאות`
+      : "כל העסקאות בחיפוש";
+    const sections = [];
+    // פילוחים: חדרים, קומה, שנת בנייה
+    const breakdownColumns = (label) => [
+      { label, value: (row) => (/\d/.test(row.label) && !/[\u0590-\u05ff]/.test(row.label) ? ltrText(row.label) : row.label), className: "city-name" },
       { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
-      { label: "חציון למ״ר", value: (row) => displayPrice(row.medianPpsm) || null },
-      { label: "מחיר חציוני", value: (row) => displayPrice(row.medianPrice) || null },
-      { label: "עסקה אחרונה", value: (row) => (row.lastDate ? `${dealDateText(row.lastDate)} · ${shortShekels(row.lastPrice)}` : null) },
-    ], stats.byBuilding.slice(0, 12), (row) => {
-      $("dealsQuery").value = `${row.street} ${row.house}`;
-      $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === row.city) ? row.city : "";
-      scheduleDealsRender();
-    }));
-    parts.push(box);
-  }
+      { label: "מחיר חציוני", value: (row) => (Number.isFinite(row.medianPrice) ? shortShekels(row.medianPrice) : null) },
+      { label: "חציון למ״ר", value: (row) => (Number.isFinite(row.medianPpsm) ? shortShekels(row.medianPpsm) : null) },
+      { label: "שטח", value: (row) => (Number.isFinite(row.medianSqm) ? row.medianSqm : null) },
+    ];
+    const grid = el("div", "dash-grid");
+    for (const [title, rows, label] of [
+      ["לפי מספר חדרים", periodStats.byRooms, "חדרים"],
+      ["לפי קומה", periodStats.byFloor, "קומה"],
+      ["לפי שנת בנייה", periodStats.byBuildYear, "נבנה"],
+    ]) {
+      if (!rows.length) continue;
+      const box = card(title);
+      box.append(dealsStatsTable(breakdownColumns(label), rows));
+      grid.appendChild(box);
+    }
+    if (grid.childElementCount) sections.push(grid);
+
+    // בניינים: רק כשהחיפוש כולל יותר מבניין אחד
+    if (periodStats.byBuilding.length > 1) {
+      const box = card(
+        periodStats.streetCount > 1 ? "הבניינים עם הכי הרבה עסקאות" : "לפי בניין ברחוב",
+        "לחיצה על בניין מציגה רק את העסקאות שלו."
+      );
+      box.append(dealsStatsTable([
+        { label: "כתובת", value: (row) => `${row.street} ${row.house}${periodStats.streetCount > 1 ? `, ${row.city}` : ""}`, className: "city-name" },
+        { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
+        { label: "חציון למ״ר", value: (row) => displayPrice(row.medianPpsm) || null },
+        { label: "מחיר חציוני", value: (row) => displayPrice(row.medianPrice) || null },
+        { label: "עסקה אחרונה", value: (row) => (row.lastDate ? `${dealDateText(row.lastDate)} · ${shortShekels(row.lastPrice)}` : null) },
+      ], periodStats.byBuilding.slice(0, 12), (row) => {
+        $("dealsQuery").value = `${row.street} ${row.house}`;
+        $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === row.city) ? row.city : "";
+        scheduleDealsRender();
+      }));
+      sections.push(box);
+    }
+
+    if (!sections.length) sections.push(el("p", "deals-card-note", "אין מספיק נתונים לפילוח בתקופה הזו."));
+    periodBody.replaceChildren(...sections);
+  };
+  renderPeriod();
+  periodSection.append(periodBar, periodBody);
+  parts.push(periodSection);
 
   host.replaceChildren(...parts);
   host.hidden = false;
