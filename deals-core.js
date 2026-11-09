@@ -315,7 +315,8 @@ var LRDeals = (() => {
     return match ? Number(match[1]) : null;
   };
 
-  // filters: { query, city, source ("yad2" | "madlan" | "both"), rooms/sqm/price/ppsm/year/house: { min, max } }
+  // filters: { query, city, source ("yad2" | "madlan" | "both"), rooms/sqm/floor/price/ppsm/year/house: { min, max } }
+  // (קומה: קרקע = 0; עסקה בלי קומה ידועה לא עוברת סינון קומה)
   function filterDeals(store, filters = {}) {
     const { words, numbers, houseRange } = parseDealsQuery(filters.query);
     const city = filters.city ? normCity(filters.city) : "";
@@ -339,6 +340,7 @@ var LRDeals = (() => {
       if (!inRange(house, range("house").min, range("house").max)) continue;
       if (!inRange(deal.rooms, range("rooms").min, range("rooms").max)) continue;
       if (!inRange(deal.sqm, range("sqm").min, range("sqm").max)) continue;
+      if (!inRange(deal.floor, range("floor").min, range("floor").max)) continue;
       if (!inRange(deal.price, range("price").min, range("price").max)) continue;
       if (!inRange(dealPpsm(deal), range("ppsm").min, range("ppsm").max)) continue;
       if (!inRange(Number(String(deal.date).slice(0, 4)), range("year").min, range("year").max)) continue;

@@ -157,6 +157,21 @@ test("deal search understands house numbers and ranges: 'בלוי 28-30', 'בל�
   assert.equal(houses("בלוי").length, 8);
 });
 
+test("deal search filters by floor range, ground floor is 0, unknown floor is left out", () => {
+  const make = (house, floor) => Deals.fromYad2({
+    ...yad2Result,
+    address: { ...yad2Result.address, houseNumber: house },
+    floor, saleDate: "2025-01-01", price: 2_000_000 + house,
+  });
+  const store = Deals.mergeAll({}, [make(1, 0), make(2, 3), make(3, 7), make(4, 15), make(5, null)], 1).store;
+  const floors = (range) => Deals.filterDeals(store, { floor: range }).map(([, deal]) => deal.floor).sort((a, b) => a - b);
+  assert.deepEqual(floors({ min: 0, max: 0 }), [0]);
+  assert.deepEqual(floors({ min: 3, max: 10 }), [3, 7]);
+  assert.deepEqual(floors({ min: 8 }), [15]);
+  assert.deepEqual(floors({ max: 3 }), [0, 3]);
+  assert.equal(Deals.filterDeals(store, {}).length, 5);
+});
+
 test("deal analysis breaks down by city, neighborhood, street, size, type and quarter with yearly change", () => {
   const make = (city, hood, street, house, price, sqm, date, type) => Deals.fromYad2({
     ...yad2Result,
