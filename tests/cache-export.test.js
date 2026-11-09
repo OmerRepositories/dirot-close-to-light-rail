@@ -583,3 +583,32 @@ test("Excel export adds analysis formulas, city comparison and a summary sheet",
   assert.ok(summary.includes("<t>פתח תקווה</t>"));
   assert.ok(summary.includes("<v>24000</v>"), "city median price per sqm");
 });
+
+test("Excel export adds a deals sheet, newest first, only when deals exist", async () => {
+  const deals = {
+    "a": { city: "גני תקווה", street: "המשי", house: "15", neighborhood: "גנים", date: "2024-03-01", price: 2_500_000, sqm: 100, rooms: 4.5, floor: 3, totalFloors: 8, buildYear: 2005, propertyType: "דירה", sources: ["yad2", "madlan"] },
+    "b": { city: "גני תקווה", street: "=HYPERLINK(1)", house: "2", date: "2025-06-10", price: 3_000_000, sqm: 120, sources: ["madlan"] },
+  };
+  const workbook = await CacheExport.buildExcel({}, () => {}, Date.UTC(2026, 0, 1), deals);
+  const files = await readZipEntries(workbook);
+  const sheet = files.get("xl/worksheets/sheet4.xml");
+  assert.ok(sheet, "deals sheet exists");
+  assert.ok(files.get("xl/workbook.xml").includes('<sheet name="עסקאות" sheetId="4" r:id="rId5"/>'));
+  assert.ok(files.get("xl/_rels/workbook.xml.rels").includes('Target="worksheets/sheet4.xml"'));
+  assert.ok(files.get("[Content_Types].xml").includes("/xl/worksheets/sheet4.xml"));
+  assert.ok(sheet.includes('<autoFilter ref="A1:N3"/>'));
+  // החדשה ראשונה
+  assert.ok(sheet.indexOf("2025-06-10") < sheet.indexOf("2024-03-01"));
+  assert.ok(sheet.includes('<c r="F3" s="5"><v>2500000</v></c>'));
+  assert.ok(sheet.includes('<c r="H3" s="5"><v>25000</v></c>'));
+  assert.ok(sheet.includes('<c r="I3"><v>4.5</v></c>'));
+  assert.ok(sheet.includes("<t>יד2 + מדלן</t>"));
+  assert.ok(sheet.includes("<t>15</t>"));
+  // טקסט שנראה כמו נוסחה נשמר כטקסט, לא כנוסחה
+  assert.ok(sheet.includes("<t>=HYPERLINK(1)</t>"));
+  assert.ok(!sheet.includes("<f>"));
+
+  const without = await readZipEntries(await CacheExport.buildExcel({}, () => {}, Date.UTC(2026, 0, 1)));
+  assert.ok(!without.has("xl/worksheets/sheet4.xml"));
+  assert.ok(!without.get("xl/workbook.xml").includes("עסקאות"));
+});

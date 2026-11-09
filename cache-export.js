@@ -590,6 +590,69 @@ var LRCacheExport = (() => {
       .replace(/'/g, "&apos;");
   }
 
+  const DEAL_SOURCE_LABELS = { yad2: "יד2", madlan: "מדלן" };
+  const DEAL_COLUMNS = [
+    { label: "תאריך עסקה", width: 13, value: (deal) => deal.date, text: true },
+    { label: "עיר", width: 16, value: (deal) => deal.city, text: true },
+    { label: "שכונה", width: 18, value: (deal) => deal.neighborhood, text: true },
+    { label: "רחוב", width: 20, value: (deal) => deal.street, text: true },
+    { label: "מספר בית", width: 10, value: (deal) => deal.house, text: true },
+    { label: "מחיר (₪)", width: 14, value: (deal) => deal.price, style: 5 },
+    { label: "שטח (מ״ר)", width: 11, value: (deal) => deal.sqm },
+    {
+      label: "מחיר למ״ר (₪)",
+      width: 14,
+      style: 5,
+      value: (deal) => (deal.price > 0 && deal.sqm > 0 ? Math.round(deal.price / deal.sqm) : null),
+    },
+    { label: "חדרים", width: 9, value: (deal) => deal.rooms },
+    { label: "קומה", width: 8, value: (deal) => deal.floor },
+    { label: "קומות בבניין", width: 12, value: (deal) => deal.totalFloors },
+    { label: "שנת בנייה", width: 11, value: (deal) => deal.buildYear },
+    { label: "סוג נכס", width: 14, value: (deal) => deal.propertyType, text: true },
+    {
+      label: "מקור",
+      width: 12,
+      text: true,
+      value: (deal) => (Array.isArray(deal.sources) ? deal.sources.map((source) => DEAL_SOURCE_LABELS[source] || source).join(" + ") : ""),
+    },
+  ];
+
+  // deals: האובייקט השמור של עסקאות האמת ({ מפתח: עסקה }). מחזיר null כשאין עסקאות (אין גיליון)
+  async function buildDealsSheet(deals) {
+    const list = Object.values(deals && typeof deals === "object" ? deals : {})
+      .filter((deal) => deal && typeof deal === "object" && !Array.isArray(deal))
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    if (!list.length) return null;
+    const rows = [];
+    for (let index = 0; index < list.length; index++) {
+      const deal = list[index];
+      const rowNumber = index + 2;
+      const cells = [];
+      DEAL_COLUMNS.forEach((column, columnIndex) => {
+        const value = column.value(deal);
+        const ref = `${columnName(columnIndex)}${rowNumber}`;
+        if (value === undefined || value === null || value === "") return;
+        const number = Number(value);
+        if (!column.text && typeof value !== "boolean" && String(value).trim() !== "" && Number.isFinite(number)) {
+          cells.push(`<c r="${ref}"${column.style ? ` s="${column.style}"` : ""}><v>${number}</v></c>`);
+        } else {
+          cells.push(`<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(String(value))}</t></is></c>`);
+        }
+      });
+      rows.push(`<row r="${rowNumber}">${cells.join("")}</row>`);
+      if ((index + 1) % (BATCH_SIZE * 25) === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const header = DEAL_COLUMNS.map(
+      (column, index) => `<c r="${columnName(index)}1" s="1" t="inlineStr"><is><t>${xmlEscape(column.label)}</t></is></c>`
+    ).join("");
+    const widths = DEAL_COLUMNS.map(
+      (column, index) => `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`
+    ).join("");
+    const lastColumn = columnName(DEAL_COLUMNS.length - 1);
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths}</cols><sheetData><row r="1" ht="30" customHeight="1">${header}</row>${rows.join("")}</sheetData><autoFilter ref="A1:${lastColumn}${list.length + 1}"/></worksheet>`;
+  }
+
   function columnName(index) {
     let name = "";
     for (let number = index + 1; number; number = Math.floor((number - 1) / 26)) {
@@ -660,7 +723,7 @@ var LRCacheExport = (() => {
     });
   }
 
-  async function buildExcel(cache, onProgress = () => {}, now = Date.now()) {
+  async function buildExcel(cache, onProgress = () => {}, now = Date.now(), deals = null) {
     const records = getRecords(cache);
     const amenityKeys = new Set(AMENITY_COLUMNS);
     for (const [, record] of records) {
@@ -915,6 +978,8 @@ var LRCacheExport = (() => {
       .join("");
     const historyLastRow = historyRows.length + 1;
     const historySheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${historyWidths}</cols><sheetData><row r="1" ht="30" customHeight="1">${historyHeader}</row>${historyRows.join("")}</sheetData><autoFilter ref="A1:I${historyLastRow}"/>${historyLinks.length ? `<hyperlinks>${historyLinks.map((link) => `<hyperlink ref="${link.reference}" r:id="${link.id}"/>`).join("")}</hyperlinks>` : ""}</worksheet>`;
+    // ---- גיליון עסקאות אמת (יד2 + מדלן), החדשות קודם
+    const dealsSheet = await buildDealsSheet(deals);
     // ---- גיליון סיכום: נוסחאות על גיליון המודעות, כך שסינון/עריכה שם מתעדכנים כאן
     const range = (key) => `'מודעות'!$${col(key)}$2:$${col(key)}$${Math.max(2, lastRow)}`;
     const typeRange = range("recordType");
@@ -985,9 +1050,9 @@ var LRCacheExport = (() => {
       ),
       "</Relationships>",
     ].join("");
-    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
-    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="סיכום" sheetId="3" r:id="rId4"/><sheet name="מודעות" sheetId="1" r:id="rId1"/><sheet name="היסטוריית מחירים" sheetId="2" r:id="rId2"/></sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`;
-    const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/></Relationships>`;
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>${dealsSheet ? `<Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` : ""}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="סיכום" sheetId="3" r:id="rId4"/><sheet name="מודעות" sheetId="1" r:id="rId1"/><sheet name="היסטוריית מחירים" sheetId="2" r:id="rId2"/>${dealsSheet ? `<sheet name="עסקאות" sheetId="4" r:id="rId5"/>` : ""}</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`;
+    const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>${dealsSheet ? `<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet4.xml"/>` : ""}</Relationships>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="5"><font><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font><font><color rgb="FF0563C1"/><u/><sz val="10"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FF167C72"/><sz val="15"/><name val="Arial"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF167C72"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFCE4D6"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFE2E8F0"/></left><right style="thin"><color rgb="FFE2E8F0"/></right><top style="thin"><color rgb="FFE2E8F0"/></top><bottom style="thin"><color rgb="FFE2E8F0"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="14"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="3" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="3" fontId="0" fillId="4" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="9" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1"><alignment vertical="center"/></xf></cellXfs></styleSheet>`;
     return zipFiles([
       ["[Content_Types].xml", contentTypes],
@@ -1000,6 +1065,7 @@ var LRCacheExport = (() => {
       ["xl/worksheets/sheet2.xml", historySheet],
       ["xl/worksheets/_rels/sheet2.xml.rels", historyRelationships],
       ["xl/worksheets/sheet3.xml", summarySheet],
+      ...(dealsSheet ? [["xl/worksheets/sheet4.xml", dealsSheet]] : []),
     ]);
   }
 

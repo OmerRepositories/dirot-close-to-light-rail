@@ -4175,7 +4175,8 @@ async function exportCache(format) {
         : `מכין קובץ ${formatName}…`;
     };
     if (format === "excel") {
-      LRCacheExport.downloadExcel(await LRCacheExport.buildExcel(stored, progress));
+      const deals = (await storageGet(LRDeals.STORAGE_KEY)) || {};
+      LRCacheExport.downloadExcel(await LRCacheExport.buildExcel(stored, progress, Date.now(), deals));
     } else if (format === "csv") {
       LRCacheExport.downloadCsv(await LRCacheExport.buildCsv(stored, progress));
     } else {
