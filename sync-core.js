@@ -258,6 +258,21 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
   // (הם מחכים בתור) ואת כפתור "סנכרון עכשיו"
   const REQUEST_TIMEOUT_MS = 30_000;
 
+  // אחרי בקשה שנכשלה: האם השרת בכלל זמין? בקשת no-cors מצליחה (תשובה "אטומה") כל עוד יש חיבור לשרת,
+  // גם כשהוא מחזיר שגיאה בלי כותרות CORS. כך מבדילים בין "אין אינטרנט" ל"Supabase מחזיר שגיאה".
+  async function serverReachable(url) {
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 10_000) : null;
+    try {
+      await fetch(`${url}/auth/v1/health`, { mode: "no-cors", ...(controller ? { signal: controller.signal } : {}) });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async function call(settings, path, { method = "GET", body, token, headers = {} } = {}) {
     let response;
     let text;
@@ -278,11 +293,16 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
       text = await response.text();
     } catch (error) {
       const timedOut = controller && controller.signal.aborted;
+      if (timer) clearTimeout(timer);
+      const reachable = timedOut ? null : await serverReachable(settings.url);
       throw Object.assign(
         new Error(timedOut
           ? "שרת הסנכרון לא ענה בזמן (30 שניות). ננסה שוב בסבב הבא."
-          : "אין חיבור לשרת הסנכרון – בדוק את חיבור האינטרנט, או שהפרויקט ב-Supabase מושהה."),
-        { offline: true, timedOut: Boolean(timedOut), cause: error }
+          : reachable
+            // השרת עונה, אבל בלי הרשאת CORS – כך נראית שגיאה של Supabase עצמה (למשל פרויקט מושהה)
+            ? "השרת של Supabase עונה אבל מחזיר שגיאה – כנראה שהפרויקט מושהה או לא זמין. היכנסו ללוח הבקרה של Supabase והפעילו אותו (Restore project)."
+            : "אין חיבור לשרת הסנכרון – בדקו את חיבור האינטרנט ואת כתובת הפרויקט."),
+        { offline: !reachable, serverError: Boolean(reachable), timedOut: Boolean(timedOut), cause: error }
       );
     } finally {
       if (timer) clearTimeout(timer);

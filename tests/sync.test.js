@@ -66,6 +66,24 @@ test("a request the server never answers times out instead of blocking every lat
   }
 });
 
+test("a failed request says whether the internet is down or Supabase answers with an error", async () => {
+  const originalFetch = globalThis.fetch;
+  const settings = { url: "https://demo.example.test", apiKey: "k", accessToken: "t" };
+  try {
+    // השרת זמין (בדיקת no-cors עוברת) אבל הבקשה עצמה נחסמת – כמו פרויקט מושהה בלי כותרות CORS
+    globalThis.fetch = async (_url, options = {}) => {
+      if (options.mode === "no-cors") return { ok: false, status: 0, type: "opaque" };
+      throw new TypeError("Failed to fetch");
+    };
+    await assert.rejects(LRSync.checkTable(settings), (error) => error.serverError === true && /מושהה/.test(error.message));
+    // אין חיבור בכלל
+    globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
+    await assert.rejects(LRSync.checkTable(settings), (error) => error.offline === true && /חיבור האינטרנט/.test(error.message));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("the setup SQL creates one table with row level security and no fixed project details", () => {
   assert.match(LRSync.SETUP_SQL, /create table if not exists public\.lightrail_records/);
   assert.match(LRSync.SETUP_SQL, /enable row level security/);
