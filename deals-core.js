@@ -352,6 +352,151 @@ var LRDeals = (() => {
     };
   }
 
+  // ---------- סטטיסטיקות לתוצאות חיפוש עסקאות ----------
+  // אחוזון בשיטת אינטרפולציה לינארית (p בין 0 ל-1)
+  function quantile(values, p) {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const position = (sorted.length - 1) * p;
+    const low = Math.floor(position);
+    const high = Math.ceil(position);
+    return sorted[low] + (sorted[high] - sorted[low]) * (position - low);
+  }
+
+  const round = (value) => (Number.isFinite(value) ? Math.round(value) : null);
+
+  // מדדים לקבוצת עסקאות: כמות, חציונים, טווח בין־רבעוני של מחיר למ״ר
+  function groupStats(deals) {
+    const ppsm = deals.map(dealPpsm).filter(Number.isFinite);
+    const prices = deals.map((deal) => deal.price).filter((value) => value > 0);
+    const sqm = deals.map((deal) => deal.sqm).filter((value) => value > 0);
+    return {
+      count: deals.length,
+      medianPrice: round(median(prices)),
+      medianPpsm: round(median(ppsm)),
+      p25Ppsm: round(quantile(ppsm, 0.25)),
+      p75Ppsm: round(quantile(ppsm, 0.75)),
+      minPpsm: ppsm.length ? Math.min(...ppsm) : null,
+      maxPpsm: ppsm.length ? Math.max(...ppsm) : null,
+      medianSqm: round(median(sqm)),
+      ppsmCount: ppsm.length,
+    };
+  }
+
+  function bucketStats(deals, buckets, valueOf) {
+    return buckets
+      .map((bucket) => {
+        const inBucket = deals.filter((deal) => {
+          const value = valueOf(deal);
+          return Number.isFinite(value) && value >= bucket.min && value <= bucket.max;
+        });
+        return { label: bucket.label, ...groupStats(inBucket) };
+      })
+      .filter((row) => row.count > 0);
+  }
+
+  const ROOM_BUCKETS = [
+    { label: "עד 2", min: 0, max: 2 },
+    { label: "2.5–3", min: 2.5, max: 3 },
+    { label: "3.5–4", min: 3.5, max: 4 },
+    { label: "4.5–5", min: 4.5, max: 5 },
+    { label: "5.5+", min: 5.5, max: Infinity },
+  ];
+  const FLOOR_BUCKETS = [
+    { label: "קרקע", min: -Infinity, max: 0 },
+    { label: "1–3", min: 1, max: 3 },
+    { label: "4–8", min: 4, max: 8 },
+    { label: "9–15", min: 9, max: 15 },
+    { label: "16+", min: 16, max: Infinity },
+  ];
+  const BUILD_BUCKETS = [
+    { label: "עד 1979", min: 0, max: 1979 },
+    { label: "1980–1999", min: 1980, max: 1999 },
+    { label: "2000–2014", min: 2000, max: 2014 },
+    { label: "2015 ואילך", min: 2015, max: Infinity },
+  ];
+  // שנה שיש בה פחות עסקאות מזה לא נכנסת לחישוב שינוי שנתי (חציון של 1–2 עסקאות לא מייצג)
+  const TREND_MIN_DEALS = 3;
+
+  // list: [[key, deal], ...] כפי ש-filterDeals מחזירה
+  function analyzeDeals(list) {
+    const deals = (Array.isArray(list) ? list : []).map(([, deal]) => deal).filter((deal) => deal && typeof deal === "object");
+    const dated = deals.filter((deal) => /^\d{4}-\d{2}-\d{2}$/.test(String(deal.date)));
+    const byYearMap = new Map();
+    for (const deal of dated) {
+      const year = Number(deal.date.slice(0, 4));
+      if (!byYearMap.has(year)) byYearMap.set(year, []);
+      byYearMap.get(year).push(deal);
+    }
+    const byYear = [...byYearMap.keys()].sort((a, b) => a - b).map((year) => ({ year, ...groupStats(byYearMap.get(year)) }));
+
+    // שינוי במחיר למ״ר: בין שתי השנים האחרונות שיש בהן מספיק עסקאות, וממוצע שנתי לאורך כל התקופה
+    const trendYears = byYear.filter((row) => row.ppsmCount >= TREND_MIN_DEALS && Number.isFinite(row.medianPpsm));
+    let lastChange = null;
+    let annualChange = null;
+    if (trendYears.length >= 2) {
+      const last = trendYears[trendYears.length - 1];
+      const previous = trendYears[trendYears.length - 2];
+      lastChange = {
+        fromYear: previous.year,
+        toYear: last.year,
+        pct: Math.round(((last.medianPpsm / previous.medianPpsm - 1) * 1000)) / 10,
+      };
+      const first = trendYears[0];
+      const span = last.year - first.year;
+      if (span >= 2) {
+        annualChange = {
+          fromYear: first.year,
+          toYear: last.year,
+          pct: Math.round((Math.pow(last.medianPpsm / first.medianPpsm, 1 / span) - 1) * 1000) / 10,
+        };
+      }
+    }
+
+    // לפי בניין (רחוב + מספר בית): הבניינים עם הכי הרבה עסקאות
+    const buildings = new Map();
+    for (const deal of deals) {
+      if (!deal.street) continue;
+      const key = placeKey(deal.city, deal.street, deal.house);
+      if (!buildings.has(key)) buildings.set(key, { city: deal.city, street: deal.street, house: deal.house, deals: [] });
+      buildings.get(key).deals.push(deal);
+    }
+    const byBuilding = [...buildings.values()]
+      .map((building) => {
+        const latest = building.deals.reduce((best, deal) => (String(deal.date) > String(best.date) ? deal : best));
+        return {
+          city: building.city,
+          street: building.street,
+          house: building.house,
+          ...groupStats(building.deals),
+          lastDate: latest.date || null,
+          lastPrice: latest.price || null,
+        };
+      })
+      .sort((a, b) => b.count - a.count || String(b.lastDate).localeCompare(String(a.lastDate)));
+
+    const latest = dated.reduce((best, deal) => (!best || deal.date > best.date ? deal : best), null);
+    const points = dated
+      .map((deal) => ({ date: deal.date, ppsm: dealPpsm(deal), price: deal.price, sqm: deal.sqm, rooms: deal.rooms, floor: deal.floor, street: deal.street, house: deal.house, city: deal.city }))
+      .filter((point) => Number.isFinite(point.ppsm));
+
+    return {
+      overall: groupStats(deals),
+      fromDate: dated.length ? dated.reduce((min, deal) => (deal.date < min ? deal.date : min), dated[0].date) : null,
+      toDate: latest ? latest.date : null,
+      latest: latest || null,
+      byYear,
+      lastChange,
+      annualChange,
+      byRooms: bucketStats(deals, ROOM_BUCKETS, (deal) => deal.rooms),
+      byFloor: bucketStats(deals, FLOOR_BUCKETS, (deal) => deal.floor),
+      byBuildYear: bucketStats(deals, BUILD_BUCKETS, (deal) => deal.buildYear),
+      byBuilding,
+      streetCount: new Set([...buildings.values()].map((building) => `${normCity(building.city)}|${normStreet(building.street)}`)).size,
+      points,
+    };
+  }
+
   // עסקאות לפי עיר ולפי שכונה בשנים האחרונות (ללוח הבקרה). years: כמה שנים כולל השנה הנוכחית.
   function dealsByArea(store, { years = 3, now = Date.now() } = {}) {
     const lastYear = new Date(now).getFullYear();
@@ -419,6 +564,8 @@ var LRDeals = (() => {
     filterDeals,
     sortDeals,
     summarizeDeals,
+    analyzeDeals,
+    quantile,
     dealsByArea,
     placeKey,
   };

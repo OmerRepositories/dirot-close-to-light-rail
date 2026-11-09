@@ -3421,12 +3421,440 @@ function renderDeals() {
     fragment.appendChild(row);
   }
   rowsHost.replaceChildren(fragment);
+  renderDealsStats(list);
   const more = $("dealsMore");
   const remaining = list.length - Math.min(list.length, dealsLimit);
   more.hidden = remaining <= 0;
   more.firstChild.textContent = `מוצגות ${Math.min(list.length, dealsLimit).toLocaleString("he-IL")} מתוך ${list.length.toLocaleString("he-IL")}`;
   more.lastChild.textContent = `הצג עוד ${Math.min(DEALS_PAGE_SIZE, remaining).toLocaleString("he-IL")}`;
 }
+
+// ---------- סטטיסטיקות על תוצאות חיפוש העסקאות ----------
+// מוצגות כשמחפשים כתובת/עיר/שכונה או מסננים: מספרים מרכזיים, מחיר למ״ר לאורך זמן,
+// מחיר חציוני לפי שנה, ופילוח לפי שנה, חדרים, קומה, שנת בנייה ובניין.
+const SVG_NS = "http://www.w3.org/2000/svg";
+let dealsStatsKey = "";
+
+function dealsFiltersActive(filters) {
+  return Object.entries(filters).some(([name, value]) =>
+    name === "query" ? String(value || "").trim() !== "" : typeof value === "object" ? true : Boolean(value)
+  );
+}
+
+function svgEl(tag, attrs = {}, text) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, String(value));
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// שנתות "עגולות" (1/2/5 כפול חזקה של 10) בערך count שנתות
+function niceTicks(min, max, count = 5) {
+  if (!(max > min)) return [min];
+  const raw = (max - min) / count;
+  const power = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * power).find((value) => value >= raw) || 10 * power;
+  const ticks = [];
+  // השנתה האחרונה תמיד מעל המקסימום, כדי שעמודה/נקודה לא תחרוג מהציר
+  for (let value = Math.floor(min / step) * step; ; value += step) {
+    ticks.push(Math.round(value));
+    if (value >= max - step * 1e-9) break;
+  }
+  return ticks;
+}
+
+function shortShekels(value) {
+  if (!Number.isFinite(value)) return "";
+  if (Math.abs(value) >= 1e6) return `₪${(value / 1e6).toLocaleString("he-IL", { maximumFractionDigits: 2 })}M`;
+  if (Math.abs(value) >= 1e3) return `₪${Math.round(value / 1e3).toLocaleString("he-IL")}K`;
+  return `₪${Math.round(value)}`;
+}
+
+function signedPct(value) {
+  if (!Number.isFinite(value)) return "—";
+  // בידוד כיווניות: בלי זה הסימן + קופץ לסוף המספר בטקסט עברי
+  return `\u2066${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toLocaleString("he-IL", { maximumFractionDigits: 1 })}%\u2069`;
+}
+
+// טווח מספרים תמיד משמאל לימין ("2.5–3", "₪20K – ₪24K"), בלי שהכיווניות העברית תהפוך חלק ממנו
+function ltrText(text) {
+  return `\u2066${text}\u2069`;
+}
+
+function dealDateText(date) {
+  return date ? String(date).split("-").reverse().join(".") : "";
+}
+
+function showDealsTip(event, rows) {
+  const tip = $("dealsTip");
+  tip.replaceChildren(
+    ...rows.map(([label, value, strong]) => {
+      const line = document.createElement("div");
+      line.className = "deals-tip-row";
+      const v = document.createElement(strong ? "strong" : "span");
+      v.textContent = value;
+      const l = document.createElement("span");
+      l.className = "deals-tip-label";
+      l.textContent = label;
+      line.append(v, l);
+      return line;
+    })
+  );
+  tip.hidden = false;
+  const pad = 14;
+  const { innerWidth, innerHeight } = window;
+  const rect = tip.getBoundingClientRect();
+  let left = event.clientX + pad;
+  let top = event.clientY + pad;
+  if (left + rect.width > innerWidth - 8) left = event.clientX - rect.width - pad;
+  if (top + rect.height > innerHeight - 8) top = event.clientY - rect.height - pad;
+  tip.style.left = `${Math.max(8, left)}px`;
+  tip.style.top = `${Math.max(8, top)}px`;
+}
+
+function hideDealsTip() {
+  $("dealsTip").hidden = true;
+}
+
+// מחיר למ״ר לאורך זמן: נקודה לכל עסקה, קו של החציון השנתי ורצועה של 50% האמצעיים
+function dealsPpsmChart(stats, width) {
+  const W = width, H = 300, M = { top: 14, right: 16, bottom: 30, left: 64 };
+  const years = stats.byYear.filter((row) => Number.isFinite(row.medianPpsm));
+  const firstYear = Math.min(...years.map((row) => row.year));
+  const lastYear = Math.max(...years.map((row) => row.year));
+  const ppsmValues = stats.points.map((point) => point.ppsm);
+  // ציר Y לפי 2%–98% מהעסקאות, כדי שעסקה חריגה אחת לא תמחץ את כל הגרף
+  let low = Math.min(LRDeals.quantile(ppsmValues, 0.02), ...years.map((row) => row.p25Ppsm));
+  let high = Math.max(LRDeals.quantile(ppsmValues, 0.98), ...years.map((row) => row.p75Ppsm));
+  const padding = Math.max((high - low) * 0.08, high * 0.02);
+  low = Math.max(0, low - padding);
+  high += padding;
+  const ticks = niceTicks(low, high);
+  low = Math.min(low, ticks[0]);
+  high = Math.max(high, ticks[ticks.length - 1]);
+  const x = (t) => M.left + ((t - firstYear) / (lastYear + 1 - firstYear)) * (W - M.left - M.right);
+  const y = (v) => H - M.bottom - ((v - low) / (high - low)) * (H - M.top - M.bottom);
+  const timeOf = (date) => {
+    const [yy, mm, dd] = date.split("-").map(Number);
+    return yy + ((mm - 1) * 30.4 + (dd - 1)) / 365;
+  };
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "deals-chart", role: "img", "aria-label": "מחיר למ״ר לאורך זמן: נקודה לכל עסקה וקו של החציון השנתי" });
+  for (const tick of ticks) {
+    svg.append(
+      svgEl("line", { x1: M.left, x2: W - M.right, y1: y(tick), y2: y(tick), class: "grid" }),
+      svgEl("text", { x: M.left - 8, y: y(tick) + 4, "text-anchor": "end", class: "axis" }, shortShekels(tick))
+    );
+  }
+  const yearStep = Math.ceil((lastYear - firstYear + 1) / 12);
+  for (let year = firstYear; year <= lastYear; year += 1) {
+    if ((year - firstYear) % yearStep) continue;
+    svg.append(svgEl("text", { x: x(year + 0.5), y: H - 10, "text-anchor": "middle", class: "axis" }, String(year)));
+  }
+  // הרצועה והקו נשברים בשנה בלי עסקאות, כדי לא לצייר מגמה שלא נמדדה
+  const segments = [];
+  for (const row of years) {
+    const segment = segments[segments.length - 1];
+    if (segment && row.year === segment[segment.length - 1].year + 1) segment.push(row);
+    else segments.push([row]);
+  }
+  for (const segment of segments) {
+    if (segment.length > 1) {
+      const top = segment.map((row) => `${x(row.year + 0.5)},${y(row.p75Ppsm)}`);
+      const bottom = segment.slice().reverse().map((row) => `${x(row.year + 0.5)},${y(row.p25Ppsm)}`);
+      svg.append(svgEl("polygon", { points: [...top, ...bottom].join(" "), class: "band" }));
+    }
+  }
+  let outside = 0;
+  const dots = svgEl("g", { class: "dots" });
+  for (const point of stats.points) {
+    if (point.ppsm < low || point.ppsm > high) { outside++; continue; }
+    const t = timeOf(point.date);
+    if (t < firstYear || t > lastYear + 1) continue;
+    dots.append(svgEl("circle", { cx: x(t), cy: y(point.ppsm), r: 2.6 }));
+  }
+  svg.append(dots);
+  for (const segment of segments) {
+    if (segment.length > 1) {
+      svg.append(svgEl("polyline", { points: segment.map((row) => `${x(row.year + 0.5)},${y(row.medianPpsm)}`).join(" "), class: "median-line" }));
+    }
+  }
+  for (const row of years) {
+    svg.append(svgEl("circle", { cx: x(row.year + 0.5), cy: y(row.medianPpsm), r: 4.5, class: "median-dot" }));
+  }
+  // סמן אנכי ותיבת מידע לשנה הקרובה לעכבר
+  const cross = svgEl("line", { y1: M.top, y2: H - M.bottom, class: "crosshair", visibility: "hidden" });
+  const hit = svgEl("rect", { x: M.left, y: M.top, width: W - M.left - M.right, height: H - M.top - M.bottom, class: "hit" });
+  svg.append(cross, hit);
+  hit.addEventListener("pointermove", (event) => {
+    const box = svg.getBoundingClientRect();
+    const px = ((event.clientX - box.left) / box.width) * W;
+    const row = years.reduce((best, item) => (Math.abs(x(item.year + 0.5) - px) < Math.abs(x(best.year + 0.5) - px) ? item : best));
+    cross.setAttribute("x1", x(row.year + 0.5));
+    cross.setAttribute("x2", x(row.year + 0.5));
+    cross.setAttribute("visibility", "visible");
+    showDealsTip(event, [
+      [`שנת ${row.year}`, "", false],
+      ["חציון למ״ר", displayPrice(row.medianPpsm), true],
+      ["50% האמצעיים", ltrText(`${displayPrice(row.p25Ppsm)} – ${displayPrice(row.p75Ppsm)}`)],
+      ["מחיר חציוני", displayPrice(row.medianPrice)],
+      ["עסקאות", row.count.toLocaleString("he-IL")],
+    ]);
+  });
+  hit.addEventListener("pointerleave", () => {
+    cross.setAttribute("visibility", "hidden");
+    hideDealsTip();
+  });
+  return { svg, outside };
+}
+
+// מחיר חציוני לפי שנה: עמודה לכל שנה, מאפס
+function dealsPriceChart(stats, width) {
+  const W = width, H = 220, M = { top: 14, right: 16, bottom: 30, left: 64 };
+  const years = stats.byYear.filter((row) => Number.isFinite(row.medianPrice));
+  const firstYear = years[0].year;
+  const lastYear = years[years.length - 1].year;
+  const span = lastYear - firstYear + 1;
+  const ticks = niceTicks(0, Math.max(...years.map((row) => row.medianPrice)) * 1.08, 4);
+  const high = ticks[ticks.length - 1];
+  const slot = (W - M.left - M.right) / span;
+  const barWidth = Math.max(6, Math.min(56, slot * 0.6));
+  const y = (v) => H - M.bottom - (v / high) * (H - M.top - M.bottom);
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "deals-chart", role: "img", "aria-label": "מחיר חציוני לפי שנה" });
+  for (const tick of ticks) {
+    svg.append(
+      svgEl("line", { x1: M.left, x2: W - M.right, y1: y(tick), y2: y(tick), class: "grid" }),
+      svgEl("text", { x: M.left - 8, y: y(tick) + 4, "text-anchor": "end", class: "axis" }, shortShekels(tick))
+    );
+  }
+  const yearStep = Math.ceil(span / 12);
+  for (const row of years) {
+    const cx = M.left + (row.year - firstYear + 0.5) * slot;
+    const top = y(row.medianPrice);
+    const bottom = y(0);
+    const r = Math.min(4, barWidth / 2, bottom - top);
+    const left = cx - barWidth / 2;
+    const right = cx + barWidth / 2;
+    const bar = svgEl("path", {
+      d: `M${left},${bottom} V${top + r} Q${left},${top} ${left + r},${top} H${right - r} Q${right},${top} ${right},${top + r} V${bottom} Z`,
+      class: "bar",
+      tabindex: 0,
+      "aria-label": `${row.year}: ${displayPrice(row.medianPrice)}, ${row.count} עסקאות`,
+    });
+    const tip = (event) => showDealsTip(event, [
+      [`שנת ${row.year}`, "", false],
+      ["מחיר חציוני", displayPrice(row.medianPrice), true],
+      ["שטח חציוני", Number.isFinite(row.medianSqm) ? `${row.medianSqm} מ״ר` : "—"],
+      ["עסקאות", row.count.toLocaleString("he-IL")],
+    ]);
+    bar.addEventListener("pointermove", tip);
+    bar.addEventListener("pointerleave", hideDealsTip);
+    bar.addEventListener("focus", () => {
+      const box = bar.getBoundingClientRect();
+      tip({ clientX: box.left + box.width / 2, clientY: box.top });
+    });
+    bar.addEventListener("blur", hideDealsTip);
+    svg.append(bar);
+    if (!((row.year - firstYear) % yearStep)) {
+      svg.append(svgEl("text", { x: cx, y: H - 10, "text-anchor": "middle", class: "axis" }, String(row.year)));
+    }
+  }
+  return svg;
+}
+
+function dealsStatsTable(columns, rows, onRowClick) {
+  const table = document.createElement("table");
+  table.className = "city-table deals-stats-table";
+  const head = table.createTHead().insertRow();
+  for (const column of columns) {
+    const th = document.createElement("th");
+    th.textContent = column.label;
+    head.appendChild(th);
+  }
+  const body = table.createTBody();
+  for (const row of rows) {
+    const tr = body.insertRow();
+    for (const column of columns) {
+      const td = tr.insertCell();
+      const value = column.value(row);
+      td.textContent = value === null || value === undefined ? "—" : String(value);
+      if (column.className) td.className = column.className;
+    }
+    if (onRowClick) {
+      tr.tabIndex = 0;
+      tr.addEventListener("click", () => onRowClick(row));
+      tr.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") onRowClick(row);
+      });
+    } else {
+      tr.classList.add("static");
+    }
+  }
+  return table;
+}
+
+function renderDealsStats(list) {
+  const host = $("dealsStats");
+  const filters = readDealsFilters();
+  if (!dealsFiltersActive(filters) || !list.length) {
+    host.hidden = true;
+    host.replaceChildren();
+    dealsStatsKey = "";
+    return;
+  }
+  // "הצג עוד" ומיון לא משנים את הסטטיסטיקה – לא בונים מחדש
+  const key = `${dealsVersion}|${JSON.stringify(filters)}|${list.length}`;
+  if (key === dealsStatsKey && !host.hidden) return;
+  dealsStatsKey = key;
+  const stats = LRDeals.analyzeDeals(list);
+  // הגרפים מצוירים ברוחב האמיתי (לא מתיחה של viewBox), כך שהטקסט נשאר בגודל קבוע
+  host.hidden = false;
+  // (רוחב הכרטיס פחות הריפוד; ההפרש הקטן כשמופיע פס גלילה נבלע ב-viewBox)
+  const chartWidth = Math.max(320, host.clientWidth - 38);
+  const el = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const tile = (label, value, note) => {
+    const card = el("div", "stat-tile");
+    card.append(el("span", "stat-label", label), el("strong", "stat-value", value));
+    if (note) card.append(el("span", "stat-note", note));
+    return card;
+  };
+  const card = (title, note) => {
+    const box = el("section", "dash-card");
+    box.append(el("h3", "", title));
+    if (note) box.append(el("p", "deals-card-note", note));
+    return box;
+  };
+  const o = stats.overall;
+  const parts = [];
+
+  const tiles = el("div", "stat-row compact");
+  tiles.append(
+    tile("עסקאות", o.count.toLocaleString("he-IL"), stats.fromDate ? ltrText(`${dealDateText(stats.fromDate)} – ${dealDateText(stats.toDate)}`) : ""),
+    tile("מחיר חציוני", displayPrice(o.medianPrice) || "—", Number.isFinite(o.medianSqm) ? `שטח חציוני ${o.medianSqm} מ״ר` : ""),
+    tile("מחיר חציוני למ״ר", displayPrice(o.medianPpsm) || "—", Number.isFinite(o.p25Ppsm) ? `50% האמצעיים: ${ltrText(`${displayPrice(o.p25Ppsm)} – ${displayPrice(o.p75Ppsm)}`)}` : ""),
+    tile(
+      "שינוי במחיר למ״ר",
+      stats.lastChange ? signedPct(stats.lastChange.pct) : "—",
+      stats.lastChange
+        ? `מ־${stats.lastChange.fromYear} ל־${stats.lastChange.toYear}` + (stats.annualChange ? ` · ממוצע ${signedPct(stats.annualChange.pct)} בשנה מאז ${stats.annualChange.fromYear}` : "")
+        : "צריך לפחות 3 עסקאות בשנתיים שונות"
+    ),
+    tile(
+      "עסקה אחרונה",
+      stats.latest ? displayPrice(stats.latest.price) : "—",
+      stats.latest
+        ? `${dealDateText(stats.latest.date)} · ${stats.latest.street} ${stats.latest.house}` + (Number.isFinite(stats.latest.sqm) ? ` · ${stats.latest.sqm} מ״ר` : "")
+        : ""
+    ),
+  );
+  parts.push(tiles);
+
+  const chartYears = stats.byYear.filter((row) => Number.isFinite(row.medianPpsm));
+  if (chartYears.length && stats.points.length >= 2) {
+    const box = card("מחיר למ״ר לאורך זמן");
+    const { svg, outside } = dealsPpsmChart(stats, chartWidth);
+    const key = el("div", "split-legend deals-chart-key");
+    const keyItem = (className, text) => {
+      const item = el("span", "legend-item");
+      item.append(el("i", `deals-key ${className}`), el("span", "", text));
+      return item;
+    };
+    key.append(keyItem("dot", "עסקה"), keyItem("line", "חציון שנתי"), keyItem("band", "50% האמצעיים בכל שנה"));
+    if (outside) key.append(el("span", "legend-item muted", `${outside.toLocaleString("he-IL")} עסקאות חריגות מחוץ לגרף`));
+    box.append(svg, key);
+    parts.push(box);
+  }
+  const priceYears = stats.byYear.filter((row) => Number.isFinite(row.medianPrice));
+  if (priceYears.length >= 2) {
+    const box = card("מחיר חציוני לפי שנה");
+    box.append(dealsPriceChart(stats, chartWidth));
+    parts.push(box);
+  }
+
+  // טבלה לפי שנה (גם כגרסה טקסטואלית של הגרפים)
+  if (stats.byYear.length) {
+    const box = card("לפי שנה");
+    const rows = stats.byYear.slice().reverse();
+    const previousOf = new Map(stats.byYear.map((row, index) => [row.year, stats.byYear[index - 1]]));
+    box.append(dealsStatsTable([
+      { label: "שנה", value: (row) => row.year, className: "city-name" },
+      { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
+      { label: "מחיר חציוני", value: (row) => displayPrice(row.medianPrice) || null },
+      { label: "חציון למ״ר", value: (row) => displayPrice(row.medianPpsm) || null },
+      {
+        label: "שינוי למ״ר",
+        value: (row) => {
+          const previous = previousOf.get(row.year);
+          if (!previous || previous.year !== row.year - 1 || !previous.medianPpsm || !row.medianPpsm) return null;
+          return signedPct(Math.round((row.medianPpsm / previous.medianPpsm - 1) * 1000) / 10);
+        },
+      },
+      { label: "50% האמצעיים למ״ר", value: (row) => (Number.isFinite(row.p25Ppsm) ? ltrText(`${shortShekels(row.p25Ppsm)} – ${shortShekels(row.p75Ppsm)}`) : null) },
+      { label: "שטח חציוני", value: (row) => (Number.isFinite(row.medianSqm) ? `${row.medianSqm} מ״ר` : null) },
+    ], rows, (row) => {
+      document.querySelector('[data-deals-min="year"]').value = row.year;
+      document.querySelector('[data-deals-max="year"]').value = row.year;
+      scheduleDealsRender();
+    }));
+    box.append(el("p", "deals-card-note", "לחיצה על שנה מסננת את העסקאות לשנה הזו."));
+    parts.push(box);
+  }
+
+  // פילוחים: חדרים, קומה, שנת בנייה
+  const breakdownColumns = (label) => [
+    { label, value: (row) => (/\d/.test(row.label) && !/[\u0590-\u05ff]/.test(row.label) ? ltrText(row.label) : row.label), className: "city-name" },
+    { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
+    { label: "מחיר חציוני", value: (row) => (Number.isFinite(row.medianPrice) ? shortShekels(row.medianPrice) : null) },
+    { label: "חציון למ״ר", value: (row) => (Number.isFinite(row.medianPpsm) ? shortShekels(row.medianPpsm) : null) },
+    { label: "שטח", value: (row) => (Number.isFinite(row.medianSqm) ? row.medianSqm : null) },
+  ];
+  const grid = el("div", "dash-grid");
+  for (const [title, rows, label] of [
+    ["לפי מספר חדרים", stats.byRooms, "חדרים"],
+    ["לפי קומה", stats.byFloor, "קומה"],
+    ["לפי שנת בנייה", stats.byBuildYear, "נבנה"],
+  ]) {
+    if (!rows.length) continue;
+    const box = card(title);
+    box.append(dealsStatsTable(breakdownColumns(label), rows));
+    grid.appendChild(box);
+  }
+  if (grid.childElementCount) parts.push(grid);
+
+  // בניינים: רק כשהחיפוש כולל יותר מבניין אחד
+  if (stats.byBuilding.length > 1) {
+    const box = card(
+      stats.streetCount > 1 ? "הבניינים עם הכי הרבה עסקאות" : "לפי בניין ברחוב",
+      "לחיצה על בניין מציגה רק את העסקאות שלו."
+    );
+    box.append(dealsStatsTable([
+      { label: "כתובת", value: (row) => `${row.street} ${row.house}${stats.streetCount > 1 ? `, ${row.city}` : ""}`, className: "city-name" },
+      { label: "עסקאות", value: (row) => row.count.toLocaleString("he-IL") },
+      { label: "חציון למ״ר", value: (row) => displayPrice(row.medianPpsm) || null },
+      { label: "מחיר חציוני", value: (row) => displayPrice(row.medianPrice) || null },
+      { label: "עסקה אחרונה", value: (row) => (row.lastDate ? `${dealDateText(row.lastDate)} · ${shortShekels(row.lastPrice)}` : null) },
+    ], stats.byBuilding.slice(0, 12), (row) => {
+      $("dealsQuery").value = `${row.street} ${row.house}`;
+      $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === row.city) ? row.city : "";
+      scheduleDealsRender();
+    }));
+    parts.push(box);
+  }
+
+  host.replaceChildren(...parts);
+  host.hidden = false;
+}
+
+window.addEventListener("resize", debounce(() => {
+  if (activeTab !== "deals" || $("dealsStats").hidden) return;
+  dealsStatsKey = "";
+  renderDeals();
+}, 250));
 
 const scheduleDealsRender = debounce(() => {
   dealsLimit = DEALS_PAGE_SIZE;

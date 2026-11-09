@@ -222,3 +222,49 @@ test("a listing is compared with the most specific level that has enough recent 
   assert.equal(street.count, 4);
   assert.equal(Deals.compareListing({ ...record, address: "הרצל 1, פתח תקווה" }, index, 20_000), null);
 });
+
+test("analyzeDeals: yearly medians, trend, buckets and buildings", () => {
+  const deal = (date, price, sqm, extra = {}) => [
+    `k${date}${price}`,
+    { city: "גני תקווה", street: "דרך אילות", house: "2", date, price, sqm, sources: ["madlan"], ...extra },
+  ];
+  const list = [
+    deal("2022-03-01", 2000000, 100, { rooms: 4, floor: 2, buildYear: 1995 }),
+    deal("2022-06-01", 2200000, 100, { rooms: 4, floor: 5, buildYear: 1995 }),
+    deal("2022-09-01", 2400000, 100, { rooms: 4, floor: 0, buildYear: 1995 }),
+    deal("2024-02-01", 2420000, 100, { rooms: 3, floor: 3 }),
+    deal("2024-05-01", 2662000, 100, { rooms: 5, floor: 10, street: "המשי", house: "15" }),
+    deal("2024-08-01", 2904000, 100, { rooms: 5.5, floor: 20, buildYear: 2018, street: "המשי", house: "15" }),
+    deal("2025-01-01", 3000000, null),
+  ];
+  const stats = Deals.analyzeDeals(list);
+  assert.equal(stats.overall.count, 7);
+  assert.equal(stats.overall.ppsmCount, 6);
+  assert.deepEqual(stats.byYear.map((row) => [row.year, row.count, row.medianPpsm]), [
+    [2022, 3, 22000],
+    [2024, 3, 26620],
+    [2025, 1, null],
+  ]);
+  // 2025 has no price-per-sqm deals, so the trend compares 2022 → 2024
+  assert.deepEqual(stats.lastChange, { fromYear: 2022, toYear: 2024, pct: 21 });
+  assert.deepEqual(stats.annualChange, { fromYear: 2022, toYear: 2024, pct: 10 });
+  assert.deepEqual(stats.byRooms.map((row) => [row.label, row.count]), [["2.5–3", 1], ["3.5–4", 3], ["4.5–5", 1], ["5.5+", 1]]);
+  assert.deepEqual(stats.byFloor.map((row) => [row.label, row.count]), [["קרקע", 1], ["1–3", 2], ["4–8", 1], ["9–15", 1], ["16+", 1]]);
+  assert.deepEqual(stats.byBuildYear.map((row) => [row.label, row.count]), [["1980–1999", 3], ["2015 ואילך", 1]]);
+  assert.equal(stats.byBuilding[0].street, "דרך אילות");
+  assert.equal(stats.byBuilding[0].count, 5);
+  assert.equal(stats.byBuilding[0].lastDate, "2025-01-01");
+  assert.equal(stats.streetCount, 2);
+  assert.equal(stats.points.length, 6);
+  assert.equal(stats.toDate, "2025-01-01");
+  assert.equal(stats.fromDate, "2022-03-01");
+});
+
+test("analyzeDeals: empty input and quantile", () => {
+  const stats = Deals.analyzeDeals([]);
+  assert.equal(stats.overall.count, 0);
+  assert.equal(stats.lastChange, null);
+  assert.deepEqual(stats.byYear, []);
+  assert.equal(Deals.quantile([1, 2, 3, 4, 5], 0.25), 2);
+  assert.equal(Deals.quantile([10, 20], 0.5), 15);
+});
