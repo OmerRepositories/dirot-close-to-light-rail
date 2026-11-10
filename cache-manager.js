@@ -3629,7 +3629,11 @@ function readDealsFilters() {
   return filters;
 }
 
+let dealsCitiesVersion = -1;
 function fillDealsCities() {
+  // רשימת הערים משתנה רק כשהעסקאות נטענות מחדש
+  if (dealsCitiesVersion === dealsVersion) return;
+  dealsCitiesVersion = dealsVersion;
   const select = $("dealsCity");
   const current = select.value;
   const cities = [...new Set(Object.values(dealsStore).map((deal) => deal && deal.city).filter(Boolean))]
@@ -3643,8 +3647,13 @@ function fillDealsCities() {
 function renderDeals() {
   if (activeTab !== "deals") return;
   fillDealsCities();
-  const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSort.key, dealsSort.direction);
-  const summary = LRDeals.summarizeDeals(list);
+  // סינון, מיון וסיכום נשמרים לפי המסננים: חזרה ללשונית או "הצג עוד" לא מחשבים הכל מחדש
+  const listKey = `${dealsVersion}|${JSON.stringify(readDealsFilters())}|${dealsSort.key}|${dealsSort.direction}`;
+  if (dealsListMemo.key !== listKey) {
+    const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSort.key, dealsSort.direction);
+    dealsListMemo = { key: listKey, list, summary: LRDeals.summarizeDeals(list) };
+  }
+  const { list, summary } = dealsListMemo;
   const status = $("dealsSummary");
   status.replaceChildren();
   if (!dealsTotal) {
@@ -3700,7 +3709,7 @@ function renderDeals() {
     fragment.appendChild(row);
   }
   rowsHost.replaceChildren(fragment);
-  renderDealsStats(list);
+  scheduleDealsStats(list);
   const more = $("dealsMore");
   const remaining = list.length - Math.min(list.length, dealsLimit);
   more.hidden = remaining <= 0;
@@ -3713,6 +3722,27 @@ function renderDeals() {
 // מחיר חציוני לפי שנה, ופילוח לפי שנה, חדרים, קומה, שנת בנייה ובניין.
 const SVG_NS = "http://www.w3.org/2000/svg";
 let dealsStatsKey = "";
+let dealsListMemo = { key: "", list: [], summary: null };
+// ניתוח לפי רשימה (ולפי תקופה): אותה רשימה = אותה תוצאה, בלי לחשב שוב
+let dealsAnalysisMemo = new WeakMap();
+function analyzeDealsCached(list) {
+  if (!dealsAnalysisMemo.has(list)) dealsAnalysisMemo.set(list, LRDeals.analyzeDeals(list));
+  return dealsAnalysisMemo.get(list);
+}
+
+// הטבלה מוצגת מיד, והסטטיסטיקות (החישוב הכבד) נבנות רגע אחרי – כך המסך נפתח בלי המתנה
+let dealsStatsTimer = 0;
+function scheduleDealsStats(list) {
+  clearTimeout(dealsStatsTimer);
+  const host = $("dealsStats");
+  const filtersKey = `${dealsVersion}|${JSON.stringify(readDealsFilters())}|${list.length}`;
+  if (filtersKey === dealsStatsKey && !host.hidden) return;
+  if (list.length && !host.hidden) host.setAttribute("aria-busy", "true");
+  dealsStatsTimer = setTimeout(() => {
+    host.removeAttribute("aria-busy");
+    if (activeTab === "deals") renderDealsStats(list);
+  }, 30);
+}
 const DEALS_PERIOD_KEY = "lightrailDealsPeriod";
 const DEALS_PERIODS = [
   { years: 1, label: "שנה אחרונה" },
@@ -4101,7 +4131,7 @@ function renderDealsStats(list) {
   const key = `${dealsVersion}|${JSON.stringify(filters)}|${list.length}`;
   if (key === dealsStatsKey && !host.hidden) return;
   dealsStatsKey = key;
-  const stats = LRDeals.analyzeDeals(list);
+  const stats = analyzeDealsCached(list);
   // הגרפים מצוירים ברוחב האמיתי (לא מתיחה של viewBox), כך שהטקסט נשאר בגודל קבוע
   host.hidden = false;
   // (רוחב הכרטיס פחות הריפוד; ההפרש הקטן כשמופיע פס גלילה נבלע ב-viewBox)
@@ -4232,7 +4262,7 @@ function renderDealsStats(list) {
     if (!periodLists.get(years) || !periodLists.get(years).length) years = 0;
     for (const button of periodButtons.children) button.setAttribute("aria-pressed", String(Number(button.dataset.years) === years));
     const periodList = periodLists.get(years);
-    const periodStats = years ? LRDeals.analyzeDeals(periodList) : stats;
+    const periodStats = years ? analyzeDealsCached(periodList) : stats;
     periodNote.textContent = years
       ? `עסקאות מ־${dealDateText(dealsPeriodCutoff(years))} ואילך · ${periodList.length.toLocaleString("he-IL")} עסקאות`
       : "כל העסקאות בחיפוש";

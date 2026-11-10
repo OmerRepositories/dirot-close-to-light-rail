@@ -22,32 +22,45 @@ var LRDeals = (() => {
       .trim();
   }
 
-  function normCity(city) {
-    return cleanText(city);
+  // אותם שמות ערים/רחובות חוזרים עשרות אלפי פעמים – זוכרים את התוצאה במקום להריץ שוב את הביטויים הרגולריים
+  function memoText(fn) {
+    const cache = new Map();
+    return (value) => {
+      const key = value ? String(value) : "";
+      let result = cache.get(key);
+      if (result === undefined) {
+        result = fn(key);
+        if (cache.size > 50000) cache.clear();
+        cache.set(key, result);
+      }
+      return result;
+    };
   }
 
+  const normCity = memoText((city) => cleanText(city));
+
   // סדר המילים לא משנה ("אמיר בנימיני" = "בנימיני אמיר"), כי האתרים לא תמיד כותבים באותו סדר
-  function normStreet(street) {
-    return cleanText(street)
+  const normStreet = memoText((street) =>
+    cleanText(street)
       .split(" ")
       .filter((word) => word && !STREET_PREFIXES.has(word))
       .sort()
-      .join(" ");
-  }
+      .join(" ")
+  );
 
   // "שכונת שיפר" = "שיפר"; כתיב מלא/חסר ("נווה"/"נוה") לא משנה
-  function normHood(hood) {
-    return cleanText(hood)
+  const normHood = memoText((hood) =>
+    cleanText(hood)
       .replace(/^(?:שכונת|שכונה|שכ)\s+/, "")
       .replace(/וו/g, "ו")
       .replace(/יי/g, "י")
-      .trim();
-  }
+      .trim()
+  );
 
-  function normHouse(house) {
+  const normHouse = memoText((house) => {
     const match = cleanText(house).match(/^(\d{1,4})\s*([א-ת])?$/);
     return match ? `${Number(match[1])}${match[2] || ""}` : "";
-  }
+  });
 
   function normDate(value) {
     const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -278,11 +291,17 @@ var LRDeals = (() => {
   }
 
   // ---------- השוואת מודעה לעסקאות ----------
-  function median(values) {
-    if (!values.length) return null;
-    const sorted = [...values].sort((a, b) => a - b);
+  // מיון מספרי מהיר (מערך טיפוסי ממיין מספרים בלי פונקציית השוואה)
+  const sortedNumbers = (values) => Float64Array.from(values).sort();
+
+  function medianOfSorted(sorted) {
+    if (!sorted.length) return null;
     const middle = Math.floor(sorted.length / 2);
     return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  function median(values) {
+    return values.length ? medianOfSorted(sortedNumbers(values)) : null;
   }
 
   // מודעה: הכתובת נשמרת כ"רחוב מספר, עיר"
@@ -531,17 +550,27 @@ var LRDeals = (() => {
     address: (deal) => `${deal.city} ${deal.street} ${String(deal.house).padStart(5, "0")}`,
   };
 
-  // ערכים חסרים תמיד בסוף, בלי קשר לכיוון המיון
+  const hebrewCollator = new Intl.Collator("he");
+
+  // ערכים חסרים תמיד בסוף, בלי קשר לכיוון המיון. הערך של כל עסקה מחושב פעם אחת (לא בכל השוואה),
+  // ותאריכים (YYYY-MM-DD) מושווים כמחרוזות רגילות – מהיר בהרבה מהשוואה לפי שפה
   function sortDeals(list, key = "date", direction = -1) {
     const value = SORT_VALUES[key] || SORT_VALUES.date;
-    return [...list].sort(([, a], [, b]) => {
-      const left = value(a);
-      const right = value(b);
-      const leftMissing = left === null || left === undefined || left === "";
-      const rightMissing = right === null || right === undefined || right === "";
-      if (leftMissing || rightMissing) return leftMissing === rightMissing ? 0 : leftMissing ? 1 : -1;
-      return (typeof left === "string" ? left.localeCompare(right, "he") : left - right) * direction;
+    const plain = key === "date" || !SORT_VALUES[key];
+    const rows = list.map((entry) => {
+      const sortValue = value(entry[1]);
+      return { entry, sortValue, missing: sortValue === null || sortValue === undefined || sortValue === "" || Number.isNaN(sortValue) };
     });
+    rows.sort((a, b) => {
+      if (a.missing || b.missing) return a.missing === b.missing ? 0 : a.missing ? 1 : -1;
+      const left = a.sortValue;
+      const right = b.sortValue;
+      const comparison = typeof left === "string"
+        ? (plain ? (left < right ? -1 : left > right ? 1 : 0) : hebrewCollator.compare(left, right))
+        : left - right;
+      return comparison * direction;
+    });
+    return rows.map((row) => row.entry);
   }
 
   function summarizeDeals(list) {
@@ -560,8 +589,11 @@ var LRDeals = (() => {
   // ---------- סטטיסטיקות לתוצאות חיפוש עסקאות ----------
   // אחוזון בשיטת אינטרפולציה לינארית (p בין 0 ל-1)
   function quantile(values, p) {
-    if (!values.length) return null;
-    const sorted = [...values].sort((a, b) => a - b);
+    return values.length ? quantileOfSorted(sortedNumbers(values), p) : null;
+  }
+
+  function quantileOfSorted(sorted, p) {
+    if (!sorted.length) return null;
     const position = (sorted.length - 1) * p;
     const low = Math.floor(position);
     const high = Math.ceil(position);
@@ -572,17 +604,25 @@ var LRDeals = (() => {
 
   // מדדים לקבוצת עסקאות: כמות, חציונים, טווח בין־רבעוני של מחיר למ״ר
   function groupStats(deals) {
-    const ppsm = deals.map(dealPpsm).filter(Number.isFinite);
-    const prices = deals.map((deal) => deal.price).filter((value) => value > 0);
-    const sqm = deals.map((deal) => deal.sqm).filter((value) => value > 0);
+    const ppsm = [];
+    const prices = [];
+    const sqm = [];
+    for (const deal of deals) {
+      const value = dealPpsm(deal);
+      if (Number.isFinite(value)) ppsm.push(value);
+      if (deal.price > 0) prices.push(deal.price);
+      if (deal.sqm > 0) sqm.push(deal.sqm);
+    }
+    // מיון אחד של המחיר למ״ר משמש לחציון, לאחוזונים ולמינימום/מקסימום
+    const sortedPpsm = sortedNumbers(ppsm);
     return {
       count: deals.length,
       medianPrice: round(median(prices)),
-      medianPpsm: round(median(ppsm)),
-      p25Ppsm: round(quantile(ppsm, 0.25)),
-      p75Ppsm: round(quantile(ppsm, 0.75)),
-      minPpsm: ppsm.length ? Math.min(...ppsm) : null,
-      maxPpsm: ppsm.length ? Math.max(...ppsm) : null,
+      medianPpsm: round(medianOfSorted(sortedPpsm)),
+      p25Ppsm: round(quantileOfSorted(sortedPpsm, 0.25)),
+      p75Ppsm: round(quantileOfSorted(sortedPpsm, 0.75)),
+      minPpsm: sortedPpsm.length ? sortedPpsm[0] : null,
+      maxPpsm: sortedPpsm.length ? sortedPpsm[sortedPpsm.length - 1] : null,
       medianSqm: round(median(sqm)),
       ppsmCount: ppsm.length,
     };
@@ -734,7 +774,7 @@ var LRDeals = (() => {
           lastPrice: latest.price || null,
         };
       })
-      .sort((a, b) => b.count - a.count || String(b.lastDate).localeCompare(String(a.lastDate)));
+      .sort((a, b) => b.count - a.count || (String(b.lastDate) > String(a.lastDate) ? 1 : String(b.lastDate) < String(a.lastDate) ? -1 : 0));
 
     const latest = dated.reduce((best, deal) => (!best || deal.date > best.date ? deal : best), null);
     const points = dated

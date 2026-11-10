@@ -871,7 +871,8 @@ body:not([data-cloud="on"]) .cloud-col { display: none; }
 .cloud-status[data-state="error"] { color: var(--danger); }
 
 /* ---------- סטטיסטיקות בחיפוש עסקאות ---------- */
-.deals-stats { display: grid; gap: 14px; margin: 4px 0 16px; }
+.deals-stats { display: grid; gap: 14px; margin: 4px 0 16px; transition: opacity .15s; }
+.deals-stats[aria-busy="true"] { opacity: .5; }
 .deals-stats .stat-row { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .deals-stats .stat-note { font-variant-numeric: tabular-nums; }
 .deals-card-note { margin: -6px 0 10px; color: var(--muted); font-size: 13px; }
