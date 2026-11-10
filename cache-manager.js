@@ -3400,7 +3400,7 @@ let dealsStore = {};
 
 async function loadDeals() {
   try {
-    const store = (await storageGet(LRDeals.STORAGE_KEY)) || {};
+    const store = await LRDeals.loadAll(chrome.storage.local);
     dealsStore = store;
     dealsTotal = Object.keys(store).length;
     $("dealsCount").textContent = dealsTotal.toLocaleString("he-IL");
@@ -4194,7 +4194,7 @@ async function exportCache(format) {
         : `מכין קובץ ${formatName}…`;
     };
     if (format === "excel") {
-      const deals = (await storageGet(LRDeals.STORAGE_KEY)) || {};
+      const deals = await LRDeals.loadAll(chrome.storage.local);
       LRCacheExport.downloadExcel(await LRCacheExport.buildExcel(stored, progress, Date.now(), deals));
     } else if (format === "csv") {
       LRCacheExport.downloadCsv(await LRCacheExport.buildCsv(stored, progress));
@@ -5117,7 +5117,7 @@ function scheduleCloudIndicators(delay = 300) {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes[LRDeals.STORAGE_KEY]) scheduleDealsReload();
+  if (Object.keys(changes).some(LRDeals.isDealsKey)) scheduleDealsReload();
   if (changes[LRSync.SETTINGS_KEY] || changes[LRSync.HASHES_KEY]) scheduleCloudIndicators(300);
   // שינוי במטמון מגיע לטבלה אחרי עיכוב קצר – מעדכנים את החיווי אחריו
   else if (changes[CACHE_KEY]) scheduleCloudIndicators(1500);

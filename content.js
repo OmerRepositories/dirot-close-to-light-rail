@@ -1596,11 +1596,14 @@
   // השוואת המודעה שבעמוד לעסקאות האמת השמורות (נטען אחרי כל שמירה של עסקאות חדשות)
   function loadRealDeals(entry) {
     if (!entry.listingId) return;
-    chrome.storage.local.get(LRDeals.STORAGE_KEY, (stored) => {
-      if (chrome.runtime.lastError) return;
+    const first = listingCache[cacheKeyForListing(entry.listingId)];
+    if (!first) return;
+    // רק העסקאות של העיר של המודעה – ההשוואה ממילא לא יוצאת מהעיר
+    LRDeals.loadCity(chrome.storage.local, first.city).catch(() => null).then((store) => {
+      if (!store) return;
       const record = listingCache[cacheKeyForListing(entry.listingId)];
       if (!record) return;
-      const index = LRDeals.buildIndex((stored && stored[LRDeals.STORAGE_KEY]) || {});
+      const index = LRDeals.buildIndex(store);
       const ppsmValue = LRCacheData.pricePerSqm(record);
       entry.realDeals = LRDeals.compareListing(record, index, ppsmValue);
       entry.realDealsAll = LRDeals.compareListingAll(record, index, ppsmValue);
@@ -1621,14 +1624,10 @@
     let result = { found: valid.length, added: 0, updated: 0 };
     dealsSavesPending++;
     // כתיבות באותה לשונית אחת אחרי השנייה, כדי ששתי שמירות לא ידרסו זו את זו
-    dealsWrite = dealsWrite.then(() => new Promise((resolve) => {
-      chrome.storage.local.get(LRDeals.STORAGE_KEY, (stored) => {
-        if (chrome.runtime.lastError) return resolve();
-        const merged = LRDeals.mergeAll(stored && stored[LRDeals.STORAGE_KEY], valid);
-        result = { found: valid.length, added: merged.added, updated: merged.updated };
-        if (!merged.added && !merged.updated) return resolve();
-        chrome.storage.local.set({ [LRDeals.STORAGE_KEY]: merged.store }, () => resolve());
-      });
+    dealsWrite = dealsWrite.then(() => LRDeals.saveItems(chrome.storage.local, valid).then((merged) => {
+      result = { found: valid.length, added: merged.added, updated: merged.updated };
+    }, (error) => {
+      console.warn("[lightrail-ext] failed to save real deals", error);
     })).then(() => {
       dealsSavesPending--;
       if (entry) loadRealDeals(entry);

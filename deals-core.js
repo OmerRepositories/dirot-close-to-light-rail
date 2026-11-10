@@ -2,7 +2,10 @@
 // אותה עסקה מופיעה בשני האתרים, לכן המפתח נבנה מהתוכן ולא ממזהה של אתר:
 // עיר | רחוב מנורמל | מספר בית | תאריך עסקה | מחיר. עסקה שנראתה בשני האתרים נשמרת פעם אחת עם שני המקורות.
 var LRDeals = (() => {
+  // הפורמט הישן: כל העסקאות של כל הערים במפתח אחד. היום כל עיר נשמרת במפתח משלה
+  // ("lightrailDeals:בת ים"), כדי שמודעה תקרא ותכתוב רק את העסקאות של העיר שלה
   const STORAGE_KEY = "lightrailDeals";
+  const SHARD_PREFIX = "lightrailDeals:";
   const FETCH_LOG_KEY = "lightrailDealsFetched";
   // כל מודעה ביד2 מביאה עד 10,000 עסקאות; אזורים חופפים, אז בפועל הרבה פחות עסקאות ייחודיות
   const MAX_DEALS = 200000;
@@ -169,6 +172,109 @@ var LRDeals = (() => {
       for (const key of keys.slice(0, keys.length - MAX_DEALS)) delete next[key];
     }
     return { store: next, added, updated };
+  }
+
+  // ---------- שמירה לפי עיר ----------
+  // area: chrome.storage.local (או מימוש עם get/set/remove שמחזירים Promise)
+  function shardKey(city) {
+    return SHARD_PREFIX + normCity(city);
+  }
+
+  function isDealsKey(key) {
+    return key === STORAGE_KEY || String(key).startsWith(SHARD_PREFIX);
+  }
+
+  // העיר נמצאת בתחילת מפתח העסקה (עיר|רחוב|בית|תאריך|מחיר)
+  function cityOfKey(key) {
+    return String(key).split("|")[0];
+  }
+
+  function splitByCity(store) {
+    const shards = {};
+    for (const [key, deal] of Object.entries(store || {})) {
+      const shard = SHARD_PREFIX + cityOfKey(key);
+      (shards[shard] = shards[shard] || {})[key] = deal;
+    }
+    return shards;
+  }
+
+  function joinShards(values) {
+    const store = {};
+    for (const [key, value] of Object.entries(values || {})) {
+      if (isDealsKey(key) && value && typeof value === "object") Object.assign(store, value);
+    }
+    return store;
+  }
+
+  async function dealsKeys(area) {
+    if (typeof area.getKeys === "function") return (await area.getKeys()).filter(isDealsKey);
+    return Object.keys(await area.get(null)).filter(isDealsKey);
+  }
+
+  // העברה חד-פעמית מהמפתח הישן (וגם אחרי שחזור גיבוי ישן): מפצלים לפי עיר, ממזגים עם מה שכבר
+  // נשמר בכל עיר, ורק אחרי שהכל נכתב מוחקים את המפתח הישן
+  async function migrate(area) {
+    const legacy = (await area.get(STORAGE_KEY))[STORAGE_KEY];
+    if (!legacy || typeof legacy !== "object") return 0;
+    const shards = splitByCity(legacy);
+    const existing = await area.get(Object.keys(shards));
+    const next = {};
+    for (const [shard, deals] of Object.entries(shards)) {
+      next[shard] = mergeAll(existing[shard], Object.entries(deals).map(([key, deal]) => ({ key, deal }))).store;
+    }
+    if (Object.keys(next).length) await area.set(next);
+    await area.remove(STORAGE_KEY);
+    return Object.keys(legacy).length;
+  }
+
+  async function loadAll(area) {
+    const keys = await dealsKeys(area);
+    return keys.length ? joinShards(await area.get(keys)) : {};
+  }
+
+  // עסקאות של עיר אחת (כולל המפתח הישן, אם עוד לא הועבר)
+  async function loadCity(area, city) {
+    if (!normCity(city)) return loadAll(area);
+    const shard = shardKey(city);
+    const values = await area.get([shard, STORAGE_KEY]);
+    const legacy = values[STORAGE_KEY];
+    if (!legacy) return values[shard] || {};
+    const prefix = normCity(city) + "|";
+    const store = {};
+    for (const [key, deal] of Object.entries(legacy)) if (key.startsWith(prefix)) store[key] = deal;
+    return Object.assign(store, values[shard] || {});
+  }
+
+  async function hasAny(area) {
+    return (await dealsKeys(area)).length > 0;
+  }
+
+  // ממזג עסקאות חדשות וכותב רק את הערים שהשתנו. מחזיר גם את המצב לפני ואחרי של הערים שנגעו בהן
+  async function saveItems(area, items, now = Date.now()) {
+    await migrate(area);
+    const groups = {};
+    for (const item of items) {
+      if (!item || !item.key) continue;
+      const shard = SHARD_PREFIX + cityOfKey(item.key);
+      (groups[shard] = groups[shard] || []).push(item);
+    }
+    const shards = Object.keys(groups);
+    const stored = shards.length ? await area.get(shards) : {};
+    const before = {};
+    const after = {};
+    const changed = {};
+    let added = 0;
+    let updated = 0;
+    for (const shard of shards) {
+      Object.assign(before, stored[shard] || {});
+      const merged = mergeAll(stored[shard], groups[shard], now);
+      Object.assign(after, merged.store);
+      added += merged.added;
+      updated += merged.updated;
+      if (merged.added || merged.updated) changed[shard] = merged.store;
+    }
+    if (Object.keys(changed).length) await area.set(changed);
+    return { added, updated, before, after };
   }
 
   // ---------- השוואת מודעה לעסקאות ----------
@@ -714,7 +820,17 @@ var LRDeals = (() => {
 
   return {
     STORAGE_KEY,
+    SHARD_PREFIX,
     FETCH_LOG_KEY,
+    shardKey,
+    isDealsKey,
+    splitByCity,
+    joinShards,
+    migrate,
+    loadAll,
+    loadCity,
+    hasAny,
+    saveItems,
     LEVEL_LABELS,
     LEVEL_NAMES,
     LEVEL_MINIMUMS,

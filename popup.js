@@ -333,12 +333,8 @@ async function exportListingCache(format) {
         : `מכין קובץ ${formatName}…`;
     };
     if (format === "excel") {
-      // עסקאות האמת לגיליון "עסקאות" (המפתח של deals-core.js, שלא נטען בחלון הזה)
-      const deals = await new Promise((resolve) => {
-        chrome.storage.local.get("lightrailDeals", (result) => {
-          resolve(!chrome.runtime.lastError && result && result.lightrailDeals ? result.lightrailDeals : {});
-        });
-      });
+      // עסקאות האמת של כל הערים לגיליון "עסקאות"
+      const deals = await LRDeals.loadAll(chrome.storage.local).catch(() => ({}));
       const excel = await LRCacheExport.buildExcel(stored, progress, Date.now(), deals);
       LRCacheExport.downloadExcel(excel);
     } else if (format === "csv") {

@@ -352,3 +352,72 @@ test("neighborhood level: Madlan deals without a neighborhood get one from the b
   const other = Deals.compareListingAll({ address: "הרצל 30, פתח תקווה", city: "פתח תקווה", neighborhood: "מרכז העיר", sqm: 100, rooms: 4 }, index, 20000);
   assert.equal(other.neighborhood.count, 9);
 });
+
+// ---------- שמירה לפי עיר ----------
+function fakeArea(initial = {}) {
+  const data = JSON.parse(JSON.stringify(initial));
+  const pick = (keys) => {
+    if (keys === null) return { ...data };
+    const list = Array.isArray(keys) ? keys : [keys];
+    return Object.fromEntries(list.filter((key) => key in data).map((key) => [key, data[key]]));
+  };
+  return {
+    data,
+    writes: [],
+    async get(keys) { return JSON.parse(JSON.stringify(pick(keys))); },
+    async set(values) { this.writes.push(Object.keys(values)); Object.assign(data, JSON.parse(JSON.stringify(values))); },
+    async remove(keys) { for (const key of [].concat(keys)) delete data[key]; },
+    async getKeys() { return Object.keys(data); },
+  };
+}
+
+const dealIn = (city, street, price) => Deals.mergeAll({}, [{
+  key: Deals.dealKey({ city, street, house: "3", date: "2025-01-01", price }),
+  deal: { city, street, house: "3", date: "2025-01-01", price, sources: ["yad2"] },
+}]).store;
+
+test("saveItems writes each city to its own key and touches only those cities", async () => {
+  const area = fakeArea({ [Deals.shardKey("חולון")]: dealIn("חולון", "סוקולוב", 1500000), other: 1 });
+  const items = [
+    { key: Deals.dealKey({ city: "בת ים", street: "הרצל", house: "3", date: "2025-01-01", price: 2000000 }),
+      deal: { city: "בת ים", street: "הרצל", house: "3", date: "2025-01-01", price: 2000000, sources: ["yad2"] } },
+  ];
+  const result = await Deals.saveItems(area, items);
+  assert.equal(result.added, 1);
+  assert.deepEqual(area.writes, [[Deals.shardKey("בת ים")]]);
+  assert.equal(Object.keys(area.data[Deals.shardKey("בת ים")]).length, 1);
+  assert.equal(Object.keys(area.data[Deals.shardKey("חולון")]).length, 1);
+  // שמירה חוזרת של אותה עסקה לא כותבת כלום
+  const again = await Deals.saveItems(area, items);
+  assert.equal(again.added + again.updated, 0);
+  assert.equal(area.writes.length, 1);
+  assert.equal(Object.keys(again.before).length, 1);
+});
+
+test("migrate splits the old single key by city without losing deals", async () => {
+  const legacy = { ...dealIn("בת ים", "הרצל", 2000000), ...dealIn("בת ים", "בלפור", 2100000), ...dealIn("חולון", "סוקולוב", 1500000) };
+  const area = fakeArea({
+    lightrailDeals: legacy,
+    [Deals.shardKey("חולון")]: dealIn("חולון", "ויצמן", 1600000),
+  });
+  assert.equal(await Deals.migrate(area), 3);
+  assert.equal("lightrailDeals" in area.data, false);
+  assert.equal(Object.keys(area.data[Deals.shardKey("בת ים")]).length, 2);
+  assert.equal(Object.keys(area.data[Deals.shardKey("חולון")]).length, 2);
+  assert.equal(Object.keys(await Deals.loadAll(area)).length, 4);
+  assert.equal(await Deals.migrate(area), 0);
+});
+
+test("loadCity reads one city, including deals still in the old key", async () => {
+  const area = fakeArea({
+    lightrailDeals: dealIn("בת ים", "הרצל", 2000000),
+    [Deals.shardKey("בת ים")]: dealIn("בת ים", "בלפור", 2100000),
+    [Deals.shardKey("חולון")]: dealIn("חולון", "סוקולוב", 1500000),
+  });
+  const store = await Deals.loadCity(area, "בת ים");
+  assert.equal(Object.keys(store).length, 2);
+  assert.ok(Object.keys(store).every((key) => key.startsWith("בת ים|")));
+  assert.equal(Object.keys(await Deals.loadAll(area)).length, 3);
+  assert.equal(await Deals.hasAny(fakeArea({ other: 1 })), false);
+  assert.ok(Deals.isDealsKey(Deals.shardKey("בת ים")) && Deals.isDealsKey("lightrailDeals") && !Deals.isDealsKey("lightrailDealsFetched"));
+});

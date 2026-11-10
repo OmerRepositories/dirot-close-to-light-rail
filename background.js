@@ -95,6 +95,10 @@ function getStations() {
 
 // טעינה מוקדמת של התחנות, כדי שלא יחכו להן כשנכנסים לאתר
 chrome.runtime.onInstalled.addListener(() => getStations().catch(() => {}));
+// עסקאות מהפורמט הישן (מפתח אחד לכל הערים) עוברות לשמירה לפי עיר
+const migrateDeals = () => LRDeals.migrate(chrome.storage.local).catch((error) => console.warn("[lightrail-ext] deals migration failed", error));
+chrome.runtime.onInstalled.addListener(migrateDeals);
+chrome.runtime.onStartup.addListener(migrateDeals);
 chrome.runtime.onStartup.addListener(() => getStations().catch(() => {}));
 
 async function syncRefreshAlarm() {
@@ -552,8 +556,8 @@ async function syncDeals(settings) {
 
   // משיכה. אין עסקאות במחשב אבל כבר סונכרנו בעבר (למשל אחרי התקנה מחדש) – מושכים הכל מההתחלה,
   // אחרת המשיכה "מאז הפעם הקודמת" לא הייתה מחזירה אותן לעולם
-  const localDeals = (await chrome.storage.local.get(LRSync.DEALS_KEY))[LRSync.DEALS_KEY];
-  const hasLocalDeals = Boolean(localDeals && Object.keys(localDeals).length);
+  await LRDeals.migrate(chrome.storage.local);
+  const hasLocalDeals = await LRDeals.hasAny(chrome.storage.local);
   let cursor = hasLocalDeals ? settings.dealsCursor || null : null;
   let since = cursor
     ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
@@ -562,19 +566,19 @@ async function syncDeals(settings) {
   for (;;) {
     const rows = await LRSync.fetchDealChangesSince(settings, since);
     if (!rows.length) break;
-    const stored = await chrome.storage.local.get([LRSync.DEALS_KEY, LRSync.DEAL_HASHES_KEY]);
-    const before = stored[LRSync.DEALS_KEY] || {};
-    const hashes = { ...(stored[LRSync.DEAL_HASHES_KEY] || {}) };
     const items = rows.map(LRSync.rowToDeal).filter(Boolean);
-    const merged = LRDeals.mergeAll(before, items);
+    // נשמר רק בערים של העסקאות שהגיעו
+    const merged = await LRDeals.saveItems(chrome.storage.local, items);
+    const before = merged.before;
+    const stored = await chrome.storage.local.get(LRSync.DEAL_HASHES_KEY);
+    const hashes = { ...(stored[LRSync.DEAL_HASHES_KEY] || {}) };
     for (const { key } of items) {
       // עסקה שהייתה מסונכרנת לפני המשיכה – מסומנת כמסונכרנת גם אחריה. עסקה עם שינוי מקומי שעוד
       // לא נשלח נשארת "שונה", כדי שהמידע הנוסף שלה יישלח לשרת בהמשך.
       const local = before[key];
-      if (!local || hashes[key] === LRSync.hashRecord(local)) hashes[key] = LRSync.hashRecord(merged.store[key]);
+      if (!local || hashes[key] === LRSync.hashRecord(local)) hashes[key] = LRSync.hashRecord(merged.after[key]);
     }
     await chrome.storage.local.set({ [LRSync.DEAL_HASHES_KEY]: hashes });
-    if (merged.added || merged.updated) await chrome.storage.local.set({ [LRSync.DEALS_KEY]: merged.store });
     pulled += merged.added + merged.updated;
     const last = rows[rows.length - 1].updated_at;
     if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
@@ -585,8 +589,8 @@ async function syncDeals(settings) {
   }
 
   // שליחה: רק עסקאות שהשתנו מאז הסנכרון האחרון
-  const stored = await chrome.storage.local.get([LRSync.DEALS_KEY, LRSync.DEAL_HASHES_KEY]);
-  const deals = stored[LRSync.DEALS_KEY] || {};
+  const deals = await LRDeals.loadAll(chrome.storage.local);
+  const stored = await chrome.storage.local.get(LRSync.DEAL_HASHES_KEY);
   const hashes = { ...(stored[LRSync.DEAL_HASHES_KEY] || {}) };
   const keys = LRSync.changedKeys(deals, hashes);
   let pushed = 0;

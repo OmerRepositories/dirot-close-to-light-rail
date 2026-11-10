@@ -207,6 +207,9 @@ function computer(server, initialCache) {
       }
       for (const listener of changeListeners) listener(changes, "local");
     },
+    async remove(keys) {
+      for (const key of [].concat(keys)) delete store[key];
+    },
   };
   const noopEvent = { addListener() {} };
   const chrome = {
@@ -251,8 +254,16 @@ function computer(server, initialCache) {
     syncNow: () => send({ type: "lightrail:sync-now" }),
     setCache: (cache) => local.set({ yad2AmenityCache_v1: cache }),
     cache: () => store.yad2AmenityCache_v1,
-    setDeals: (deals) => local.set({ lightrailDeals: deals }),
-    deals: () => store.lightrailDeals || {},
+    // עסקאות נכתבות בפורמט הישן (מפתח אחד) – הסנכרון מעביר אותן לשמירה לפי עיר
+    setDeals: async (deals) => {
+      for (const key of Object.keys(store)) if (key === "lightrailDeals" || key.startsWith("lightrailDeals:")) delete store[key];
+      await local.set({ lightrailDeals: deals });
+    },
+    deals: () => {
+      const all = {};
+      for (const [key, value] of Object.entries(store)) if (key === "lightrailDeals" || key.startsWith("lightrailDeals:")) Object.assign(all, value);
+      return all;
+    },
   };
 }
 
