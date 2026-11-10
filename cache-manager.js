@@ -279,7 +279,7 @@ function loadPurchaseTaxSettings(render = false) {
       purchaseTaxSettings = LRCacheData.purchaseTaxSettingsFrom(settings);
       document.body.dataset.purchaseTax = settings.showPurchaseTax === false ? "off" : "on";
       const header = document.querySelector("th.price-tax-col");
-      if (header) header.title = `המחיר ועוד מס רכישה למסלול "${purchaseTaxSettings.label}" (נבחר בהגדרות: חישובים ← מס רכישה)`;
+      if (header) header.title = `המחיר ועוד מס רכישה למסלול "${purchaseTaxSettings.label}" (נבחר בהגדרות: חישובים ← מס רכישה). המדרגות נכונות לשנת 2026 – כדאי לוודא שהן עדיין מעודכנות.`;
       if (render) renderRows();
     }
   );
@@ -394,7 +394,7 @@ function renderCloudCell(td, key, record) {
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
   { key: "price", label: "מחיר", sortKey: "price", className: "price-col" },
-  { key: "priceWithTax", label: "כולל מס רכישה", sortKey: "priceWithTax", className: "price-tax-col", title: "כמה הדירה תעלה בפועל: המחיר ועוד מס רכישה לפי המדרגות שבהגדרות (חישובים ← מס רכישה)" },
+  { key: "priceWithTax", label: "כולל מס רכישה", sortKey: "priceWithTax", className: "price-tax-col", title: "כמה הדירה תעלה בפועל: המחיר ועוד מס רכישה לפי המדרגות שבהגדרות (חישובים ← מס רכישה). המדרגות נכונות לשנת 2026 – כדאי לוודא שהן עדיין מעודכנות." },
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
   { key: "sqm", label: "מ״ר", sortKey: "sqm" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },

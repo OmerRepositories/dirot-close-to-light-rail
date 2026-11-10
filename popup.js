@@ -160,8 +160,22 @@ function renderTaxBrackets(brackets) {
     const row = document.createElement("div");
     row.className = "tax-bracket";
     row.dataset.taxRow = String(index);
-    const from = document.createElement("span");
+    // "מ־" ניתן לעריכה: הוא אותו גבול כמו ה"עד" של המדרגה הקודמת (או סכום הפטור במדרגה הראשונה),
+    // ולכן שינוי שלו מעדכן גם את השדה ההוא – אין חורים או חפיפות בין מדרגות
+    const from = document.createElement("input");
+    from.type = "number";
+    from.dataset.thousands = "";
+    from.dataset.taxFrom = String(index);
+    from.min = "0";
     from.className = "tax-from";
+    from.setAttribute("aria-label", `מסכום – מדרגה ${index + 1}`);
+    from.addEventListener("input", () => {
+      const rows = document.querySelectorAll("[data-tax-row]");
+      const target = index === 0
+        ? $("purchaseTaxExemptUpTo")
+        : rows[index - 1].querySelector("[data-tax-up-to]");
+      target.value = from.value;
+    });
     const upTo = document.createElement("input");
     upTo.type = "number";
     upTo.dataset.thousands = "";
@@ -221,7 +235,9 @@ function updateTaxPreview() {
   const exempt = Number($("purchaseTaxExemptUpTo").value) || 0;
   let from = exempt;
   for (const row of document.querySelectorAll("[data-tax-row]")) {
-    row.querySelector(".tax-from").textContent = shekel(from);
+    const fromInput = row.querySelector("[data-tax-from]");
+    // לא דורסים את השדה שמקלידים בו עכשיו
+    if (document.activeElement !== fromInput) fromInput.value = String(from);
     const upTo = Number(row.querySelector("[data-tax-up-to]").value);
     if (upTo > 0) from = upTo;
   }
