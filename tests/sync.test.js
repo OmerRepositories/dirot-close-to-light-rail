@@ -211,6 +211,23 @@ function computer(server, initialCache) {
       for (const key of [].concat(keys)) delete store[key];
     },
   };
+  const syncStore = {};
+  const syncArea = {
+    async get(keys) {
+      const list = keys === null ? Object.keys(syncStore) : [].concat(keys);
+      const out = {};
+      for (const key of list) if (key in syncStore) out[key] = clone(syncStore[key]);
+      return out;
+    },
+    async set(values) {
+      const changes = {};
+      for (const [key, value] of Object.entries(values)) {
+        changes[key] = { oldValue: clone(syncStore[key]), newValue: clone(value) };
+        syncStore[key] = clone(value);
+      }
+      for (const listener of changeListeners) listener(changes, "sync");
+    },
+  };
   const noopEvent = { addListener() {} };
   const chrome = {
     runtime: {
@@ -221,7 +238,7 @@ function computer(server, initialCache) {
       onStartup: noopEvent,
       lastError: null,
     },
-    storage: { local, onChanged: { addListener: (fn) => changeListeners.push(fn) } },
+    storage: { local, sync: syncArea, onChanged: { addListener: (fn) => changeListeners.push(fn) } },
     alarms: { create: async () => {}, clear: async () => {}, get: (_n, cb) => cb && cb(null), onAlarm: noopEvent },
     tabs: { onRemoved: noopEvent, onUpdated: noopEvent },
   };
@@ -254,6 +271,8 @@ function computer(server, initialCache) {
     syncNow: () => send({ type: "lightrail:sync-now" }),
     setCache: (cache) => local.set({ yad2AmenityCache_v1: cache }),
     cache: () => store.yad2AmenityCache_v1,
+    setSettings: (values) => syncArea.set(values),
+    settings: () => clone(syncStore),
     // עסקאות נכתבות בפורמט הישן (מפתח אחד) – הסנכרון מעביר אותן לשמירה לפי עיר
     setDeals: async (deals) => {
       for (const key of Object.keys(store)) if (key === "lightrailDeals" || key.startsWith("lightrailDeals:")) delete store[key];
@@ -464,4 +483,27 @@ test("a computer with older data that connects later never overwrites newer data
   await b.syncNow();
   await a.syncNow();
   assert.equal(a.cache()["yad2:x"].price, 1_850_000);
+});
+
+test("settings (excluded streets, thresholds) sync between computers and never land in the listing cache", async () => {
+  const server = fakeSupabase();
+  const a = computer(server, {});
+  const b = computer(server, {});
+  await a.connect();
+  await b.connect();
+  await a.setSettings({ nearM: 500, blockedStreets: ["הרצל"] });
+  await a.syncNow();
+  await b.syncNow();
+  assert.deepEqual(b.settings(), { nearM: 500, blockedStreets: ["הרצל"] });
+  assert.ok(!("lightrail:settings" in (b.cache() || {})));
+
+  // שינוי מאוחר יותר במחשב השני מנצח וחוזר לראשון
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await b.setSettings({ blockedStreets: ["הרצל", "ויצמן"] });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  await b.syncNow();
+  await a.syncNow();
+  assert.deepEqual(a.settings().blockedStreets, ["הרצל", "ויצמן"]);
+  assert.equal(a.settings().nearM, 500);
+  assert.ok(!("lightrail:settings" in (a.cache() || {})));
 });

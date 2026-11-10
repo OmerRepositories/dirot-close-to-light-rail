@@ -516,7 +516,10 @@ async function syncPull(settings) {
         .filter((item) => item && item.key)
         .map((item) => [item.key, item.at])
     );
-    const relevantRows = rows.filter(
+    // שורת ההגדרות לא נכנסת למטמון המודעות: מוחלת ישירות על chrome.storage.sync
+    const split = LRSync.splitSettingsRows(rows);
+    if (split.settingsRow) await applyRemoteSettings(split.settingsRow);
+    const relevantRows = split.rows.filter(
       (row) => !pendingDeletes.has(row.key) || (Number(row.client_updated_at) || 0) > pendingDeletes.get(row.key)
     );
     const merge = LRSync.mergeRemoteRows(stored[LRSync.CACHE_KEY] || {}, relevantRows);
@@ -543,6 +546,53 @@ async function syncPull(settings) {
   });
   return applied;
 }
+
+// ---------- סנכרון הגדרות (כתובות מוחרגות, ערים לאינדוקס, ספים וכו') ----------
+async function settingsMeta() {
+  const stored = await chrome.storage.local.get(LRSync.SETTINGS_META_KEY);
+  const meta = stored[LRSync.SETTINGS_META_KEY];
+  return meta && typeof meta === "object" ? meta : {};
+}
+
+async function applyRemoteSettings(row) {
+  const local = await chrome.storage.sync.get(null);
+  const plan = LRSync.remoteSettingsToApply(await settingsMeta(), row, local);
+  if (!plan) return false;
+  // קודם ה-meta ואז הכתיבה: כך מאזין השינויים מזהה שזו הכתיבה שלנו ולא "שינוי מקומי" לשליחה
+  const expected = { ...local, ...(plan.settings || {}) };
+  await chrome.storage.local.set({
+    [LRSync.SETTINGS_META_KEY]: { updatedAt: plan.updatedAt, syncedAt: plan.updatedAt, pushedHash: LRSync.settingsHash(expected) },
+  });
+  if (plan.settings) await chrome.storage.sync.set(plan.settings);
+  return Boolean(plan.settings);
+}
+
+async function pushSettings(settings) {
+  const local = await chrome.storage.sync.get(null);
+  const plan = LRSync.settingsRowToPush(await settingsMeta(), local, settings.userId);
+  if (!plan) return false;
+  await LRSync.upsertRows(settings, [plan.row]);
+  await chrome.storage.local.set({
+    [LRSync.SETTINGS_META_KEY]: { updatedAt: plan.updatedAt, syncedAt: plan.updatedAt, pushedHash: plan.hash },
+  });
+  return true;
+}
+
+let settingsPushTimer = null;
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync") return;
+  (async () => {
+    const meta = await settingsMeta();
+    const hash = LRSync.settingsHash(await chrome.storage.sync.get(null));
+    if (hash === meta.pushedHash) return;
+    await chrome.storage.local.set({ [LRSync.SETTINGS_META_KEY]: { ...meta, updatedAt: Date.now() } });
+    // ההגדרות נשמרות תוך כדי הקלדה – שולחים כמה שניות אחרי השינוי האחרון
+    clearTimeout(settingsPushTimer);
+    settingsPushTimer = setTimeout(() => {
+      runSync("push").catch(() => {});
+    }, 5000);
+  })().catch((error) => console.warn("[lightrail-ext] settings change tracking failed", error));
+});
 
 // ---------- סנכרון עסקאות אמת (טבלה נפרדת) ----------
 // אין כאן "מי מנצח": מיזוג עסקה רק משלים שדות חסרים ומאחד מקורות, גם אצלנו וגם בשרת (טריגר),
@@ -611,11 +661,13 @@ function runSync(reason) {
       settings = await ensureSyncSession(settings);
       const pulled = reason === "push" ? 0 : await syncPull(settings);
       const pushed = await syncPush(settings);
+      const settingsPushed = await pushSettings(settings);
       const deals = await syncDeals(await syncSettings());
       await saveSyncSettings({
         lastDealsPulled: deals.pulled,
         lastDealsPushed: deals.pushed,
         lastSyncAt: Date.now(),
+        ...(settingsPushed ? { lastSettingsPushAt: Date.now() } : {}),
         lastError: "",
         needsLogin: false,
         ...(pulled ? { lastPulled: pulled } : {}),

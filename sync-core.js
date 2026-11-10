@@ -10,6 +10,8 @@ var LRSync = (() => {
   const DEALS_TABLE = "lightrail_deals";
   const DEALS_KEY = "lightrailDeals";
   const DEAL_HASHES_KEY = "lightrailSyncDealHashes";
+  const SETTINGS_ROW_KEY = "lightrail:settings";
+  const SETTINGS_META_KEY = "lightrailSyncSettingsMeta";
   const PUSH_CHUNK = 200;
   const PULL_PAGE = 1000;
   // חפיפה בקריאת שינויים: שורה שנכתבה ממש לפני שינוי מאוחר יותר לא תפוספס
@@ -146,6 +148,60 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
       throw new Error("כתובת הפרויקט חייבת להתחיל ב-https://");
     }
     return `${url.protocol}//${url.host}`;
+  }
+
+  // ---------- הגדרות (chrome.storage.sync) ----------
+  // נשמרות כשורה אחת שמורה בטבלת הרשומות, ולכן לא צריך להריץ SQL חדש. הגרסה המאוחרת מנצחת
+  // (גם בשרת, לפי client_updated_at). השורה אף פעם לא נכנסת למטמון המודעות.
+  // meta (מקומי): { updatedAt: מתי ההגדרות השתנו כאן לאחרונה, pushedHash: מה שכבר מסונכרן }
+  function settingsHash(settings) {
+    const source = settings && typeof settings === "object" ? settings : {};
+    const sorted = {};
+    for (const key of Object.keys(source).sort()) sorted[key] = source[key];
+    return hashRecord(sorted);
+  }
+
+  function splitSettingsRows(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    const settingsRows = list.filter((row) => row && row.key === SETTINGS_ROW_KEY);
+    return { settingsRow: settingsRows[settingsRows.length - 1] || null, rows: list.filter((row) => !row || row.key !== SETTINGS_ROW_KEY) };
+  }
+
+  // הגדרות מהשרת שצריך להחיל כאן, או null
+  function remoteSettingsToApply(meta, row, localSettings) {
+    if (!row || row.deleted || !row.data || typeof row.data !== "object") return null;
+    const settings = row.data.settings;
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return null;
+    const remoteAt = Number(row.data.updatedAt) || Number(row.client_updated_at) || 0;
+    const localAt = meta && Number.isFinite(meta.updatedAt) ? meta.updatedAt : 0;
+    if (remoteAt <= localAt) return null;
+    if (settingsHash({ ...(localSettings || {}), ...settings }) === settingsHash(localSettings)) {
+      return { settings: null, updatedAt: remoteAt };
+    }
+    return { settings, updatedAt: remoteAt };
+  }
+
+  // שורה לשליחה כשההגדרות המקומיות שונות ממה שכבר מסונכרן, או null
+  function settingsRowToPush(meta, localSettings, userId, now = Date.now()) {
+    const hash = settingsHash(localSettings);
+    if (meta && meta.pushedHash === hash) return null;
+    // מעולם לא שונתה הגדרה כאן (ברירות מחדל בלבד) – אין מה לשלוח
+    if (!Object.keys(localSettings || {}).length && !(meta && meta.pushedHash)) return null;
+    // שינוי שלא קיבל חותמת זמן משלו (updatedAt לא חדש ממה שכבר סונכרן) מקבל את הזמן הנוכחי,
+    // אחרת הוא היה "מפסיד" בשרת לגרסה שכבר קיימת
+    const stamped = meta && Number.isFinite(meta.updatedAt) && meta.updatedAt > (Number(meta.syncedAt) || 0);
+    const updatedAt = stamped ? meta.updatedAt : now;
+    return {
+      hash,
+      updatedAt,
+      row: {
+        user_id: userId,
+        key: SETTINGS_ROW_KEY,
+        data: { settings: localSettings || {}, updatedAt },
+        deleted: false,
+        client_updated_at: updatedAt,
+      },
+    };
   }
 
   // רשומות מקומיות שהשתנו מאז הסנכרון האחרון (לפי hash)
@@ -413,6 +469,12 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
     DEALS_TABLE,
     DEALS_KEY,
     DEAL_HASHES_KEY,
+    SETTINGS_ROW_KEY,
+    SETTINGS_META_KEY,
+    settingsHash,
+    splitSettingsRows,
+    remoteSettingsToApply,
+    settingsRowToPush,
     dealToRow,
     rowToDeal,
     checkDealsTable,
