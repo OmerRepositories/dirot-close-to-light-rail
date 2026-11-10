@@ -663,3 +663,24 @@ test("deals CSV keeps the given order, computes price per sqm and lists merged s
   assert.equal(first.at(-1), "b");
   assert.equal(second[headers.indexOf("עיר")], "'=evil");
 });
+test("full CSV puts listings, price changes, deals, settings and exclusions in one file with a type column", async () => {
+  const day = 86400000;
+  const csv = await CacheExport.buildFullCsv({
+    cache: {
+      "yad2:abc": { title: "דירה", city: "חולון", price: 1900000, sqm: 95, priceHistory: [{ price: 2000000, at: 1700000000000 }, { price: 1900000, at: 1700000000000 + 30 * day }] },
+    },
+    deals: { k1: { city: "חולון", street: "סוקולוב", date: "2025-01-01", price: 1500000, sqm: 75, sources: ["madlan"] } },
+    settings: { nearM: 800, blockedStreets: ["הרצל", "ויצמן"], accessToken: "never" },
+  });
+  const [headers, ...rows] = csv.slice(1).trimEnd().split("\r\n").map(parseCsvRow);
+  const type = headers.indexOf("סוג רשומה");
+  assert.equal(type, 0);
+  const types = rows.map((row) => row[type]);
+  assert.deepEqual(types, ["מודעה", "ירידת מחיר", "עסקת אמת", "החרגת כתובת", "החרגת כתובת", "הגדרה"]);
+  const change = rows[1];
+  assert.equal(change[headers.indexOf("שינוי (₪)")], "-100000");
+  assert.equal(change[headers.indexOf("שינוי (%)")], "-5");
+  assert.equal(rows[2][headers.indexOf("מחיר למ״ר")], "20000");
+  assert.equal(rows[3][headers.indexOf("ערך")], "הרצל");
+  assert.ok(!csv.includes("never"));
+});

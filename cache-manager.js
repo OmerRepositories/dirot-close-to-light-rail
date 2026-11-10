@@ -4287,7 +4287,7 @@ async function loadCache() {
 }
 
 async function exportCache(format) {
-  const buttons = ["exportTxt", "exportCsv", "exportExcel"].map($);
+  const buttons = ["exportTxt", "exportCsv", "exportExcel", "exportFullCsv"].map($);
   const status = $("exportStatus");
   buttons.forEach((button) => {
     button.disabled = true;
@@ -4295,7 +4295,7 @@ async function exportCache(format) {
   });
   status.dataset.error = "false";
   status.textContent = "מכין את המידע לייצוא…";
-  const formatName = format === "excel" ? "Excel" : format.toUpperCase();
+  const formatName = format === "excel" ? "Excel" : format === "full" ? "CSV מלא" : format.toUpperCase();
   try {
     const stored = await storageGet();
     const progress = (complete, total) => {
@@ -4308,6 +4308,13 @@ async function exportCache(format) {
       LRCacheExport.downloadExcel(await LRCacheExport.buildExcel(stored, progress, Date.now(), deals));
     } else if (format === "csv") {
       LRCacheExport.downloadCsv(await LRCacheExport.buildCsv(stored, progress));
+    } else if (format === "full") {
+      const [deals, settings] = await Promise.all([LRDeals.loadAll(chrome.storage.local), storageGetAll("sync")]);
+      LRCacheExport.downloadCsv(
+        await LRCacheExport.buildFullCsv({ cache: stored, deals, settings }, progress),
+        new Date(),
+        "lightrail-full"
+      );
     } else {
       LRCacheExport.downloadTxt(await LRCacheExport.buildTxt(stored, progress));
     }
@@ -4774,6 +4781,7 @@ $("clearTimelineFilters").addEventListener("click", () => {
 });
 $("exportTxt").addEventListener("click", () => exportCache("txt"));
 $("exportCsv").addEventListener("click", () => exportCache("csv"));
+$("exportFullCsv").addEventListener("click", () => exportCache("full"));
 $("exportSearchCsv").addEventListener("click", exportSearchResultsCsv);
 $("exportDealsCsv").addEventListener("click", exportDealsResultsCsv);
 $("exportExcel").addEventListener("click", () => exportCache("excel"));

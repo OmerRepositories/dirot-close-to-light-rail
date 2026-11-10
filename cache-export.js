@@ -695,6 +695,140 @@ var LRCacheExport = (() => {
     return `﻿${lines.join("\r\n")}\r\n`;
   }
 
+  // CSV מלא אחד: כל סוגי המידע באותו קובץ, עם עמודה אחת ("סוג רשומה") שמפרידה ביניהם
+  const FULL_COLUMNS = [
+    "סוג רשומה", "מפתח", "אתר", "מזהה", "קישור", "כותרת", "עיר", "שכונה", "כתובת", "רחוב", "מספר בית",
+    "תאריך", "מחיר", "מחיר קודם", "מחיר חדש", "שינוי (₪)", "שינוי (%)", "שטח (מ״ר)", "מחיר למ״ר",
+    "חדרים", "קומה", "קומות בבניין", "שנת בנייה", "מרחק מהרכבת (מ׳)", "תחנה", "תיווך", "סטטוס",
+    "מקור", "הערות", "שם הגדרה", "ערך", "נתונים מלאים (JSON)",
+  ];
+  const SITE_LABELS = { yad2: "יד2", madlan: "מדלן", facebook: "פייסבוק" };
+  const STATUS_LABELS = { active: "פעילה", removed: "הוסרה" };
+  const SETTING_LIST_TYPES = { blockedStreets: "החרגת כתובת", indexCities: "עיר לאינדוקס" };
+
+  function isoDate(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const date = new Date(value < 1e12 ? value * 1000 : value);
+      return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+    }
+    return typeof value === "string" ? value : "";
+  }
+
+  function fullRow(fields) {
+    return FULL_COLUMNS.map((column) => cell(fields[column])).join(",");
+  }
+
+  async function buildFullCsv({ cache = {}, deals = {}, settings = {} } = {}, onProgress = () => {}) {
+    const records = getRecords(cache);
+    const changes = getPriceTimelineEvents(cache).filter((event) => event.kind === "increase" || event.kind === "decrease");
+    const dealList = dealEntries(deals);
+    const total = records.length + changes.length + dealList.length;
+    let done = 0;
+    const tick = async () => {
+      done++;
+      if (done % (BATCH_SIZE * 5) === 0) {
+        onProgress(done, total);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    };
+    const lines = [FULL_COLUMNS.map(cell).join(",")];
+    onProgress(0, total);
+
+    for (const [key, record] of records) {
+      const { site, listingId } = parseCacheKey(key);
+      lines.push(fullRow({
+        "סוג רשומה": record.recordType === "project" ? "פרויקט" : "מודעה",
+        "מפתח": key,
+        "אתר": SITE_LABELS[site] || site,
+        "מזהה": listingId,
+        "קישור": recordUrl(site, listingId, record),
+        "כותרת": record.title,
+        "עיר": record.city,
+        "שכונה": record.neighborhood,
+        "כתובת": record.address,
+        "תאריך": isoDate(record.listingCreatedAt),
+        "מחיר": record.price,
+        "שטח (מ״ר)": record.sqm,
+        "מחיר למ״ר": LRCacheData.pricePerSqm(record),
+        "חדרים": record.rooms,
+        "קומה": record.floor,
+        "קומות בבניין": record.buildingTopFloor,
+        "מרחק מהרכבת (מ׳)": record.railMeters,
+        "תחנה": record.railStation,
+        "תיווך": typeof record.brokerage === "boolean" ? (record.brokerage ? "כן" : "לא") : "",
+        "סטטוס": STATUS_LABELS[record.listingStatus] || "",
+        "מקור": record.indexedFrom === "search" ? "תוצאות חיפוש" : "עמוד המודעה",
+        "הערות": record.notes,
+        "נתונים מלאים (JSON)": record,
+      }));
+      await tick();
+    }
+
+    for (const change of changes) {
+      const pct = change.fromPrice > 0 ? Math.round((change.change / change.fromPrice) * 1000) / 10 : null;
+      lines.push(fullRow({
+        "סוג רשומה": change.kind === "decrease" ? "ירידת מחיר" : "עליית מחיר",
+        "מפתח": change.key,
+        "אתר": SITE_LABELS[change.site] || change.site,
+        "מזהה": change.listingId,
+        "קישור": change.url,
+        "כותרת": change.title,
+        "עיר": change.city,
+        "כתובת": change.address,
+        "תאריך": isoDate(change.at),
+        "מחיר": change.currentPrice,
+        "מחיר קודם": change.fromPrice,
+        "מחיר חדש": change.toPrice,
+        "שינוי (₪)": change.change,
+        "שינוי (%)": pct,
+        "שטח (מ״ר)": change.sqm,
+        "חדרים": change.rooms,
+        "מקור": change.dateKind === "site" ? "תאריך מהאתר" : change.dateKind === "updated" ? "תאריך עדכון המודעה" : "תאריך זיהוי בתוסף",
+      }));
+      await tick();
+    }
+
+    for (const [key, deal] of dealList) {
+      lines.push(fullRow({
+        "סוג רשומה": "עסקת אמת",
+        "מפתח": key,
+        "עיר": deal.city,
+        "שכונה": deal.neighborhood,
+        "רחוב": deal.street,
+        "מספר בית": deal.house,
+        "תאריך": deal.date,
+        "מחיר": deal.price,
+        "שטח (מ״ר)": deal.sqm,
+        "מחיר למ״ר": deal.price > 0 && deal.sqm > 0 ? Math.round(deal.price / deal.sqm) : null,
+        "חדרים": deal.rooms,
+        "קומה": deal.floor,
+        "קומות בבניין": deal.totalFloors,
+        "שנת בנייה": deal.buildYear,
+        "מקור": Array.isArray(deal.sources) ? deal.sources.map((source) => DEAL_SOURCE_LABELS[source] || source).join(" + ") : "",
+      }));
+      await tick();
+    }
+
+    for (const [name, value] of Object.entries(settings && typeof settings === "object" ? settings : {}).sort()) {
+      // ליתר ביטחון: פרטי התחברות אף פעם לא נכנסים לקובץ
+      if (/token|password|secret|apikey/i.test(name)) continue;
+      if (SETTING_LIST_TYPES[name] && Array.isArray(value)) {
+        for (const item of value) {
+          lines.push(fullRow({ "סוג רשומה": SETTING_LIST_TYPES[name], "שם הגדרה": name, "ערך": item }));
+        }
+        continue;
+      }
+      lines.push(fullRow({
+        "סוג רשומה": "הגדרה",
+        "שם הגדרה": name,
+        "ערך": Array.isArray(value) ? value.join(" | ") : typeof value === "boolean" ? (value ? "כן" : "לא") : value,
+      }));
+    }
+
+    onProgress(total, total);
+    return `﻿${lines.join("\r\n")}\r\n`;
+  }
+
   // deals: האובייקט השמור של עסקאות האמת ({ מפתח: עסקה }). מחזיר null כשאין עסקאות (אין גיליון)
   async function buildDealsSheet(deals) {
     const list = Object.values(deals && typeof deals === "object" ? deals : {})
@@ -1166,6 +1300,7 @@ var LRCacheExport = (() => {
   return {
     buildCsv,
     buildDealsCsv,
+    buildFullCsv,
     downloadCsv,
     buildExcel,
     whatsappMessage,
