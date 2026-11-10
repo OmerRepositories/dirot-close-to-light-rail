@@ -997,13 +997,16 @@ function renderRows() {
   // עיר: כתיב מלא או חסר לא משנה ("פתח תקוה" = "פתח תקווה"), וחלק מהשם מספיק ("רמת" = רמת גן / רמת השרון)
   const searchCity = searchMode ? $("listingSearchCity").value.trim() : "";
   if (searchMode) fillListingCities();
+  const preset = searchMode ? searchPreset : null;
+  if (searchMode) renderSearchPresetChip();
   searchWaiting = searchMode && !(
-    query || site || type || searchStatuses.length || searchCity ||
+    preset || query || site || type || searchStatuses.length || searchCity ||
     searchBoolFilters.length || amenityFilters.length || ranges.size || searchDates
   );
   visibleRecords = searchWaiting ? [] : Object.entries(cache)
     .filter(([key, record]) => {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
+      if (preset && !preset.keys.has(key)) return false;
       if (site && recordSite(key) !== site) return false;
       if (searchCity && !LRStreetFilter.cityAllowed([searchCity], record.city || "")) return false;
       if (type && recordType(record) !== type) return false;
@@ -1743,7 +1746,24 @@ function medianOf(values) {
 }
 
 // פותח את חיפוש המודעה עם מסנן מוכן (לחיצה על מספר בלוח הבקרה)
-function openSearchWith({ status = "", query = "", site = "" } = {}) {
+// קבוצת מודעות מדויקת מלוח הבקרה ("עד 300 מ׳ מהרכבת" → בדיוק המודעות שנספרו שם)
+let searchPreset = null;
+
+function openSearchWithKeys(label, keys) {
+  openSearchWith({ preset: { label, keys: new Set(keys) } });
+}
+
+function renderSearchPresetChip() {
+  const chip = $("searchPresetChip");
+  if (!chip) return;
+  chip.hidden = !searchPreset;
+  if (searchPreset) {
+    chip.querySelector("span").textContent = `מלוח הבקרה: ${searchPreset.label} (${searchPreset.keys.size.toLocaleString("he-IL")})`;
+  }
+}
+
+function openSearchWith({ status = "", query = "", site = "", preset = null } = {}) {
+  searchPreset = preset;
   document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max], [data-search-boolean], [data-search-amenity]")
     .forEach((input) => { input.value = ""; });
   $("listingSearchQuery").value = query;
@@ -1779,6 +1799,17 @@ async function renderDashboard() {
     rooms: new Map(), rail: new Map(),
     amenities: new Map(AMENITIES.map(([amenity]) => [amenity, { yes: 0, known: 0 }])),
     dropsWeek: 0, dropsMonth: 0, dropPcts: [], dropsUnknownDate: 0,
+    // המפתחות שמאחורי כל מספר – לחיצה עליו פותחת בדיוק אותן מודעות
+    keys: {
+      rooms: new Map(), rail: new Map(), amenities: new Map(),
+      nearRail: [], brokerage: [], noBrokerage: [], newToday: [], newWeek: [], newMonth: [],
+      pressureHigh: [], pressureMedium: [], drops: [], rises: [], dropsWeek: new Set(), dropsMonth: new Set(),
+      unknownDropDate: new Set(), amenitiesUnknown: [], relevant: [], searchOnly: [], neverRefreshed: [], refreshedToday: [],
+    },
+  };
+  const push = (map, bucket, key) => {
+    if (!map.has(bucket)) map.set(bucket, []);
+    map.get(bucket).push(key);
   };
   const monthAgo = today - 29 * 86400000;
   const cities = new Map();
@@ -1792,46 +1823,52 @@ async function renderDashboard() {
     const hasAmenities = record.amenities && Object.values(record.amenities).some((v) => typeof v === "boolean");
     const irrelevant = listingRelevance(record).irrelevant;
     if (irrelevant) stats.irrelevant++;
-    else if (!hasAmenities) stats.amenitiesUnknown++;
-    else stats.relevant++;
+    else if (!hasAmenities) { stats.amenitiesUnknown++; stats.keys.amenitiesUnknown.push(key); }
+    else { stats.relevant++; stats.keys.relevant.push(key); }
     // אותו סטטוס כמו בחיפוש: "פעילה" לא כוללת לא רלוונטיות, כך שהמספר תואם למה שנפתח בלחיצה
     const status = LRCacheData.listingStatusKey(site, record, irrelevant);
     if (status === "active") stats.active++;
     else if (status === "removed") stats.removed++;
     else if (status === "unchecked") stats.unchecked++;
-    if (record.indexedFrom === "search") stats.searchOnly++;
+    if (record.indexedFrom === "search") { stats.searchOnly++; stats.keys.searchOnly.push(key); }
     const firstSeen = firstSeenAt(record);
-    if (firstSeen >= today) stats.newToday++;
-    if (firstSeen >= weekAgo) stats.newWeek++;
-    if (firstSeen >= monthAgo) stats.newMonth++;
+    if (firstSeen >= today) { stats.newToday++; stats.keys.newToday.push(key); }
+    if (firstSeen >= weekAgo) { stats.newWeek++; stats.keys.newWeek.push(key); }
+    if (firstSeen >= monthAgo) { stats.newMonth++; stats.keys.newMonth.push(key); }
     const roomsBucket = roomsBucketOf(record.rooms);
     stats.rooms.set(roomsBucket, (stats.rooms.get(roomsBucket) || 0) + 1);
+    push(stats.keys.rooms, roomsBucket, key);
     const railBucket = railBucketOf(record);
     stats.rail.set(railBucket, (stats.rail.get(railBucket) || 0) + 1);
+    push(stats.keys.rail, railBucket, key);
     for (const [amenity, counts] of stats.amenities) {
       const value = record.amenities && record.amenities[amenity];
       if (typeof value !== "boolean") continue;
       counts.known++;
-      if (value) counts.yes++;
+      if (value) { counts.yes++; push(stats.keys.amenities, amenity, key); }
     }
     const refreshed = Math.max(lastRefreshedAt(key, record), Number(log[key]) || 0);
-    if (!refreshed) stats.neverRefreshed++;
-    else if (refreshed >= today) stats.refreshedToday++;
+    if (!refreshed) { stats.neverRefreshed++; stats.keys.neverRefreshed.push(key); }
+    else if (refreshed >= today) { stats.refreshedToday++; stats.keys.refreshedToday.push(key); }
     if (refreshed >= weekAgo) stats.refreshedWeek++;
     const history = validPriceHistory(record);
     if (history.length >= 2) {
       const diff = history[history.length - 1].price - history[0].price;
-      if (diff < 0) stats.drops++;
-      if (diff > 0) stats.rises++;
+      if (diff < 0) { stats.drops++; stats.keys.drops.push(key); }
+      if (diff > 0) { stats.rises++; stats.keys.rises.push(key); }
     }
-    if (record.brokerage === true) stats.brokerage++;
+    if (record.brokerage === true) { stats.brokerage++; stats.keys.brokerage.push(key); }
+    if (record.brokerage === false) stats.keys.noBrokerage.push(key);
     if (Number.isFinite(record.railMeters) && record.railApprox !== true && record.railMeters <= timelinePreferences.nearM) {
       stats.nearRail++;
+      stats.keys.nearRail.push(key);
     }
     const pressure = sellerPressure(record);
     if (pressure) {
       stats.pressure[pressure.level]++;
       stats.pressureScores.push(pressure.score);
+      if (pressure.level === "high") stats.keys.pressureHigh.push(key);
+      if (pressure.level === "medium") stats.keys.pressureMedium.push(key);
     }
     const ppsm = LRCacheData.pricePerSqm(record);
     if (Number.isFinite(record.price)) stats.prices.push(record.price);
@@ -1850,9 +1887,9 @@ async function renderDashboard() {
   for (const event of timelineEventsFor(cache).events) {
     if (event.kind !== "decrease") continue;
     if (event.fromPrice > 0) stats.dropPcts.push((-event.change / event.fromPrice) * 100);
-    if (event.dateKind === "beforeFirstSeen") { stats.dropsUnknownDate++; continue; }
-    if (event.at >= weekAgo) stats.dropsWeek++;
-    if (event.at >= monthAgo) stats.dropsMonth++;
+    if (event.dateKind === "beforeFirstSeen") { stats.dropsUnknownDate++; stats.keys.unknownDropDate.add(event.key); continue; }
+    if (event.at >= weekAgo) { stats.dropsWeek++; stats.keys.dropsWeek.add(event.key); }
+    if (event.at >= monthAgo) { stats.dropsMonth++; stats.keys.dropsMonth.add(event.key); }
   }
   stats.dealAreas = LRDeals.dealsByArea(dealsStore, { years: 3 });
   drawDashboard(stats, cities);
@@ -1925,17 +1962,33 @@ function drawDashboard(stats, cities) {
     if (text !== undefined) node.textContent = text;
     return node;
   };
-  const tile = (label, value, note, onClick, tone) => {
+  const tile = (label, value, note, onClick, tone, icon) => {
     const card = el(onClick ? "button" : "div", "stat-tile");
-    if (onClick) { card.type = "button"; card.addEventListener("click", onClick); }
+    if (onClick) {
+      card.type = "button";
+      card.title = "לחיצה מציגה את המודעות";
+      card.addEventListener("click", onClick);
+    }
     if (tone) card.dataset.tone = tone;
-    card.append(el("span", "stat-label", label), el("strong", "stat-value", value));
+    const head = el("span", "stat-label");
+    if (icon) head.append(el("span", "stat-icon", icon));
+    head.append(label);
+    card.append(head, el("strong", "stat-value", value));
     if (note) card.append(el("span", "stat-note", note));
     return card;
   };
-  const section = (title) => {
+  // פותח בחיפוש מודעה בדיוק את המודעות שנספרו (רק אם יש כאלה)
+  const show = (label, keys) => {
+    const list = [...keys];
+    return list.length ? () => openSearchWithKeys(label, list) : null;
+  };
+  const section = (title, icon, tone) => {
     const box = el("section", "dash-card");
-    box.append(el("h3", "", title));
+    if (tone) box.dataset.tone = tone;
+    const heading = el("h3", "dash-heading");
+    if (icon) heading.append(el("span", "dash-icon", icon));
+    heading.append(title);
+    box.append(heading);
     root.appendChild(box);
     return box;
   };
@@ -1943,21 +1996,22 @@ function drawDashboard(stats, cities) {
   // שורת מספרים ראשית
   const heroes = el("div", "stat-row");
   heroes.append(
-    tile("מודעות שמורות", number(stats.listings), `יד2 ${number(stats.yad2)} · מדלן ${number(stats.madlan)} · ${number(stats.projects)} פרויקטים`, () => openSearchWith({}), "teal"),
-    tile("לא רלוונטיות", number(stats.irrelevant), `${pct(stats.irrelevant, stats.listings)} מהמודעות · לא נכללות ברענון`, () => openSearchWith({ status: "irrelevant" }), "amber"),
-    tile("ירדו במחיר", number(stats.drops), `${number(stats.rises)} עלו במחיר`, () => setActiveTab("priceChanges"), "green"),
+    tile("מודעות שמורות", number(stats.listings), `יד2 ${number(stats.yad2)} · מדלן ${number(stats.madlan)} · ${number(stats.projects)} פרויקטים`, () => openSearchWith({}), "teal", "🏠"),
+    tile("לא רלוונטיות", number(stats.irrelevant), `${pct(stats.irrelevant, stats.listings)} מהמודעות · לא נכללות ברענון`, () => openSearchWith({ status: "irrelevant" }), "amber", "🚫"),
+    tile("ירדו במחיר", number(stats.drops), `${number(stats.rises)} עלו במחיר`, show("ירדו במחיר", stats.keys.drops), "green", "📉"),
     tile(
       "לחץ גבוה למכור",
       number(stats.pressure.high),
       `מדד 60+ מתוך 100 · חציון המדד: ${number(medianOf(stats.pressureScores))}`,
-      () => { openSearchWith({}); sortByPressure(); },
-      "red"
+      stats.keys.pressureHigh.length ? () => { openSearchWithKeys("לחץ גבוה למכור", stats.keys.pressureHigh); sortByPressure(); } : null,
+      "red",
+      "🔥"
     ),
   );
   root.appendChild(heroes);
 
   // התאמה לדרישות: פס מחולק עם תוויות גלויות (הצבעים נבדקו לעיוורון צבעים)
-  const fit = section("התאמה למאפייני החובה שלך");
+  const fit = section("התאמה למאפייני החובה שלך", "🎯", "green");
   const known = stats.relevant + stats.irrelevant;
   const bar = el("div", "split-bar");
   bar.setAttribute("role", "img");
@@ -1970,47 +2024,60 @@ function drawDashboard(stats, cities) {
     bar.appendChild(part);
   }
   const legend = el("div", "split-legend");
+  const legendOpen = {
+    relevant: show("רלוונטיות", stats.keys.relevant),
+    irrelevant: stats.irrelevant ? () => openSearchWith({ status: "irrelevant" }) : null,
+  };
   for (const [kind, count, label] of [["relevant", stats.relevant, "רלוונטיות"], ["irrelevant", stats.irrelevant, "לא רלוונטיות"]]) {
-    const item = el("span", "legend-item");
+    const item = el(legendOpen[kind] ? "button" : "span", "legend-item");
+    if (legendOpen[kind]) { item.type = "button"; item.addEventListener("click", legendOpen[kind]); }
     item.append(el("i", `legend-swatch ${kind}`), el("span", "", `${label} ${number(count)} (${pct(count, known)})`));
     legend.appendChild(item);
   }
-  legend.appendChild(el("span", "legend-item muted", `מאפיינים לא ידועים עדיין: ${number(stats.amenitiesUnknown)}`));
+  const unknownOpen = show("מאפיינים לא ידועים", stats.keys.amenitiesUnknown);
+  const unknownItem = el(unknownOpen ? "button" : "span", "legend-item muted", `מאפיינים לא ידועים עדיין: ${number(stats.amenitiesUnknown)}`);
+  if (unknownOpen) { unknownItem.type = "button"; unknownItem.addEventListener("click", unknownOpen); }
+  legend.appendChild(unknownItem);
   fit.append(known ? bar : el("p", "stat-note", "עוד אין מודעות עם מאפיינים ידועים."), legend);
 
   // סטטוס ורענון
   const status = el("div", "stat-row compact");
   status.append(
-    tile("פעילות", number(stats.active), "נבדקו ברענון יד2", () => openSearchWith({ status: "active" })),
-    tile("הוסרו", number(stats.removed), "כבר לא באתר", () => openSearchWith({ status: "removed" })),
-    tile("לא נבדקו", number(stats.unchecked), `${number(stats.searchOnly)} מהן מהחיפוש בלבד`, () => openSearchWith({ status: "unchecked" })),
-    tile("רועננו היום", number(stats.refreshedToday), `${number(stats.refreshedWeek)} בשבוע האחרון · ${number(stats.neverRefreshed)} אף פעם`, () => setActiveTab("refresh")),
+    tile("פעילות", number(stats.active), "נבדקו ברענון יד2", () => openSearchWith({ status: "active" }), "green", "✅"),
+    tile("הוסרו", number(stats.removed), "כבר לא באתר", () => openSearchWith({ status: "removed" }), "slate", "🗑️"),
+    tile("לא נבדקו", number(stats.unchecked), `${number(stats.searchOnly)} מהן מהחיפוש בלבד`, () => openSearchWith({ status: "unchecked" }), "amber", "❔"),
+    tile("רועננו היום", number(stats.refreshedToday), `${number(stats.refreshedWeek)} בשבוע האחרון · ${number(stats.neverRefreshed)} אף פעם`, show("רועננו היום", stats.keys.refreshedToday), "blue", "🔄"),
   );
-  section("סטטוס ורענון").appendChild(status);
+  section("סטטוס ורענון", "📋", "blue").appendChild(status);
 
   // מחירים
   const prices = el("div", "stat-row compact");
   prices.append(
-    tile("מחיר חציוני", `₪${number(medianOf(stats.prices))}`),
-    tile("מחיר למ״ר חציוני", `₪${number(medianOf(stats.ppsm))}`),
-    tile("גיל מודעה חציוני", `${number(medianOf(stats.ages))} ימים`, `לחץ למכור – בינוני: ${number(stats.pressure.medium)} · נמוך: ${number(stats.pressure.low)}`),
-    tile("קרובות לרכבת", number(stats.nearRail), `עד ${number(timelinePreferences.nearM)} מ׳ · תיווך: ${number(stats.brokerage)}`),
+    tile("מחיר חציוני", `₪${number(medianOf(stats.prices))}`, "", null, "teal", "💰"),
+    tile("מחיר למ״ר חציוני", `₪${number(medianOf(stats.ppsm))}`, "", null, "teal", "📐"),
+    tile("גיל מודעה חציוני", `${number(medianOf(stats.ages))} ימים`, `לחץ למכור – בינוני: ${number(stats.pressure.medium)} · נמוך: ${number(stats.pressure.low)}`, show("לחץ בינוני למכור", stats.keys.pressureMedium), "amber", "⏳"),
+    tile("קרובות לרכבת", number(stats.nearRail), `עד ${number(timelinePreferences.nearM)} מ׳ · תיווך: ${number(stats.brokerage)}`, show(`עד ${number(timelinePreferences.nearM)} מ׳ מהרכבת`, stats.keys.nearRail), "green", "🚊"),
+    tile("עם תיווך", number(stats.brokerage), `ללא תיווך: ${number(stats.keys.noBrokerage.length)}`, show("עם תיווך", stats.keys.brokerage), "red", "🤝"),
   );
-  section("מחירים ומיקום").appendChild(prices);
+  section("מחירים ומיקום", "📍", "teal").appendChild(prices);
 
   // פעילות לאחרונה: מה נוסף ומה ירד במחיר בשבוע ובחודש האחרונים
   const recent = el("div", "stat-row compact");
   recent.append(
-    tile("נשמרו היום", number(stats.newToday), `${number(stats.newWeek)} ב־7 ימים · ${number(stats.newMonth)} ב־30 יום`),
-    tile("ירידות מחיר ב־7 ימים", number(stats.dropsWeek), `${number(stats.dropsMonth)} ב־30 יום`, () => setActiveTab("priceChanges")),
+    tile("נשמרו היום", number(stats.newToday), `${number(stats.newWeek)} ב־7 ימים · ${number(stats.newMonth)} ב־30 יום`, show("נשמרו היום", stats.keys.newToday), "blue", "🆕"),
+    tile("נשמרו ב־7 ימים", number(stats.newWeek), `${number(stats.newMonth)} ב־30 יום`, show("נשמרו ב־7 ימים", stats.keys.newWeek), "blue", "🗓️"),
+    tile("ירידות מחיר ב־7 ימים", number(stats.dropsWeek), `${number(stats.dropsMonth)} ב־30 יום`, show("ירדו במחיר ב־7 ימים", stats.keys.dropsWeek), "green", "⬇️"),
     tile(
       "ירידה חציונית",
       stats.dropPcts.length ? `${(Math.round(medianOf(stats.dropPcts) * 10) / 10).toLocaleString("he-IL")}%` : "—",
-      `מתוך ${number(stats.dropPcts.length)} ירידות מחיר`
+      `מתוך ${number(stats.dropPcts.length)} ירידות מחיר`,
+      () => setActiveTab("priceChanges"),
+      "green",
+      "📊"
     ),
-    tile("ירידות בלי תאריך ידוע", number(stats.dropsUnknownDate), "קרו לפני שהמודעה נשמרה (למשל „ירד ב־” בכרטיס)"),
+    tile("ירידות בלי תאריך ידוע", number(stats.dropsUnknownDate), "קרו לפני שהמודעה נשמרה (למשל „ירד ב־” בכרטיס)", show("ירידות בלי תאריך ידוע", stats.keys.unknownDropDate), "slate", "❓"),
   );
-  section("פעילות לאחרונה").appendChild(recent);
+  section("פעילות לאחרונה", "⚡", "amber").appendChild(recent);
 
   // התפלגויות: פס אחד בגוון אחד לכל שורה, המספר והאחוז כתובים ליד הפס
   const barTable = (headers, items) => {
@@ -2023,6 +2090,12 @@ function drawDashboard(stats, cities) {
     for (const item of items) {
       const row = el("tr");
       if (item.title) row.title = item.title;
+      if (item.open) {
+        row.classList.add("clickable");
+        row.tabIndex = 0;
+        row.addEventListener("click", item.open);
+        row.addEventListener("keydown", (event) => { if (event.key === "Enter") item.open(); });
+      }
       const cell = el("td", "city-count");
       const track = el("span", "city-bar");
       const fill = el("span", "city-bar-fill");
@@ -2036,15 +2109,30 @@ function drawDashboard(stats, cities) {
     return table;
   };
   const distGrid = el("div", "dash-grid");
-  const countItems = (buckets, map) => buckets.map((label) => {
+  const countItems = (buckets, map, keyMap, prefix) => buckets.map((label) => {
     const count = map.get(label) || 0;
-    return { label, value: count, text: `${number(count)} (${pct(count, stats.listings)})`, title: `${label}: ${number(count)} מודעות` };
+    return {
+      label,
+      value: count,
+      text: `${number(count)} (${pct(count, stats.listings)})`,
+      title: `${label}: ${number(count)} מודעות${count ? " · לחיצה מציגה אותן" : ""}`,
+      open: show(`${prefix} ${label}`, keyMap.get(label) || []),
+    };
   });
+  const cardHeading = (box, title, icon, tone) => {
+    box.dataset.tone = tone;
+    const heading = el("h3", "dash-heading");
+    heading.append(el("span", "dash-icon", icon), title);
+    box.appendChild(heading);
+  };
   const roomsBox = el("section", "dash-card");
-  roomsBox.append(el("h3", "", "לפי מספר חדרים"), barTable(["חדרים", "מודעות"], countItems(ROOMS_BUCKETS, stats.rooms)));
+  cardHeading(roomsBox, "לפי מספר חדרים", "🛏️", "blue");
+  roomsBox.append(barTable(["חדרים", "מודעות"], countItems(ROOMS_BUCKETS, stats.rooms, stats.keys.rooms, "חדרים:")));
   const railBox = el("section", "dash-card");
-  railBox.append(el("h3", "", "מרחק מהרכבת הקלה"), barTable(["מרחק", "מודעות"], countItems(RAIL_BUCKETS, stats.rail)));
+  cardHeading(railBox, "מרחק מהרכבת הקלה", "🚊", "green");
+  railBox.append(barTable(["מרחק", "מודעות"], countItems(RAIL_BUCKETS, stats.rail, stats.keys.rail, "מהרכבת:")));
   const amenityBox = el("section", "dash-card");
+  cardHeading(amenityBox, "מאפיינים", "✨", "amber");
   const amenityItems = AMENITIES
     .filter(([amenity]) => stats.amenities.get(amenity).known > 0)
     .map(([amenity, label]) => {
@@ -2054,11 +2142,11 @@ function drawDashboard(stats, cities) {
         label,
         value: share,
         text: `${Math.round(share)}%`,
-        title: `${label}: יש ב־${number(counts.yes)} מתוך ${number(counts.known)} מודעות שידוע עליהן`,
+        title: `${label}: יש ב־${number(counts.yes)} מתוך ${number(counts.known)} מודעות שידוע עליהן · לחיצה מציגה אותן`,
+        open: show(`יש ${label}`, stats.keys.amenities.get(amenity) || []),
       };
     });
   amenityBox.append(
-    el("h3", "", "מאפיינים"),
     amenityItems.length
       ? barTable(["מאפיין", "יש (מתוך הידועות)"], amenityItems)
       : el("p", "stat-note", "עוד אין מודעות עם מאפיינים ידועים.")
@@ -2067,7 +2155,7 @@ function drawDashboard(stats, cities) {
   root.appendChild(distGrid);
 
   // ערים: פסים אופקיים בגוון אחד, המספר כתוב ליד כל פס
-  const cityBox = section("ערים מובילות");
+  const cityBox = section("ערים מובילות", "🏙️", "blue");
   const top = [...cities].sort((a, b) => b[1].count - a[1].count).slice(0, 10);
   const max = top.length ? top[0][1].count : 0;
   const table = el("table", "city-table");
@@ -2121,7 +2209,7 @@ function drawDashboard(stats, cities) {
     return table;
   };
   const yearHeaders = areas.years.map(String);
-  const dealCities = section(`עסקאות אמת לפי עיר (${yearsLabel})`);
+  const dealCities = section(`עסקאות אמת לפי עיר (${yearsLabel})`, "🧾", "green");
   if (!areas.cities.length) {
     dealCities.appendChild(el("p", "stat-note", "עוד אין עסקאות אמת מהשנים האחרונות. הן נאספות כשפותחים מודעות ביד2 ובמדלן."));
   } else {
@@ -2131,7 +2219,7 @@ function drawDashboard(stats, cities) {
       el("p", "stat-note", "לפי העסקאות שנאספו מהמודעות שפתחת – לא כל העסקאות בעיר. עיר שפתחת בה יותר מודעות תיראה עם יותר עסקאות.")
     );
     if (areas.neighborhoods.length) {
-      const dealHoods = section(`שכונות עם הכי הרבה עסקאות (${yearsLabel})`);
+      const dealHoods = section(`שכונות עם הכי הרבה עסקאות (${yearsLabel})`, "🏘️", "teal");
       dealHoods.appendChild(
         dealsTable(["שכונה", "עסקאות", ...yearHeaders, "₪ למ״ר חציוני"], areas.neighborhoods.slice(0, 10),
           (item) => `${item.neighborhood} · ${item.city}`,
@@ -4690,7 +4778,12 @@ $("clearAdvancedFilters").addEventListener("click", () => {
   });
   renderRows();
 });
+$("clearSearchPreset").addEventListener("click", () => {
+  searchPreset = null;
+  renderRows();
+});
 $("clearListingSearch").addEventListener("click", () => {
+  searchPreset = null;
   $("listingSearchQuery").value = "";
   $("listingSearchSite").value = "";
   $("listingSearchCity").value = "";

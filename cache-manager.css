@@ -757,6 +757,35 @@ button.stat-tile:hover { border-color: var(--line-strong); background: var(--sur
 /* התפלגויות בלוח הבקרה: שלושה כרטיסים זה לצד זה, נשברים לשורות במסך צר */
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .dist-table tbody tr { cursor: default; }
+.dist-table tbody tr.clickable { cursor: pointer; }
+.dist-table tbody tr.clickable:hover .city-name { color: var(--tone, var(--action)); text-decoration: underline; }
+
+/* צבעים ואייקונים בלוח הבקרה: כל כרטיס/אריח מקבל גוון משלו (data-tone) */
+.stat-label { display: inline-flex; align-items: center; gap: 7px; }
+.stat-icon, .dash-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--tone-soft, var(--surface-sunk));
+  font-size: 15px;
+  line-height: 1;
+}
+.dash-icon { width: 30px; height: 30px; font-size: 16px; }
+.stat-tile[data-tone] { background: linear-gradient(160deg, var(--tone-soft) 0%, var(--surface) 70%); }
+.stat-row.compact .stat-tile[data-tone] { border-top: 3px solid var(--tone); background: linear-gradient(160deg, var(--tone-soft) 0%, var(--surface-alt) 75%); }
+.stat-tile[data-tone] .stat-value { color: var(--tone); }
+button.stat-tile[data-tone]:hover { border-color: var(--tone); box-shadow: 0 6px 18px -10px var(--tone); }
+.dash-heading { display: flex; align-items: center; gap: 9px; }
+.dash-card[data-tone] { border-top: 3px solid var(--tone); }
+.dash-card[data-tone] .city-bar-fill { background: var(--tone); }
+button.legend-item { padding: 2px 6px; border: 0; border-radius: 6px; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+button.legend-item:hover { background: var(--surface-alt); text-decoration: underline; }
+.search-preset-chip { display: inline-flex; align-items: center; gap: 8px; width: fit-content; margin: 10px 0 0; padding: 5px 6px 5px 12px; border: 1px solid var(--action); border-radius: 999px; color: var(--ink); background: color-mix(in srgb, var(--action) 10%, var(--surface)); font-size: 13px; font-weight: 600; }
+.search-preset-chip[hidden] { display: none; }
+.search-preset-chip button { min-height: 26px; padding: 2px 10px; border-radius: 999px; font-size: 12px; }
 .dist-table .city-count { width: 60%; }
 .dist-table .city-bar-value { min-width: 84px; }
 
