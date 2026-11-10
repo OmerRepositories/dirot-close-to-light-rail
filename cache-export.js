@@ -511,12 +511,12 @@ var LRCacheExport = (() => {
     return `\uFEFF${lines.join("\r\n")}\r\n`;
   }
 
-  function downloadCsv(csv, date = new Date()) {
+  function downloadCsv(csv, date = new Date(), prefix = "listing-cache") {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `listing-cache-${date.toISOString().slice(0, 10)}.csv`;
+    anchor.download = `${prefix}-${date.toISOString().slice(0, 10)}.csv`;
     anchor.hidden = true;
     document.body.appendChild(anchor);
     anchor.click();
@@ -670,6 +670,30 @@ var LRCacheExport = (() => {
       value: (deal) => (Array.isArray(deal.sources) ? deal.sources.map((source) => DEAL_SOURCE_LABELS[source] || source).join(" + ") : ""),
     },
   ];
+
+  function dealEntries(deals) {
+    const entries = Array.isArray(deals) ? deals : Object.entries(deals && typeof deals === "object" ? deals : {});
+    return entries.filter(
+      (entry) => Array.isArray(entry) && entry[1] && typeof entry[1] === "object" && !Array.isArray(entry[1])
+    );
+  }
+
+  // deals: { מפתח: עסקה } או רשימת [מפתח, עסקה] (למשל תוצאות מסוננות), בסדר שהתקבל
+  async function buildDealsCsv(deals, onProgress = () => {}) {
+    const entries = dealEntries(deals);
+    const lines = [[...DEAL_COLUMNS.map((column) => column.label), "מפתח עסקה"].map(cell).join(",")];
+    onProgress(0, entries.length);
+    for (let index = 0; index < entries.length; index++) {
+      const [key, deal] = entries[index];
+      lines.push([...DEAL_COLUMNS.map((column) => column.value(deal)), key].map(cell).join(","));
+      if ((index + 1) % (BATCH_SIZE * 25) === 0 && index + 1 < entries.length) {
+        onProgress(index + 1, entries.length);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    onProgress(entries.length, entries.length);
+    return `﻿${lines.join("\r\n")}\r\n`;
+  }
 
   // deals: האובייקט השמור של עסקאות האמת ({ מפתח: עסקה }). מחזיר null כשאין עסקאות (אין גיליון)
   async function buildDealsSheet(deals) {
@@ -1141,6 +1165,7 @@ var LRCacheExport = (() => {
 
   return {
     buildCsv,
+    buildDealsCsv,
     downloadCsv,
     buildExcel,
     whatsappMessage,

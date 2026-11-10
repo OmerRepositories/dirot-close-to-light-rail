@@ -648,3 +648,18 @@ test("Excel export: WhatsApp message column matches the copy-button text", async
     delete global.LRWhatsAppMessage;
   }
 });
+
+test("deals CSV keeps the given order, computes price per sqm and lists merged sources", async () => {
+  const csv = await CacheExport.buildDealsCsv([
+    ["b", { date: "2025-03-01", city: "פתח תקווה", street: "בלוי", house: "28", price: 2000000, sqm: 100, rooms: 4, floor: 3, sources: ["yad2", "madlan"] }],
+    ["a", { date: "2024-01-01", city: "=evil", price: 1000000 }],
+  ]);
+  assert.equal(csv.charCodeAt(0), 0xfeff);
+  const [headers, first, second] = csv.slice(1).trimEnd().split("\r\n").map(parseCsvRow);
+  assert.equal(headers[0], "תאריך עסקה");
+  assert.equal(headers.at(-1), "מפתח עסקה");
+  assert.equal(first[headers.indexOf("מחיר למ״ר (₪)")], "20000");
+  assert.equal(first[headers.indexOf("מקור")], "יד2 + מדלן");
+  assert.equal(first.at(-1), "b");
+  assert.equal(second[headers.indexOf("עיר")], "'=evil");
+});

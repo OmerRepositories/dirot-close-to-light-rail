@@ -4324,6 +4324,45 @@ async function exportCache(format) {
   }
 }
 
+// ייצוא של מה שמוצג כרגע לפי המסננים (ולא של כל המאגר)
+async function exportCurrentCsv(buttonId, build, prefix) {
+  const button = $(buttonId);
+  const label = button.textContent;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    const csv = await build((done, total) => {
+      button.textContent = total ? `מכין… ${done.toLocaleString("he-IL")} / ${total.toLocaleString("he-IL")}` : "מכין…";
+    });
+    if (csv) LRCacheExport.downloadCsv(csv, new Date(), prefix);
+  } catch (error) {
+    console.error("[lightrail-ext] CSV export failed", error);
+    alert(`הייצוא נכשל: ${error.message || "שגיאה לא ידועה"}`);
+  } finally {
+    button.textContent = label;
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+}
+
+function exportSearchResultsCsv() {
+  if (searchWaiting || !visibleRecords.length) {
+    alert(searchWaiting ? "בחרו מסנן או הקלידו חיפוש כדי שיהיו תוצאות לייצא." : "אין תוצאות לייצוא.");
+    return;
+  }
+  const subset = Object.fromEntries(visibleRecords);
+  exportCurrentCsv("exportSearchCsv", (progress) => LRCacheExport.buildCsv(subset, progress), "listing-search");
+}
+
+function exportDealsResultsCsv() {
+  const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSort.key, dealsSort.direction);
+  if (!list.length) {
+    alert("אין עסקאות לייצוא לפי המסננים הנוכחיים.");
+    return;
+  }
+  exportCurrentCsv("exportDealsCsv", (progress) => LRCacheExport.buildDealsCsv(list, progress), "real-deals");
+}
+
 function downloadBackup(backup) {
   const blob = new Blob([JSON.stringify(backup)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -4735,6 +4774,8 @@ $("clearTimelineFilters").addEventListener("click", () => {
 });
 $("exportTxt").addEventListener("click", () => exportCache("txt"));
 $("exportCsv").addEventListener("click", () => exportCache("csv"));
+$("exportSearchCsv").addEventListener("click", exportSearchResultsCsv);
+$("exportDealsCsv").addEventListener("click", exportDealsResultsCsv);
 $("exportExcel").addEventListener("click", () => exportCache("excel"));
 $("clearPriceHistory").addEventListener("click", clearPriceHistories);
 $("sortSelect").addEventListener("change", () => {

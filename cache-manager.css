@@ -369,6 +369,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .listing-search-panel, .listing-delete-panel { padding: 18px; }
 .search-panel-heading, .timeline-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .timeline-heading { padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 0; }
+.heading-actions { display: flex; flex-direction: column; align-items: end; gap: 6px; flex-shrink: 0; }
+.export-results { flex-shrink: 0; white-space: nowrap; }
 h2, .search-panel-heading h2, .timeline-heading h2 { margin: 0; color: var(--ink); font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
 .search-panel-heading p, .timeline-heading p { max-width: 900px; margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .listing-search-grid, .timeline-filter-grid {

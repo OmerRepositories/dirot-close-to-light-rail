@@ -113,7 +113,10 @@
           <h2>חיפוש מודעה</h2>
           <p>חיפוש וסינון של מודעות שכבר נשמרו בתוסף. אפשר לשלב טווחים, מאפיינים ומילות חיפוש; הסינון לא משנה את המידע במאגר.</p>
         </div>
-        <span id="searchResultCount" class="record-count" aria-live="polite"></span>
+        <span class="heading-actions">
+          <span id="searchResultCount" class="record-count" aria-live="polite"></span>
+          <button id="exportSearchCsv" class="export-results" type="button" title="מוריד קובץ CSV עם המודעות שמוצגות כרגע לפי המסננים">⬇ ייצוא התוצאות ל־CSV</button>
+        </span>
       </div>
       <div class="listing-search-grid">
         <label class="search-field">
@@ -458,6 +461,7 @@
           <h2>חיפוש עסקאות אמת</h2>
           <p>עסקאות שנמכרו בפועל (רשות המסים), כפי שיד2 ומדלן מציגות בעמוד מודעה. עסקאות נאספות כשפותחים מודעות באתרים; אותה עסקה משני האתרים מופיעה פעם אחת.</p>
         </div>
+        <button id="exportDealsCsv" class="export-results" type="button" title="מוריד קובץ CSV עם כל העסקאות שעונות על המסננים (לא רק אלה שמוצגות בטבלה)">⬇ ייצוא העסקאות ל־CSV</button>
       </div>
       <div class="listing-search-grid">
         <label class="search-field">
