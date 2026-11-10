@@ -532,6 +532,9 @@ tbody tr[aria-selected="true"] td { background: var(--action-soft); }
 .history-toggle { min-height: 28px; margin-top: 6px; padding: 2px 9px; color: var(--action); font-size: 13px; }
 .history-toggle:hover { border-color: var(--action); background: var(--action-soft); }
 .row-actions { display: flex; gap: 6px; }
+/* המחיר צמוד לכותרת המודעה ובולט */
+td.price-col { color: var(--ink); font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+th.price-col { color: var(--ink); font-weight: 800; }
 .row-actions button { min-height: 30px; padding: 3px 10px; font-size: 13px; }
 .row-actions .deals-action { border-color: color-mix(in srgb, #16a34a 45%, var(--line)); color: #15803d; background: color-mix(in srgb, #16a34a 9%, var(--surface)); }
 .row-actions .deals-action:hover { background: color-mix(in srgb, #16a34a 16%, var(--surface)); }

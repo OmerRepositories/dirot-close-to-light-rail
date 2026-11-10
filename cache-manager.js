@@ -375,6 +375,9 @@ function renderCloudCell(td, key, record) {
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
+  { key: "price", label: "מחיר", sortKey: "price", className: "price-col" },
+  { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
+  { key: "sqm", label: "מ״ר", sortKey: "sqm" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
   { key: "type", label: "סוג", sortKey: "recordType" },
   { key: "site", label: "אתר", sortKey: "site" },
@@ -385,9 +388,6 @@ const columns = [
   { key: "shelterMeters", label: "מקלט ציבורי (מ׳)", sortKey: "shelterMeters", title: "מרחק למקלט הציבורי הקרוב, כפי שיד2 מציגה בעמוד המודעה" },
   { key: "listingAgeDays", label: "גיל מודעה (ימים)", sortKey: "listingAgeDays", title: "כמה ימים המודעה באוויר; מחושב ונשמר בכל שמירה או רענון של המודעה" },
   { key: "sellerPressure", label: "לחץ למכור", sortKey: "sellerPressure", title: "מדד 0–100: ימים באוויר (עד 60 נק׳), ירידת מחיר מהשיא (עד 30) ומספר הורדות (עד 10)" },
-  { key: "price", label: "מחיר", sortKey: "price" },
-  { key: "sqm", label: "מ״ר", sortKey: "sqm" },
-  { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "brokerage", label: "תיווך", boolean: true, title: "כן / לא / לא ידוע" },
   ...["building", "street", "neighborhood", "city"].map((level) => ({
@@ -1147,6 +1147,7 @@ function renderRows() {
         td.textContent = record.notes || "";
         td.title = record.notes || "";
       } else if (column.key === "price") {
+        td.className = "price-col";
         td.textContent = displayPrice(record.price);
       } else if (column.key === "pricePerSqm") {
         td.textContent = displayPrice(LRCacheData.pricePerSqm(record));
