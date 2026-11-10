@@ -268,19 +268,18 @@ function renderListingDeletionPreview() {
 }
 
 // מס רכישה: מדרגות מההגדרות (chrome.storage.sync), לעמודת "כולל מס רכישה"
-let purchaseTaxSettings = {
-  exemptUpTo: LRCacheData.DEFAULT_PURCHASE_TAX.exemptUpTo,
-  brackets: LRCacheData.DEFAULT_PURCHASE_TAX.brackets,
-};
-const PURCHASE_TAX_KEYS = ["showPurchaseTax", "purchaseTaxExemptUpTo", "purchaseTaxBrackets"];
+let purchaseTaxSettings = LRCacheData.purchaseTaxSettingsFrom({});
+const PURCHASE_TAX_KEYS = ["showPurchaseTax", "purchaseTaxTrack", "purchaseTaxTracks", "purchaseTaxExemptUpTo", "purchaseTaxBrackets"];
 
 function loadPurchaseTaxSettings(render = false) {
   chrome.storage.sync.get(
-    { showPurchaseTax: true, purchaseTaxExemptUpTo: null, purchaseTaxBrackets: null },
+    { showPurchaseTax: true, purchaseTaxTrack: "single", purchaseTaxTracks: null, purchaseTaxExemptUpTo: null, purchaseTaxBrackets: null },
     (settings) => {
       if (chrome.runtime.lastError || !settings) return;
-      purchaseTaxSettings = LRCacheData.normalizePurchaseTax(settings.purchaseTaxExemptUpTo, settings.purchaseTaxBrackets);
+      purchaseTaxSettings = LRCacheData.purchaseTaxSettingsFrom(settings);
       document.body.dataset.purchaseTax = settings.showPurchaseTax === false ? "off" : "on";
+      const header = document.querySelector("th.price-tax-col");
+      if (header) header.title = `המחיר ועוד מס רכישה למסלול "${purchaseTaxSettings.label}" (נבחר בהגדרות: חישובים ← מס רכישה)`;
       if (render) renderRows();
     }
   );
@@ -1185,7 +1184,7 @@ function renderRows() {
         const tax = LRCacheData.purchaseTax(record.price, purchaseTaxSettings);
         if (tax) {
           td.textContent = displayPrice(tax.total);
-          td.title = `${displayPrice(record.price)} + מס רכישה ${displayPrice(tax.tax)} (${tax.effectivePct}% מהמחיר)`;
+          td.title = `${displayPrice(record.price)} + מס רכישה ${displayPrice(tax.tax)} (${tax.effectivePct}% מהמחיר) · ${purchaseTaxSettings.label || "דירה יחידה"}`;
         }
       } else if (column.key === "pricePerSqm") {
         td.textContent = displayPrice(LRCacheData.pricePerSqm(record));

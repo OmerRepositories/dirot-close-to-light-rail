@@ -412,3 +412,4 @@ legend[data-icon]::before, .subhead[data-icon]::before { width: 24px; height: 24
 .tax-rate { display: inline-flex; align-items: center; gap: 4px; }
 .tax-remove { min-height: 30px; padding: 0; color: var(--danger); }
 .tax-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tax-flat { display: grid; grid-template-columns: 1fr 110px; gap: 8px; align-items: end; }

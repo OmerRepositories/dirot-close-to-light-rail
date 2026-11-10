@@ -28,8 +28,11 @@ const DEFAULTS = {
   blockedStreets: [],
   dealsPages: 10,
   showPurchaseTax: true,
-  purchaseTaxExemptUpTo: LRCacheData.DEFAULT_PURCHASE_TAX.exemptUpTo,
-  purchaseTaxBrackets: LRCacheData.DEFAULT_PURCHASE_TAX.brackets.map((bracket) => ({ ...bracket })),
+  purchaseTaxTrack: "single",
+  purchaseTaxTracks: null,
+  // נשמרים לתאימות עם 1.31.0 (מסלול "דירה יחידה")
+  purchaseTaxExemptUpTo: null,
+  purchaseTaxBrackets: null,
 };
 
 const DEALS_PAGE_OPTIONS = [0, 1, 2, 3, 5, 10];
@@ -124,9 +127,29 @@ const boolKeys = [
 // ---------- מדרגות מס רכישה ----------
 const shekel = (value) => `₪${Math.round(value).toLocaleString("he-IL")}`;
 
-function taxRowsFromSettings(s) {
-  const tax = LRCacheData.normalizePurchaseTax(s.purchaseTaxExemptUpTo, s.purchaseTaxBrackets);
-  return { exemptUpTo: tax.exemptUpTo, brackets: tax.brackets };
+// כל המסלולים בזיכרון; העורך מציג את המסלול הנבחר
+let taxTracks = LRCacheData.purchaseTaxTracksFrom({});
+let taxTrack = "single";
+
+function renderTaxTrack(track) {
+  const data = taxTracks[track];
+  $("purchaseTaxExemptUpTo").value = String(data.exemptUpTo);
+  $("purchaseTaxFlatAbove").value = data.flatAbove ? String(data.flatAbove.threshold) : "";
+  $("purchaseTaxFlatRate").value = data.flatAbove ? String(data.flatAbove.rate) : "";
+  renderTaxBrackets(data.brackets);
+}
+
+// מה שבעורך → המסלול הנבחר בזיכרון
+function storeTaxEditor() {
+  const exempt = Number($("purchaseTaxExemptUpTo").value);
+  const threshold = Number($("purchaseTaxFlatAbove").value);
+  const rate = Number($("purchaseTaxFlatRate").value);
+  taxTracks[taxTrack] = {
+    ...taxTracks[taxTrack],
+    exemptUpTo: Number.isFinite(exempt) && exempt >= 0 ? exempt : 0,
+    brackets: readTaxBrackets(),
+    flatAbove: threshold > 0 && rate >= 0 && $("purchaseTaxFlatRate").value !== "" ? { threshold, rate } : null,
+  };
 }
 
 function renderTaxBrackets(brackets) {
@@ -202,7 +225,13 @@ function updateTaxPreview() {
     const upTo = Number(row.querySelector("[data-tax-up-to]").value);
     if (upTo > 0) from = upTo;
   }
-  const settings = { exemptUpTo: exempt, brackets: readTaxBrackets() };
+  const threshold = Number($("purchaseTaxFlatAbove").value);
+  const flatRate = Number($("purchaseTaxFlatRate").value);
+  const settings = {
+    exemptUpTo: exempt,
+    brackets: readTaxBrackets(),
+    flatAbove: threshold > 0 && $("purchaseTaxFlatRate").value !== "" ? { threshold, rate: flatRate } : null,
+  };
   const example = [2_500_000, 3_500_000]
     .map((price) => {
       const result = LRCacheData.purchaseTax(price, settings);
@@ -242,9 +271,10 @@ function fill(s) {
   }
   // לא בונים מחדש את המדרגות בזמן שמקלידים בהן (השמירה האוטומטית מחזירה אותן)
   if (!$("purchaseTaxSettings").contains(document.activeElement)) {
-    const tax = taxRowsFromSettings(s);
-    $("purchaseTaxExemptUpTo").value = String(tax.exemptUpTo);
-    renderTaxBrackets(tax.brackets);
+    taxTracks = LRCacheData.purchaseTaxTracksFrom(s);
+    taxTrack = LRCacheData.PURCHASE_TAX_TRACK_KEYS.includes(s.purchaseTaxTrack) ? s.purchaseTaxTrack : "single";
+    $("purchaseTaxTrack").value = taxTrack;
+    renderTaxTrack(taxTrack);
   }
   syncDisabled();
 }
@@ -285,9 +315,11 @@ function read() {
   );
   out.blockedStreets = LRStreetFilter.parseInput($("blockedStreets").value);
   out.indexCities = LRStreetFilter.parseInput($("indexCities").value);
-  const exempt = Number($("purchaseTaxExemptUpTo").value);
-  out.purchaseTaxExemptUpTo = Number.isFinite(exempt) && exempt >= 0 ? exempt : DEFAULTS.purchaseTaxExemptUpTo;
-  out.purchaseTaxBrackets = readTaxBrackets();
+  storeTaxEditor();
+  out.purchaseTaxTrack = taxTrack;
+  out.purchaseTaxTracks = Object.fromEntries(
+    Object.entries(taxTracks).map(([key, track]) => [key, { exemptUpTo: track.exemptUpTo, brackets: track.brackets, flatAbove: track.flatAbove }])
+  );
   return out;
 }
 
@@ -320,6 +352,14 @@ $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("indexCities").addEventListener("input", save);
 $("purchaseTaxExemptUpTo").addEventListener("input", save);
+$("purchaseTaxFlatAbove").addEventListener("input", save);
+$("purchaseTaxFlatRate").addEventListener("input", save);
+$("purchaseTaxTrack").addEventListener("change", () => {
+  storeTaxEditor();
+  taxTrack = $("purchaseTaxTrack").value;
+  renderTaxTrack(taxTrack);
+  save();
+});
 $("addTaxBracket").addEventListener("click", () => {
   // מדרגה חדשה נכנסת לפני המדרגה הפתוחה ("ומעלה"), עם גבול מעל המדרגה הקודמת
   const brackets = readTaxBrackets();
@@ -330,8 +370,10 @@ $("addTaxBracket").addEventListener("click", () => {
   save();
 });
 $("resetPurchaseTax").addEventListener("click", () => {
-  $("purchaseTaxExemptUpTo").value = String(DEFAULTS.purchaseTaxExemptUpTo);
-  renderTaxBrackets(DEFAULTS.purchaseTaxBrackets.map((bracket) => ({ ...bracket })));
+  // מחזיר רק את סוג הרוכש שנבחר לערכים המקוריים
+  const original = LRCacheData.purchaseTaxTracksFrom({})[taxTrack];
+  taxTracks[taxTrack] = original;
+  renderTaxTrack(taxTrack);
   save();
 });
 
@@ -372,7 +414,9 @@ $("reset").addEventListener("click", () => {
       dealBreakerAmenities: [],
       blockedStreets: [],
       indexCities: [],
-      purchaseTaxBrackets: DEFAULTS.purchaseTaxBrackets.map((bracket) => ({ ...bracket })),
+      purchaseTaxTracks: null,
+      purchaseTaxExemptUpTo: null,
+      purchaseTaxBrackets: null,
     },
     () => flash("✓ אופס")
   );

@@ -753,10 +753,88 @@ var LRCacheData = (() => {
     return { exemptUpTo: exempt, brackets: [...bounded, { upTo: null, rate: open ? open.rate : (bounded.length ? bounded[bounded.length - 1].rate : 0) }] };
   }
 
+  // מסלולי מס לפי סוג הרוכש (לפי חוק מיסוי מקרקעין, המדרגות מוקפאות עד 15.1.2028). כולם ניתנים לעריכה.
+  // flatAbove: מעל הסכום הזה המס מחושב בשיעור אחד מהשקל הראשון (תקנה 11: מעל 2.5 מיליון – 0.5% על כל השווי)
+  const PURCHASE_TAX_TRACKS = Object.freeze({
+    single: { label: "דירה יחידה (כולל משפרי דיור)", exemptUpTo: 1978745, brackets: DEFAULT_PURCHASE_TAX.brackets, flatAbove: null },
+    additional: {
+      label: "דירה נוספת / משקיע",
+      exemptUpTo: 0,
+      brackets: [{ upTo: 6055070, rate: 8 }, { upTo: null, rate: 10 }],
+      flatAbove: null,
+    },
+    oleh: {
+      label: "עולה חדש (תקנה 12א)",
+      exemptUpTo: 1978745,
+      brackets: [{ upTo: 6055070, rate: 0.5 }, { upTo: 20183565, rate: 8 }, { upTo: null, rate: 10 }],
+      flatAbove: null,
+    },
+    disabled: {
+      label: "נכה / עיוור / נפגע איבה / משפחה שכולה (תקנה 11)",
+      exemptUpTo: 1978745,
+      brackets: [{ upTo: null, rate: 0.5 }],
+      flatAbove: { threshold: 2500000, rate: 0.5 },
+    },
+  });
+  const PURCHASE_TAX_TRACK_KEYS = Object.keys(PURCHASE_TAX_TRACKS);
+
+  function cloneTrack(track) {
+    return {
+      label: track.label,
+      exemptUpTo: track.exemptUpTo,
+      brackets: track.brackets.map((bracket) => ({ ...bracket })),
+      flatAbove: track.flatAbove ? { ...track.flatAbove } : null,
+    };
+  }
+
+  function normalizeFlatAbove(flat) {
+    const threshold = Number(flat && flat.threshold);
+    const rate = Number(flat && flat.rate);
+    return threshold > 0 && rate >= 0 ? { threshold, rate: Math.min(100, rate) } : null;
+  }
+
+  // כל המסלולים מתוך ההגדרות השמורות; מה שחסר – ברירת מחדל. גרסה 1.31.0 שמרה רק את "דירה יחידה"
+  // (purchaseTaxExemptUpTo / purchaseTaxBrackets) – הערכים האלה ממשיכים לשמש למסלול הזה.
+  function purchaseTaxTracksFrom(settings = {}) {
+    const saved = settings.purchaseTaxTracks && typeof settings.purchaseTaxTracks === "object" ? settings.purchaseTaxTracks : {};
+    const tracks = {};
+    for (const key of PURCHASE_TAX_TRACK_KEYS) {
+      const base = cloneTrack(PURCHASE_TAX_TRACKS[key]);
+      let source = saved[key];
+      if (!source && key === "single" && Array.isArray(settings.purchaseTaxBrackets)) {
+        source = { exemptUpTo: settings.purchaseTaxExemptUpTo, brackets: settings.purchaseTaxBrackets };
+      }
+      if (source && typeof source === "object") {
+        const tax = normalizePurchaseTax(source.exemptUpTo, source.brackets);
+        tracks[key] = { label: base.label, ...tax, flatAbove: normalizeFlatAbove(source.flatAbove) };
+      } else {
+        tracks[key] = base;
+      }
+    }
+    return tracks;
+  }
+
+  // המסלול הנבחר בהגדרות, מוכן לחישוב
+  function purchaseTaxSettingsFrom(settings = {}) {
+    const tracks = purchaseTaxTracksFrom(settings);
+    const key = PURCHASE_TAX_TRACK_KEYS.includes(settings.purchaseTaxTrack) ? settings.purchaseTaxTrack : "single";
+    return { track: key, ...tracks[key] };
+  }
+
   // { tax, total, effectivePct, parts: [{ from, to, rate, tax }] } או null כשאין מחיר
   function purchaseTax(price, settings = DEFAULT_PURCHASE_TAX) {
     const value = Number(price);
     if (!(value > 0)) return null;
+    const flat = normalizeFlatAbove(settings.flatAbove);
+    if (flat && value > flat.threshold) {
+      const flatTax = Math.round((value * flat.rate) / 100);
+      return {
+        tax: flatTax,
+        total: value + flatTax,
+        effectivePct: Math.round((flatTax / value) * 1000) / 10,
+        parts: [{ from: 0, to: value, rate: flat.rate, tax: flatTax }],
+      };
+    }
     const { exemptUpTo, brackets } = normalizePurchaseTax(settings.exemptUpTo, settings.brackets);
     let from = exemptUpTo;
     let tax = 0;
@@ -776,7 +854,11 @@ var LRCacheData = (() => {
 
   return {
     DEFAULT_PURCHASE_TAX,
+    PURCHASE_TAX_TRACKS,
+    PURCHASE_TAX_TRACK_KEYS,
     normalizePurchaseTax,
+    purchaseTaxTracksFrom,
+    purchaseTaxSettingsFrom,
     purchaseTax,
     findTwins,
     findTwin,

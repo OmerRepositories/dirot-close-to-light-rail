@@ -132,6 +132,16 @@
           <span data-icon="💸">להציג עמודת "מחיר כולל מס רכישה" במידע השמור</span>
         </label>
         <label class="field">
+          <span data-icon="👤">סוג הרוכש</span>
+          <select id="purchaseTaxTrack">
+            <option value="single">דירה יחידה (כולל משפרי דיור)</option>
+            <option value="additional">דירה נוספת / משקיע</option>
+            <option value="oleh">עולה חדש (תקנה 12א)</option>
+            <option value="disabled">נכה / עיוור / נפגע איבה / משפחה שכולה (תקנה 11)</option>
+          </select>
+        </label>
+        <p class="small">לכל סוג רוכש יש מדרגות משלו. עריכה כאן משנה רק את הסוג שנבחר.</p>
+        <label class="field">
           <span data-icon="🛡️">פטור ממס עד סכום (₪)</span>
           <input type="number" data-thousands id="purchaseTaxExemptUpTo" min="0" step="1" placeholder="1,978,745">
         </label>
@@ -139,12 +149,22 @@
           <div class="tax-bracket tax-bracket-head" aria-hidden="true"><span>מ־ (₪)</span><span>עד (₪)</span><span>שיעור</span><span></span></div>
           <div id="purchaseTaxBrackets"></div>
         </div>
+        <div class="tax-flat">
+          <label class="field">
+            <span data-icon="⚠️">מעל סכום זה – מס מהשקל הראשון (₪)</span>
+            <input type="number" data-thousands id="purchaseTaxFlatAbove" min="0" step="1" placeholder="ריק = לא פעיל">
+          </label>
+          <label class="field">
+            <span>בשיעור (%)</span>
+            <input type="number" id="purchaseTaxFlatRate" min="0" max="100" step="0.1" placeholder="0.5">
+          </label>
+        </div>
         <div class="tax-actions">
           <button id="addTaxBracket" type="button">+ הוספת מדרגה</button>
           <button id="resetPurchaseTax" type="button">חזרה לערכים המקוריים</button>
         </div>
         <p class="small" id="purchaseTaxExample" aria-live="polite"></p>
-        <p class="small">המדרגות של דירה יחידה. כל מדרגה ממוסה רק על החלק של המחיר שבתוכה. "מ־" של כל מדרגה הוא ה"עד" של המדרגה שלפניה, והמדרגה האחרונה פתוחה ("ומעלה"). כשהמדרגות מתעדכנות, עורכים כאן את הסכומים והשיעורים.</p>
+        <p class="small">כל מדרגה ממוסה רק על החלק של המחיר שבתוכה. "מ־" של כל מדרגה הוא ה"עד" של המדרגה שלפניה, והמדרגה האחרונה פתוחה ("ומעלה"). "מס מהשקל הראשון" משמש בתקנה 11: מעל 2.5 מיליון מתבטל הפטור, ו-0.5% חלים על כל השווי. ברירות המחדל הן המדרגות המוקפאות עד 15.1.2028. כשהן יתעדכנו, עורכים כאן את הסכומים והשיעורים.</p>
       </fieldset>
     </section>
 
