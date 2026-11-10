@@ -823,6 +823,14 @@ body:not([data-cloud="on"]) .cloud-col { display: none; }
 .deals-stats-table td { font-variant-numeric: tabular-nums; }
 .deals-stats-table tbody tr.static { cursor: default; }
 .deals-stats-table tbody tr:focus-visible td { outline: 2px solid var(--action); outline-offset: -2px; }
+/* מיון בטבלאות הסטטיסטיקה: כותרת לחיצה עם חץ כיוון */
+.deals-stats-table th .deals-sort { color: inherit; font: inherit; font-weight: 600; white-space: nowrap; }
+.deals-stats-table th .deals-sort:hover { color: var(--action); }
+.deals-stats-table th .deals-sort::after { margin-inline-start: 4px; color: var(--faint); content: "↕"; font-size: 11px; }
+.deals-stats-table th .deals-sort[data-dir="asc"]::after { color: var(--action); content: "▲"; }
+.deals-stats-table th .deals-sort[data-dir="desc"]::after { color: var(--action); content: "▼"; }
+.deals-stats-table caption.deals-table-more { caption-side: bottom; padding-top: 6px; color: var(--muted); font-size: 12px; text-align: right; }
+.deals-stats-table caption.deals-table-more[hidden] { display: none; }
 .deals-chart { display: block; width: 100%; height: auto; direction: ltr; overflow: visible; }
 .deals-chart .grid { stroke: var(--line-soft); stroke-width: 1; }
 .deals-chart .axis { fill: var(--muted); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; }

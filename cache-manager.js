@@ -3835,35 +3835,121 @@ function dealsPriceChart(stats, width) {
   return svg;
 }
 
-function dealsStatsTable(columns, rows, onRowClick) {
+// ערך מיון לעמודה בטבלאות הסטטיסטיקה: לפי השדה שהעמודה מציגה (מספר אמיתי, לא הטקסט המעוצב),
+// ואם אין שדה ידוע – מספר מתוך הטקסט, ואחרת הטקסט עצמו
+const DEALS_SORT_FIELDS = [
+  [/^עסקאות$/, (row) => row.count],
+  [/^מחיר חציוני$/, (row) => row.medianPrice],
+  [/^חציון למ״ר$/, (row) => row.medianPpsm],
+  [/^50% האמצעיים/, (row) => row.p25Ppsm],
+  [/^שטח/, (row) => row.medianSqm],
+  [/^שינוי שנתי/, (row) => (row.change ? row.change.pct : null)],
+  [/^עסקה אחרונה$/, (row) => row.lastDate || null],
+  [/^שנה$/, (row) => row.year],
+  [/^רבעון$/, (row) => row.key || row.label],
+];
+
+function dealsSortValue(column, row) {
+  if (column.sort) return column.sort(row);
+  const field = DEALS_SORT_FIELDS.find(([pattern]) => pattern.test(column.label));
+  if (field) {
+    const value = field[1](row);
+    if (value !== undefined) return value;
+  }
+  const text = column.value(row);
+  if (text === null || text === undefined || text === "") return null;
+  const plain = String(text).replace(/[⁦-⁩‎‏]/g, "").replace(/−/g, "-");
+  const number = plain.match(/^[^\d-]*(-?\d[\d,]*(?:\.\d+)?)/);
+  return number ? Number(number[1].replace(/,/g, "")) : plain;
+}
+
+// טבלת סטטיסטיקה עם מיון: לחיצה על כותרת ממיינת לפי העמודה (שוב – הפוך). limit: כמה שורות להציג;
+// המיון רץ על כל השורות ורק אז נחתכות, כך ש"הכי יקר" הוא הכי יקר מכולן ולא רק מהראשונות.
+function dealsStatsTable(columns, rows, onRowClick, { limit = Infinity } = {}) {
   const table = document.createElement("table");
   table.className = "city-table deals-stats-table";
   const head = table.createTHead().insertRow();
-  for (const column of columns) {
-    const th = document.createElement("th");
-    th.textContent = column.label;
-    head.appendChild(th);
-  }
   const body = table.createTBody();
-  for (const row of rows) {
-    const tr = body.insertRow();
-    for (const column of columns) {
-      const td = tr.insertCell();
-      const value = column.value(row);
-      td.textContent = value === null || value === undefined ? "—" : String(value);
-      if (column.className) td.className = column.className;
-      if (column.title) td.title = column.title(row);
-    }
-    if (onRowClick) {
-      tr.tabIndex = 0;
-      tr.addEventListener("click", () => onRowClick(row));
-      tr.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") onRowClick(row);
+  let sortIndex = -1;
+  let direction = 1;
+  const headers = [];
+
+  const renderBody = () => {
+    let list = rows;
+    if (sortIndex >= 0) {
+      const column = columns[sortIndex];
+      list = [...rows].sort((a, b) => {
+        const left = dealsSortValue(column, a);
+        const right = dealsSortValue(column, b);
+        const leftMissing = left === null || left === undefined || left === "" || Number.isNaN(left);
+        const rightMissing = right === null || right === undefined || right === "" || Number.isNaN(right);
+        if (leftMissing || rightMissing) return leftMissing === rightMissing ? 0 : leftMissing ? 1 : -1;
+        const comparison = typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right), "he", { numeric: true });
+        return comparison * direction;
       });
-    } else {
-      tr.classList.add("static");
     }
-  }
+    const shown = list.slice(0, limit);
+    const fragment = document.createDocumentFragment();
+    for (const row of shown) {
+      const tr = document.createElement("tr");
+      for (const column of columns) {
+        const td = tr.insertCell();
+        const value = column.value(row);
+        td.textContent = value === null || value === undefined ? "—" : String(value);
+        if (column.className) td.className = column.className;
+        if (column.title) td.title = column.title(row);
+      }
+      if (onRowClick) {
+        tr.tabIndex = 0;
+        tr.addEventListener("click", () => onRowClick(row));
+        tr.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") onRowClick(row);
+        });
+      } else {
+        tr.classList.add("static");
+      }
+      fragment.appendChild(tr);
+    }
+    body.replaceChildren(fragment);
+    if (more) {
+      more.hidden = rows.length <= limit;
+      more.textContent = `מוצגות ${shown.length.toLocaleString("he-IL")} מתוך ${rows.length.toLocaleString("he-IL")} · המיון לפי כל השורות`;
+    }
+  };
+
+  columns.forEach((column, index) => {
+    const th = document.createElement("th");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "sort-button deals-sort";
+    button.textContent = column.label;
+    button.title = "מיון לפי העמודה (לחיצה נוספת הופכת את הסדר)";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (sortIndex === index) direction = -direction;
+      else {
+        sortIndex = index;
+        // עמודת שם (טקסט) – א׳ עד ת׳; מספרים – מהגדול לקטן
+        direction = column.className === "city-name" && !/^(שנה|רבעון)$/.test(column.label) ? 1 : -1;
+      }
+      headers.forEach((other, otherIndex) => {
+        other.setAttribute("aria-sort", otherIndex === sortIndex ? (direction > 0 ? "ascending" : "descending") : "none");
+        other.firstChild.dataset.dir = otherIndex === sortIndex ? (direction > 0 ? "asc" : "desc") : "";
+      });
+      renderBody();
+    });
+    th.setAttribute("aria-sort", "none");
+    th.appendChild(button);
+    head.appendChild(th);
+    headers.push(th);
+  });
+
+  // createCaption שם את הכיתוב במקום הנכון בטבלה; CSS מציג אותו מתחתיה
+  const more = Number.isFinite(limit) ? table.createCaption() : null;
+  if (more) more.className = "deals-table-more";
+  renderBody();
   return table;
 }
 
@@ -4070,7 +4156,7 @@ function renderDealsStats(list) {
     };
     if (periodStats.byCity.length > 1) {
       const box = card("לפי עיר", "לחיצה על עיר מציגה רק את העסקאות שלה.");
-      box.append(dealsStatsTable(groupColumns("עיר", (row) => row.city), periodStats.byCity.slice(0, 20), (row) => filterTo(row.city, "")));
+      box.append(dealsStatsTable(groupColumns("עיר", (row) => row.city), periodStats.byCity, (row) => filterTo(row.city, ""), { limit: 20 }));
       sections.push(box);
     }
     if (periodStats.byNeighborhood.length) {
@@ -4082,12 +4168,13 @@ function renderDealsStats(list) {
           (missing > 0 ? ` ${missing.toLocaleString("he-IL")} עסקאות בלי שכונה (בעיקר ממדלן, שלא מציינת שכונה) לא נכללות כאן.` : "")
       );
       const rows = multiCity
-        ? [...periodStats.byNeighborhood].sort((a, b) => a.city.localeCompare(b.city, "he") || b.count - a.count).slice(0, 40)
-        : periodStats.byNeighborhood.slice(0, 25);
+        ? [...periodStats.byNeighborhood].sort((a, b) => a.city.localeCompare(b.city, "he") || b.count - a.count)
+        : periodStats.byNeighborhood;
       box.append(dealsStatsTable(
         groupColumns("שכונה", (row) => (multiCity ? `${row.neighborhood} · ${row.city}` : row.neighborhood)),
         rows,
-        (row) => filterTo(row.city, row.neighborhood)
+        (row) => filterTo(row.city, row.neighborhood),
+        { limit: multiCity ? 40 : 25 }
       ));
       sections.push(box);
     }
@@ -4095,8 +4182,9 @@ function renderDealsStats(list) {
       const box = card("הרחובות עם הכי הרבה עסקאות", "לחיצה על רחוב מציגה רק את העסקאות שלו.");
       box.append(dealsStatsTable(
         groupColumns("רחוב", (row) => (periodStats.byCity.length > 1 ? `${row.street}, ${row.city}` : row.street)),
-        periodStats.byStreet.slice(0, 15),
-        (row) => filterTo(row.city, row.street)
+        periodStats.byStreet,
+        (row) => filterTo(row.city, row.street),
+        { limit: 15 }
       ));
       sections.push(box);
     }
@@ -4125,11 +4213,11 @@ function renderDealsStats(list) {
         { label: "חציון למ״ר", value: (row) => displayPrice(row.medianPpsm) || null },
         { label: "מחיר חציוני", value: (row) => displayPrice(row.medianPrice) || null },
         { label: "עסקה אחרונה", value: (row) => (row.lastDate ? `${dealDateText(row.lastDate)} · ${shortShekels(row.lastPrice)}` : null) },
-      ], periodStats.byBuilding.slice(0, 12), (row) => {
+      ], periodStats.byBuilding, (row) => {
         $("dealsQuery").value = `${row.street} ${row.house}`;
         $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === row.city) ? row.city : "";
         scheduleDealsRender();
-      }));
+      }, { limit: 12 }));
       sections.push(box);
     }
 
