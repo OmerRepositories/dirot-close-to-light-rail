@@ -579,7 +579,60 @@ var LRCacheExport = (() => {
       booleanYesNo: true,
       reverseBooleanColors: true,
     },
+    // אותה הודעה שכפתור ההעתקה לוואטסאפ יוצר, מהנתונים השמורים על המודעה
+    { key: "whatsappMessage", label: "הודעה לוואטסאפ", width: 60 },
   ];
+
+  // השמות כמו בהודעה שמועתקת מהמודעה עצמה (content.js)
+  const MESSAGE_AMENITY_LABELS = { ...AMENITY_LABELS, accessible: "נגיש לנכים" };
+  const fmtShekels = (value) => `₪${Math.round(value).toLocaleString("he-IL")}`;
+  const fmtDistance = (meters) => (meters >= 1000 ? `${(meters / 1000).toFixed(1)} ק"מ` : `${Math.round(meters)} מ׳`);
+
+  // dealsIndex: LRDeals.buildIndex(...) כשעסקאות האמת זמינות, כדי להוסיף את שורת "מול עסקאות אמת"
+  function whatsappMessage(record, url, dealsIndex, now = Date.now()) {
+    if (typeof LRWhatsAppMessage === "undefined" || !record || record.recordType === "project") return "";
+    const address = String(record.address || "").trim();
+    const fullAddress = record.city && !address.includes(record.city)
+      ? [address, record.city].filter(Boolean).join(", ")
+      : address;
+    const ppsm = Number(record.pricePerSqm ?? record.ppsm);
+    const missingAmenities = Object.entries(record.amenities || {})
+      .filter(([, present]) => present === false)
+      .map(([key]) => MESSAGE_AMENITY_LABELS[key] || key);
+    let realDeals = "";
+    if (dealsIndex && typeof LRDeals !== "undefined" && Number.isFinite(ppsm) && ppsm > 0) {
+      try {
+        const all = LRDeals.compareListingAll(record, dealsIndex, ppsm);
+        realDeals = ["building", "street", "neighborhood", "city"]
+          .filter((level) => all && all[level] && Number.isFinite(all[level].diffPct))
+          .map((level) => {
+            const value = all[level].diffPct;
+            const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+            return `${LRDeals.LEVEL_NAMES[level]} ${sign}${Math.abs(value)}%${all[level].similar ? "" : "*"}`;
+          })
+          .join(" · ");
+      } catch {}
+    }
+    const floor = Number.isFinite(record.floor) ? (record.floor === 0 ? "קרקע" : String(record.floor)) : null;
+    return LRWhatsAppMessage.format({
+      address: fullAddress || null,
+      price: Number.isFinite(record.price) && record.price > 0 ? fmtShekels(record.price) : null,
+      sqm: Number.isFinite(record.sqm) ? record.sqm : null,
+      rooms: Number.isFinite(record.rooms) ? record.rooms : null,
+      floor,
+      buildingTopFloor: record.buildingTopFloor,
+      shelterMeters: record.shelterMeters,
+      realDeals,
+      listingCreatedAt: record.listingCreatedAt || null,
+      pricePerSqm: Number.isFinite(ppsm) && ppsm > 0 ? fmtShekels(ppsm) : null,
+      railDistance: Number.isFinite(record.railMeters)
+        ? `${record.railApprox ? "כ-" : ""}${fmtDistance(record.railMeters)}${record.railApprox ? " (מיקום משוער)" : ""}`
+        : null,
+      missingAmenities,
+      brokerage: record.brokerage === true,
+      url,
+    }, now);
+  }
 
   function xmlEscape(value) {
     return String(value ?? "")
@@ -740,6 +793,10 @@ var LRCacheExport = (() => {
     ];
     const links = [];
     const historyLinks = [];
+    let dealsIndex = null;
+    if (deals && typeof LRDeals !== "undefined" && Object.keys(deals).length) {
+      try { dealsIndex = LRDeals.buildIndex(deals, { now }); } catch {}
+    }
     const rows = [];
     const historyRows = [];
     const col = (key) => columnName(columns.findIndex((column) => column.key === key));
@@ -833,6 +890,7 @@ var LRCacheExport = (() => {
         dealScore: LRCacheData.dealScore(record) ?? undefined,
         sellerPressure: pressure ? pressure.score : undefined,
         pressureLevel: pressure ? LRCacheData.PRESSURE_LABELS[pressure.level] : undefined,
+        whatsappMessage: whatsappMessage(record, recordUrl(site, listingId, record), dealsIndex, now),
       };
       for (const column of columns) {
         if (column.amenity) values[column.key] = record.amenities?.[column.amenity];
@@ -1085,6 +1143,7 @@ var LRCacheExport = (() => {
     buildCsv,
     downloadCsv,
     buildExcel,
+    whatsappMessage,
     downloadExcel,
     buildTxt,
     downloadTxt,

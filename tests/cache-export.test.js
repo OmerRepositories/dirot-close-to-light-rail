@@ -189,7 +189,7 @@ test("Excel export is a filtered XLSX with readable amenity colors and clickable
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
   assert.ok(files.has("[Content_Types].xml"));
-  assert.ok(sheet.includes('<autoFilter ref="A1:AS2"/>'));
+  assert.ok(sheet.includes('<autoFilter ref="A1:AT2"/>'));
   assert.ok(sheet.includes('rightToLeft="1"'));
   assert.ok(sheet.includes("מזהה מודעה/פרויקט"));
   assert.ok(sheet.includes("מחיר / החל מ׳ (₪)"));
@@ -611,4 +611,40 @@ test("Excel export adds a deals sheet, newest first, only when deals exist", asy
   const without = await readZipEntries(await CacheExport.buildExcel({}, () => {}, Date.UTC(2026, 0, 1)));
   assert.ok(!without.has("xl/worksheets/sheet4.xml"));
   assert.ok(!without.get("xl/workbook.xml").includes("עסקאות"));
+});
+
+test("Excel export: WhatsApp message column matches the copy-button text", async () => {
+  global.LRWhatsAppMessage = require("../whatsapp-message.js");
+  try {
+    const now = Date.UTC(2026, 10, 10);
+    const record = {
+      address: "המשי 15", city: "גני תקווה", price: 2_500_000, sqm: 100, pricePerSqm: 25000, rooms: 4.5,
+      floor: 3, buildingTopFloor: 8, listingCreatedAt: "2026-11-01", railMeters: 1250, railApprox: true,
+      amenities: { parking: true, secureRoom: false, accessible: false }, brokerage: true,
+      url: "https://www.yad2.co.il/realestate/item/abc",
+    };
+    const message = CacheExport.whatsappMessage(record, record.url, null, now);
+    assert.equal(message, [
+      "כתובת: המשי 15, גני תקווה",
+      "מחיר: ₪2,500,000",
+      'מ"ר: 100',
+      "חדרים: 4.5",
+      "קומה: 3 מתוך 8",
+      "תאריך פרסום: 01/11/2026",
+      "גיל המודעה: 9 ימים",
+      'מחיר למ"ר: ₪25,000',
+      'מרחק בקו אווירי מהרכבת (המרחק בהליכה עשוי להיות גדול יותר): כ-1.3 ק"מ (מיקום משוער)',
+      "קישור למודעה: https://www.yad2.co.il/realestate/item/abc",
+      "שים לב חסר: ממ״ד, נגיש לנכים",
+      "שים לב מדובר במודעת תיווך!",
+    ].join("\n"));
+    assert.equal(CacheExport.whatsappMessage({ recordType: "project" }, "", null, now), "");
+
+    const files = await readZipEntries(await CacheExport.buildExcel({ "yad2:abc": record }, () => {}, now));
+    const sheet = files.get("xl/worksheets/sheet1.xml");
+    assert.ok(sheet.includes("<t>הודעה לוואטסאפ</t>"));
+    assert.ok(sheet.includes("כתובת: המשי 15, גני תקווה\n"));
+  } finally {
+    delete global.LRWhatsAppMessage;
+  }
 });
