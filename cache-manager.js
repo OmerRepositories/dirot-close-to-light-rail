@@ -1245,6 +1245,15 @@ function renderRows() {
         remove.dataset.action = "delete";
         remove.className = "danger";
         remove.textContent = "מחיקה";
+        if (recordType(record) === "listing" && (record.address || record.neighborhood)) {
+          const deals = document.createElement("button");
+          deals.type = "button";
+          deals.dataset.action = "deals";
+          deals.className = "deals-action";
+          deals.textContent = "עסקאות";
+          deals.title = "חיפוש עסקאות אמת בכתובת הזו";
+          actions.append(deals);
+        }
         actions.append(edit, remove);
         td.appendChild(actions);
       }
@@ -1858,6 +1867,19 @@ function openDealsWith({ city = "", query = "" } = {}) {
   setActiveTab("deals");
   $("dealsCity").value = city;
   renderDeals();
+}
+
+// "עסקאות" ליד מודעה: חיפוש עסקאות ברחוב ובמספר הבית שלה (בלי מספר בית – כל הרחוב; בלי כתובת – השכונה),
+// בעיר שלה גם אם הכתיב שונה ("פתח תקוה" / "פתח תקווה")
+function openDealsForRecord(record) {
+  if (!record) return;
+  const first = String(record.address || "").split(",")[0].trim();
+  const cityOfRecord = String(record.city || "").trim();
+  const query = first && LRDeals.normCity(first) !== LRDeals.normCity(cityOfRecord) ? first : String(record.neighborhood || "").trim();
+  fillDealsCities();
+  const wanted = LRDeals.normCity(cityOfRecord);
+  const option = wanted ? [...$("dealsCity").options].find((item) => item.value && LRDeals.normCity(item.value) === wanted) : null;
+  openDealsWith({ city: option ? option.value : "", query: option || !cityOfRecord ? query : `${query} ${cityOfRecord}`.trim() });
 }
 
 // הפעם הראשונה שהתוסף ראה מחיר למודעה (לא נקודות מהאתר, שיכולות להיות ישנות בהרבה)
@@ -4593,6 +4615,9 @@ rows.addEventListener("click", (event) => {
   if (button && button.dataset.action === "delete") {
     event.stopPropagation();
     deleteRecord(row.dataset.key);
+  } else if (button && button.dataset.action === "deals") {
+    event.stopPropagation();
+    openDealsForRecord(cache[row.dataset.key]);
   } else {
     openRecord(row.dataset.key);
   }

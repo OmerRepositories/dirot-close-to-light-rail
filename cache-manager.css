@@ -533,6 +533,10 @@ tbody tr[aria-selected="true"] td { background: var(--action-soft); }
 .history-toggle:hover { border-color: var(--action); background: var(--action-soft); }
 .row-actions { display: flex; gap: 6px; }
 .row-actions button { min-height: 30px; padding: 3px 10px; font-size: 13px; }
+.row-actions .deals-action { border-color: color-mix(in srgb, #16a34a 45%, var(--line)); color: #15803d; background: color-mix(in srgb, #16a34a 9%, var(--surface)); }
+.row-actions .deals-action:hover { background: color-mix(in srgb, #16a34a 16%, var(--surface)); }
+:root[data-theme="dark"] .row-actions .deals-action { color: #4ade80; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .row-actions .deals-action { color: #4ade80; } }
 .empty-state { padding: 32px; color: var(--muted); text-align: center; }
 
 /* ---------- ציר זמן מחירים ---------- */
