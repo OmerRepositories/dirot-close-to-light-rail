@@ -1613,6 +1613,28 @@ function renderPriceTimeline() {
     factsElement.textContent = facts.join(" · ");
     card.append(metadata, title, summary, detail, factsElement);
     if (address.textContent) card.appendChild(address);
+    // מעבר לחיפוש מודעה עם המודעה הזו בלבד – כל מה שנאסף עליה. הקישור בכותרת נשאר קישור לאתר.
+    if (change.listingId) {
+      const openSaved = () => openSearchWith({ query: change.listingId, site: change.site || "" });
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "timeline-open";
+      button.textContent = "למידע השמור ←";
+      button.title = "פתיחת המודעה בחיפוש מודעה, עם כל המידע שנשמר עליה";
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openSaved();
+      });
+      card.appendChild(button);
+      card.classList.add("clickable");
+      card.title = "לחיצה על הכרטיס פותחת את המידע השמור על המודעה; הכותרת פותחת את המודעה באתר";
+      card.addEventListener("click", (event) => {
+        // לחיצה על הקישור בכותרת (או על כל קישור אחר) ממשיכה לאתר כרגיל
+        if (event.target.closest("a")) return;
+        if (window.getSelection && String(window.getSelection())) return; // סימון טקסט, לא לחיצה
+        openSaved();
+      });
+    }
     item.appendChild(card);
     timeline.appendChild(item);
   }

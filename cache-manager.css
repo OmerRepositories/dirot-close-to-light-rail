@@ -581,6 +581,24 @@ tbody tr[aria-selected="true"] td { background: var(--action-soft); }
   transition: border-color .16s var(--ease), transform .16s var(--ease);
 }
 .timeline-card:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+/* כרטיס שאפשר ללחוץ עליו (מעבר למידע השמור); הכפתור בצד השמאלי העליון */
+.timeline-card.clickable { position: relative; padding-inline-end: 140px; cursor: pointer; }
+.timeline-open {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 12px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-color: var(--line);
+  color: var(--action);
+  background: var(--surface);
+  font-size: 13px;
+}
+.timeline-open:hover { border-color: var(--action); background: var(--action-soft); }
+@media (max-width: 700px) {
+  .timeline-card.clickable { padding-inline-end: 16px; }
+  .timeline-open { position: static; margin-top: 10px; }
+}
 .timeline-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .timeline-card h3 { margin: 6px 0 0; font-size: 15px; font-weight: 600; }
 .timeline-card h3 a { color: var(--ink); text-decoration: none; }
