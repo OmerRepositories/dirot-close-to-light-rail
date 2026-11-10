@@ -1046,6 +1046,7 @@ function renderRows() {
     });
 
   rows.replaceChildren();
+  const twins = LRCacheData.findTwins(cache);
   // בונים רק את השורות שרואים: 100 בכל פעם, והשאר נוספות כשגוללים לסוף הטבלה
   rowRenderer = ([key, record]) => {
     const row = document.createElement("tr");
@@ -1122,6 +1123,24 @@ function renderRows() {
             textCell(title, "record-title"),
             textCell(address, "record-address")
           );
+        }
+        // אותה דירה באתר השני
+        const twinKey = twins.get(key);
+        const twin = twinKey && cache[twinKey];
+        const twinUrl = twin && listingPageUrl(twinKey, twin);
+        if (twinUrl) {
+          const link = document.createElement("a");
+          link.href = twinUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.className = "record-link record-twin";
+          link.dataset.recordLink = "true";
+          const gap = Number.isFinite(twin.price) && Number.isFinite(record.price) ? twin.price - record.price : 0;
+          link.textContent = `אותה דירה ${recordSite(twinKey) === "madlan" ? "במדלן" : "ביד2"}` +
+            (Number.isFinite(twin.price) && twin.price > 0 ? `: ${displayPrice(twin.price)}` : "") +
+            (gap ? ` (${gap > 0 ? "יקר" : "זול"} ב־${displayPrice(Math.abs(gap))})` : "") + " ↗";
+          link.title = "זוהתה לפי כתובת או מיקום, חדרים, קומה ושטח. שתי המודעות ממשיכות להתרענן בנפרד.";
+          td.appendChild(link);
         }
       } else if (column.key === "notes") {
         td.className = "notes-cell";

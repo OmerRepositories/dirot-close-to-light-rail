@@ -1531,6 +1531,40 @@
     entry.realDealsEl.title = `${details.join("\n")}\nשלילי = הדירה זולה מהעסקאות. עסקאות מ-4 השנים האחרונות.${details.some((line) => line.includes("כל הגדלים")) ? "\n* אין מספיק עסקאות בגודל דומה – השוואה לכל הגדלים." : ""}`;
   }
 
+  // אותה דירה באתר השני (יד2 ↔ מדלן): קישור, והמחיר שם מול המחיר כאן
+  function renderTwinLine(entry) {
+    if (entry.kind !== "single" || !entry.listingId || !entry.ppsm) return;
+    const key = cacheKeyForListing(entry.listingId);
+    const twinKey = listingCache[key] ? LRCacheData.findTwin(listingCache, key) : null;
+    const twin = twinKey && listingCache[twinKey];
+    const url = twin && (twin.url || (twinKey.startsWith("madlan:")
+      ? `https://www.madlan.co.il/listings/${encodeURIComponent(twinKey.slice(7))}`
+      : `https://www.yad2.co.il/realestate/item/${encodeURIComponent(twinKey.slice(5))}`));
+    if (!twin || !url) {
+      if (entry.twinEl) entry.twinEl.hidden = true;
+      return;
+    }
+    if (!entry.twinEl) {
+      entry.twinEl = document.createElement("a");
+      entry.twinEl.className = "lr-twin";
+      entry.twinEl.target = "_blank";
+      entry.twinEl.rel = "noopener noreferrer";
+      (entry.realDealsEl || entry.ppsm).insertAdjacentElement("afterend", entry.twinEl);
+    }
+    const siteName = twinKey.startsWith("madlan:") ? "במדלן" : "ביד2";
+    const own = listingCache[key];
+    let priceText = "";
+    if (Number.isFinite(twin.price) && twin.price > 0) {
+      priceText = ` ₪${fmtNum(twin.price)}`;
+      const gap = Number.isFinite(own.price) && own.price > 0 ? twin.price - own.price : 0;
+      if (gap) priceText += ` (${gap > 0 ? "יקר" : "זול"} ב־₪${fmtNum(Math.abs(gap))})`;
+    }
+    entry.twinEl.href = url;
+    entry.twinEl.hidden = false;
+    entry.twinEl.textContent = `אותה דירה ${siteName}:${priceText} ↗`;
+    entry.twinEl.title = "זוהתה לפי כתובת או מיקום, חדרים, קומה ושטח. שתי המודעות ממשיכות להתרענן בנפרד.";
+  }
+
   // הודעה קטנה בפינת הדף: מה התוסף עושה עכשיו עם עסקאות האמת (טוען עמוד X מתוך Y, נשמרו N).
   // לא חוסמת לחיצות על הדף, נעלמת לבד בסיום, ואפשר לסגור אותה.
   let dealsToastEl = null;
@@ -1571,6 +1605,7 @@
       entry.realDeals = LRDeals.compareListing(record, index, ppsmValue);
       entry.realDealsAll = LRDeals.compareListingAll(record, index, ppsmValue);
       renderRealDealsLine(entry);
+      renderTwinLine(entry);
       scheduleRefresh();
     });
   }

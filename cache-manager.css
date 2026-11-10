@@ -499,6 +499,7 @@ tbody tr[aria-selected="true"] td { background: var(--action-soft); }
 .record-link:hover .record-title { color: var(--action); text-decoration: underline; text-underline-offset: 3px; }
 .record-title { display: block; max-width: 330px; overflow: hidden; color: var(--ink); font-weight: 600; text-overflow: ellipsis; }
 .record-address { display: block; max-width: 330px; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; }
+.record-twin { display: inline-block; margin-top: 3px; padding: 1px 8px; border-radius: 999px; color: var(--action); background: var(--action-soft); font-size: 12px; font-weight: 600; }
 
 /* תגיות מצב: גוון רך אחד לכל משמעות */
 .type-chip, .listing-status, .boolean-value, .timeline-site {

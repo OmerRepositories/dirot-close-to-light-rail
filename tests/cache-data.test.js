@@ -482,3 +482,41 @@ test("cleanPriceOutliers removes spikes and restores a wrong current price", () 
   assert.equal(result.cache["yad2:fine"], cache["yad2:fine"]);
   assert.equal(CacheData.cleanPriceOutliers(result.cache).updatedCount, 0, "cleaning is idempotent");
 });
+
+test("findTwins links the same apartment on Yad2 and Madlan, only when unambiguous", () => {
+  const base = { city: "גני תקווה", rooms: 4, floor: 3, sqm: 100, price: 2_500_000 };
+  const cache = {
+    "yad2:a": { ...base, address: "המשי 15, גני תקווה" },
+    "madlan:b": { ...base, address: "רחוב המשי 15, גני תקוה", sqm: 104, price: 2_450_000 },
+    // אותה כתובת, קומה אחרת – לא תאומה
+    "madlan:c": { ...base, address: "המשי 15, גני תקווה", floor: 5 },
+    // לפי מיקום (בלי מספר בית), 20 מ׳
+    "yad2:d": { ...base, address: "הדקל, גני תקווה", rooms: 3, floor: 1, sqm: 80, coordinates: { lat: 32.06, lon: 34.87 } },
+    "madlan:e": { ...base, address: "הדקל, גני תקווה", rooms: 3, floor: 1, sqm: 82, coordinates: { lat: 32.06018, lon: 34.87 } },
+    // מיקום משוער – לא משמש להתאמה
+    "yad2:f": { ...base, address: "השקד, גני תקווה", rooms: 5, floor: 2, sqm: 120, coordinates: { lat: 32.07, lon: 34.88 }, railApprox: true },
+    "madlan:g": { ...base, address: "השקד, גני תקווה", rooms: 5, floor: 2, sqm: 120, coordinates: { lat: 32.07, lon: 34.88 } },
+    // שתי מודעות יד2 זהות שמצביעות על אותה מודעת מדלן – לא מקשרים
+    "yad2:h": { ...base, address: "אילות 4, גני תקווה", rooms: 2, floor: 0, sqm: 50 },
+    "yad2:i": { ...base, address: "אילות 4, גני תקווה", rooms: 2, floor: 0, sqm: 50 },
+    "madlan:j": { ...base, address: "אילות 4, גני תקווה", rooms: 2, floor: 0, sqm: 51 },
+    // פרויקט לא נכנס
+    "madlan:p": { ...base, address: "המשי 15, גני תקווה", recordType: "project" },
+  };
+  const twins = CacheData.findTwins(cache);
+  assert.equal(twins.get("yad2:a"), "madlan:b");
+  assert.equal(twins.get("madlan:b"), "yad2:a");
+  assert.equal(twins.get("yad2:d"), "madlan:e");
+  assert.equal(twins.has("yad2:f"), false);
+  assert.equal(twins.has("yad2:h"), false);
+  assert.equal(twins.has("yad2:i"), false);
+  assert.equal(twins.has("madlan:j"), false);
+  assert.equal(twins.has("madlan:c"), false);
+  assert.equal(CacheData.findTwin(cache, "madlan:e"), "yad2:d");
+});
+
+test("findTwins needs the floor on both listings", () => {
+  const base = { address: "המשי 15, גני תקווה", city: "גני תקווה", rooms: 4, sqm: 100 };
+  assert.equal(CacheData.findTwins({ "yad2:a": { ...base, floor: 3 }, "madlan:b": { ...base } }).size, 0);
+  assert.equal(CacheData.findTwins({ "yad2:a": { ...base, floor: 3 }, "madlan:b": { ...base, floor: 3 } }).size, 2);
+});

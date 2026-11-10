@@ -181,8 +181,12 @@ var LRMadlan = (() => {
     const updatedAt = listing
       ? listing.lastUpdated || null
       : readListingDate(id, ["updatedAt", "lastUpdatedAt", "modifiedAt"]);
+    // קומה מנתוני הדף ("6", "0", "קרקע"); בלעדיה אי אפשר להבדיל בין דירות זהות בקומות שונות
+    const floorText = listing && listing.floor !== undefined && listing.floor !== null ? String(listing.floor).trim() : "";
+    const floor = /^-?\d{1,3}$/.test(floorText) ? Number(floorText) : /קרקע/.test(floorText) ? 0 : null;
     return {
       rooms: Number.isFinite(rooms) ? rooms : null,
+      floor,
       // המחיר הקודם שמוצג מחוק בכרטיס (לפני הורדת המחיר האחרונה) – חשוב כשאין נתוני דף
       previousPrice: root === document ? null : cardPreviousPrice(root),
       listingCreatedAt: createdAt,

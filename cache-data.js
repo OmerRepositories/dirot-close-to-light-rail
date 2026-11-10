@@ -590,7 +590,141 @@ var LRCacheData = (() => {
 
   const PRESSURE_LABELS = { high: "גבוה", medium: "בינוני", low: "נמוך" };
 
+  // ---- אותה דירה ביד2 ובמדלן ("תאומה"): לקישור בין שתי המודעות. שתיהן ממשיכות להתרענן בנפרד.
+  const TWIN_SITES = ["yad2", "madlan"];
+  const TWIN_MAX_METERS = 40;
+
+  function normalizePlace(text) {
+    return String(text || "")
+      .replace(/^\s*(?:רחוב|רח['׳]?)\s+/, "")
+      .replace(/[^0-9א-תa-z]/gi, "")
+      .replace(/וו/g, "ו")
+      .replace(/יי/g, "י")
+      .toLowerCase();
+  }
+
+  // "המשי 15, גני תקווה" → { street: "המשי", house: "15", city: "גני תקווה" }
+  function twinAddress(record) {
+    const parts = String(record.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const match = (parts[0] || "").match(/^(.*?\S)\s+(\d{1,4})\s*[א-ת]?$/);
+    const city = normalizePlace(record.city || parts[parts.length - 1] || "");
+    if (!match || !city) return null;
+    const street = normalizePlace(match[1]);
+    return street ? `${city}|${street}|${match[2]}` : null;
+  }
+
+  function metersBetween(a, b) {
+    const rad = Math.PI / 180;
+    const x = (b.lon - a.lon) * rad * Math.cos(((a.lat + b.lat) / 2) * rad);
+    const y = (b.lat - a.lat) * rad;
+    return Math.sqrt(x * x + y * y) * 6371000;
+  }
+
+  // ציון התאמה, או null כשמשהו לא מתאים. אותה קומה חובה, ועוד לפחות אחד מחדרים / שטח ידוע בשתיהן.
+  function twinScore(a, b) {
+    let known = 0;
+    if (Number.isFinite(a.rooms) && Number.isFinite(b.rooms)) {
+      if (a.rooms !== b.rooms) return null;
+      known++;
+    }
+    // קומה חובה: בלעדיה דירות זהות בקומות שונות של אותו בניין היו מקושרות בטעות
+    if (!Number.isFinite(a.floor) || !Number.isFinite(b.floor) || a.floor !== b.floor) return null;
+    let sqmGap = 0;
+    if (a.sqm > 0 && b.sqm > 0) {
+      sqmGap = Math.abs(a.sqm - b.sqm);
+      if (sqmGap > Math.max(6, Math.max(a.sqm, b.sqm) * 0.08)) return null;
+      known++;
+    }
+    return known >= 1 ? known * 100 - sqmGap : null;
+  }
+
+  // מחזיר Map: מפתח מודעה → מפתח המודעה התאומה באתר השני. רק התאמה חד־משמעית בשני הכיוונים.
+  function findTwins(cache) {
+    const listings = [];
+    for (const [key, record] of Object.entries(cache && typeof cache === "object" ? cache : {})) {
+      if (!record || typeof record !== "object" || record.recordType === "project") continue;
+      const site = key.slice(0, key.indexOf(":"));
+      if (!TWIN_SITES.includes(site)) continue;
+      const coords = record.coordinates;
+      listings.push({
+        key, site, record,
+        address: twinAddress(record),
+        coords: coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon) && !record.railApprox ? coords : null,
+      });
+    }
+    const byAddress = new Map();
+    const byCell = new Map();
+    const cellOf = (coords, dLat = 0, dLon = 0) => `${Math.floor(coords.lat / 0.0005) + dLat}|${Math.floor(coords.lon / 0.0005) + dLon}`;
+    for (const item of listings) {
+      if (item.site !== "madlan") continue;
+      if (item.address) {
+        if (!byAddress.has(item.address)) byAddress.set(item.address, []);
+        byAddress.get(item.address).push(item);
+      }
+      if (item.coords) {
+        const cell = cellOf(item.coords);
+        if (!byCell.has(cell)) byCell.set(cell, []);
+        byCell.get(cell).push(item);
+      }
+    }
+    // לכל מודעת יד2: המועמדת הטובה ביותר במדלן (באותה כתובת, או במרחק של עד 40 מ׳)
+    const best = (item) => {
+      const candidates = new Set(item.address ? byAddress.get(item.address) || [] : []);
+      if (item.coords) {
+        for (let dLat = -1; dLat <= 1; dLat++) {
+          for (let dLon = -1; dLon <= 1; dLon++) {
+            for (const other of byCell.get(cellOf(item.coords, dLat, dLon)) || []) {
+              if (other.coords && metersBetween(item.coords, other.coords) <= TWIN_MAX_METERS) candidates.add(other);
+            }
+          }
+        }
+      }
+      let top = null;
+      let topScore = -Infinity;
+      let tie = false;
+      for (const other of candidates) {
+        const score = twinScore(item.record, other.record);
+        if (score === null) continue;
+        if (score > topScore) {
+          top = other;
+          topScore = score;
+          tie = false;
+        } else if (score === topScore) {
+          tie = true;
+        }
+      }
+      return tie ? null : top;
+    };
+    const pairs = new Map();
+    const claimed = new Map();
+    for (const item of listings) {
+      if (item.site !== "yad2") continue;
+      const other = best(item);
+      if (!other) continue;
+      // שתי מודעות יד2 שמצביעות על אותה מודעת מדלן: לא מקשרים אף אחת (לא ברור מי התאומה)
+      if (claimed.has(other.key)) {
+        pairs.delete(claimed.get(other.key));
+        claimed.set(other.key, null);
+        continue;
+      }
+      claimed.set(other.key, item.key);
+      pairs.set(item.key, other.key);
+    }
+    const twins = new Map();
+    for (const [yad2Key, madlanKey] of pairs) {
+      twins.set(yad2Key, madlanKey);
+      twins.set(madlanKey, yad2Key);
+    }
+    return twins;
+  }
+
+  function findTwin(cache, key) {
+    return findTwins(cache).get(key) || null;
+  }
+
   return {
+    findTwins,
+    findTwin,
     cleanPriceHistory,
     cleanPriceOutliers,
     isSuspiciousPrice,

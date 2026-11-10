@@ -329,3 +329,17 @@ html.lr-hide-ads [id^="div-gpt-ad"] { display: none !important; }
   border-radius: 12px;
   background: rgba(245, 163, 0, 0.08);
 }
+/* אותה דירה באתר השני: שורה מלאה מתחת לתגים, קישור למודעה שם */
+.lr-twin {
+  flex-basis: 100%;
+  padding: 3px 8px;
+  border: 1px solid #99d5cc;
+  border-radius: 8px;
+  color: #0f5f57 !important;
+  background: #e6f6f3;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+.lr-twin:hover { text-decoration: underline !important; }
+.lr-twin[hidden] { display: none; }
