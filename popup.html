@@ -87,22 +87,22 @@
   </nav>
 
   <main class="tab-panels">
-    <section class="tab-panel" id="panel-calculations" role="tabpanel" aria-labelledby="tab-calculations" data-panel="calculations">
-      <h2>חישובים</h2>
+    <section class="tab-panel" id="panel-calculations" role="tabpanel" aria-labelledby="tab-calculations" data-panel="calculations" data-tone="blue">
+      <h2 data-icon="🧮">חישובים</h2>
       <p class="panel-intro">בחר אילו נתונים לחשב ולהציג במודעות.</p>
       <label class="row switch">
         <input type="checkbox" id="calculatePpsm">
-        <span>לחשב ולהציג מחיר למ״ר</span>
+        <span data-icon="📐">לחשב ולהציג מחיר למ״ר</span>
       </label>
       <fieldset id="ppsmSettings">
-        <legend>תנאי מחיר למ״ר להדגשת מודעה</legend>
+        <legend data-icon="📐">תנאי מחיר למ״ר להדגשת מודעה</legend>
         <label class="field">
-          <span>מחיר מקסימלי למ״ר (₪)</span>
+          <span data-icon="💰">מחיר מקסימלי למ״ר (₪)</span>
           <input type="number" data-thousands id="maxPpsm" min="0" step="500" placeholder="למשל 30000">
         </label>
         <p class="small">0 או ריק = ללא הגבלה.</p>
         <label class="field">
-          <span>זול מחציון הדף ב-% לפחות</span>
+          <span data-icon="📉">זול מחציון הדף ב-% לפחות</span>
           <input type="number" id="belowMedianPct" min="0" max="90" step="1" placeholder="למשל 10">
         </label>
         <p class="small">0 = לא פעיל. החציון מחושב על המודעות בדף.</p>
@@ -110,99 +110,99 @@
 
       <label class="row switch">
         <input type="checkbox" id="calculateRail">
-        <span>לחשב ולהציג מרחק מהרכבת הקלה</span>
+        <span data-icon="🚊">לחשב ולהציג מרחק מהרכבת הקלה</span>
       </label>
       <fieldset id="railSettings">
-        <legend>תנאי רכבת להדגשת מודעה</legend>
+        <legend data-icon="🚊">תנאי רכבת להדגשת מודעה</legend>
         <label class="row switch">
           <input type="checkbox" id="requireRail">
-          <span>מודעה שווה רק אם היא קרובה לרכבת</span>
+          <span data-icon="📍">מודעה שווה רק אם היא קרובה לרכבת</span>
         </label>
         <label class="field">
-          <span>מרחק מקסימלי מתחנת רכבת (מטרים)</span>
+          <span data-icon="📏">מרחק מקסימלי מתחנת רכבת (מטרים)</span>
           <input type="number" data-thousands id="nearM" min="100" step="50" placeholder="800">
         </label>
       </fieldset>
       <p class="small">כיבוי חישוב מסתיר את התג ומבטל גם את התנאי המתאים בהדגשת מודעות.</p>
     </section>
 
-    <section class="tab-panel" id="panel-filters" role="tabpanel" aria-labelledby="tab-filters" data-panel="filters" hidden>
-      <h2>הדגשות וסינון</h2>
+    <section class="tab-panel" id="panel-filters" role="tabpanel" aria-labelledby="tab-filters" data-panel="filters" hidden data-tone="amber">
+      <h2 data-icon="🎛️">הדגשות וסינון</h2>
       <p class="panel-intro">התאם את אופן ההדגשה והסרת המודעות.</p>
       <label class="row switch">
         <input type="checkbox" id="highlight">
-        <span>להדגיש מודעות שוות</span>
+        <span data-icon="✨">להדגיש מודעות שוות</span>
       </label>
       <label class="row switch">
         <input type="checkbox" id="avoidBrokerage">
-        <span>פחות עדיף תיווך — להבליט את המילה במודעה</span>
+        <span data-icon="🤝">פחות עדיף תיווך — להבליט את המילה במודעה</span>
       </label>
       <label class="row switch">
         <input type="checkbox" id="removeBrokerage">
-        <span>להסיר מודעות תיווך תמיד</span>
+        <span data-icon="🚫">להסיר מודעות תיווך תמיד</span>
       </label>
       <p class="small">אפשר גם להסיר תיווך רק לעמוד הנוכחי באמצעות הכפתור בראש עמוד החיפוש.</p>
       <label class="row switch">
         <input type="checkbox" id="removeProjects">
-        <span>להסיר פרויקטים תמיד</span>
+        <span data-icon="🏗️">להסיר פרויקטים תמיד</span>
       </label>
       <p class="small">אפשר גם להסיר פרויקטים רק בעמוד הנוכחי באמצעות הכפתור בראש עמוד החיפוש.</p>
       <label class="row switch">
         <input type="checkbox" id="hideIrrelevant">
-        <span>להסתיר מודעות לא רלוונטיות מתוצאות החיפוש</span>
+        <span data-icon="🙈">להסתיר מודעות לא רלוונטיות מתוצאות החיפוש</span>
       </label>
       <p class="small">מודעה שכבר נבדקה וחסרים בה מאפייני חובה (לפי הסף בלשונית מאפייני חובה) לא תוצג שוב.</p>
       <fieldset>
-        <legend>מידע נוסף על כרטיס בתוצאות החיפוש</legend>
+        <legend data-icon="🏷️">מידע נוסף על כרטיס בתוצאות החיפוש</legend>
         <label class="row switch">
           <input type="checkbox" id="showPriceChange">
-          <span>שינוי מחיר מאז שנשמרה (למשל ↓ ירד ב־₪50,000)</span>
+          <span data-icon="💸">שינוי מחיר מאז שנשמרה (למשל ↓ ירד ב־₪50,000)</span>
         </label>
         <label class="row switch">
           <input type="checkbox" id="showListingAge">
-          <span>כמה זמן המודעה באוויר</span>
+          <span data-icon="⏳">כמה זמן המודעה באוויר</span>
         </label>
       </fieldset>
       <label class="row switch">
         <input type="checkbox" id="hideAds">
-        <span>להסתיר פרסומות ביד2</span>
+        <span data-icon="📵">להסתיר פרסומות ביד2</span>
       </label>
       <p class="small">מסתיר באנרים ופרויקטים ממומנים. כבה אם אתה רוצה לראות את הפרסומות.</p>
       <label class="field">
-        <span>רחובות שלא יוצגו לעולם</span>
+        <span data-icon="⛔">רחובות שלא יוצגו לעולם</span>
         <textarea id="blockedStreets" rows="3" placeholder="שטמפר&#10;ז'בוטינסקי, פתח תקווה"></textarea>
       </label>
       <p class="small">רחוב אחד בכל שורה. אפשר להוסיף עיר אחרי פסיק כדי לחסום רק בעיר הזו. ההתאמה לפי מילים שלמות, כך ש"הרצל" לא יחסום את "הרצליה".</p>
     </section>
 
-    <section class="tab-panel" id="panel-sites" role="tabpanel" aria-labelledby="tab-sites" data-panel="sites" hidden>
-      <h2>אתרים פעילים</h2>
+    <section class="tab-panel" id="panel-sites" role="tabpanel" aria-labelledby="tab-sites" data-panel="sites" hidden data-tone="slate">
+      <h2 data-icon="🌐">אתרים פעילים</h2>
       <p class="panel-intro">בחר באילו אתרים התוסף יפעל.</p>
       <p class="small">באתר מושבת התוסף לא יציג תגים ולא ינתח מודעות.</p>
       <label class="row switch">
         <input type="checkbox" id="disableYad2">
-        <span>להשבית ביד2</span>
+        <span data-icon="🟠">להשבית ביד2</span>
       </label>
       <label class="row switch">
         <input type="checkbox" id="disableMadlan">
-        <span>להשבית במדלן</span>
+        <span data-icon="🔵">להשבית במדלן</span>
       </label>
       <label class="row switch">
         <input type="checkbox" id="disableFacebook">
-        <span>להשבית בפייסבוק</span>
+        <span data-icon="💬">להשבית בפייסבוק</span>
       </label>
     </section>
 
-    <section class="tab-panel" id="panel-amenities" role="tabpanel" aria-labelledby="tab-amenities" data-panel="amenities" hidden>
-      <h2>מאפיינים שחובה במודעה</h2>
+    <section class="tab-panel" id="panel-amenities" role="tabpanel" aria-labelledby="tab-amenities" data-panel="amenities" hidden data-tone="green">
+      <h2 data-icon="🏡">מאפיינים שחובה במודעה</h2>
       <p class="panel-intro">בחר מאפיינים שחשוב לך למצוא בנכס.</p>
       <p class="small">מאפיין חסר יציג אזהרה בעמוד המודעה ולא יאפשר לסמן אותה כשווה.</p>
       <div id="requiredAmenities" class="amenities"></div>
-      <h3 class="subhead">דיל ברייקרים</h3>
+      <h3 class="subhead" data-icon="⛔">דיל ברייקרים</h3>
       <p class="small">מאפיין שבלעדיו המודעה לא מעניינת בכלל. אם הוא חסר בוודאות, המודעה מסומנת מיד "לא רלוונטית" – בלי קשר לסף שלמטה. דיל ברייקר נחשב גם מאפיין חובה.</p>
       <div id="dealBreakerAmenities" class="amenities deal-breakers"></div>
       <label class="field">
-        <span>מתי לסמן מודעה כ"לא רלוונטית"?</span>
+        <span data-icon="⚖️">מתי לסמן מודעה כ"לא רלוונטית"?</span>
         <select id="irrelevantMissingPct">
           <option value="0">אף פעם</option>
           <option value="1">כשחסר אפילו מאפיין חובה אחד</option>
@@ -215,16 +215,16 @@
       <p class="small">מודעה לא רלוונטית מסומנת כך ב"סטטוס מודעה" במנהל המידע, ולא נפתחת שוב ברענונים – כך הרענון לא מבזבז זמן על אלפי מודעות שלא מתאימות. נספרים רק מאפיינים שחסרים בוודאות, לא כאלה שלא ידוע אם קיימים.</p>
     </section>
 
-    <section class="tab-panel" id="panel-cache" role="tabpanel" aria-labelledby="tab-cache" data-panel="cache" hidden>
-      <h2>מטמון בדיקות מודעות</h2>
+    <section class="tab-panel" id="panel-cache" role="tabpanel" aria-labelledby="tab-cache" data-panel="cache" hidden data-tone="teal">
+      <h2 data-icon="💾">מטמון בדיקות מודעות</h2>
       <p class="panel-intro">ניהול המידע שנשמר מקומית במכשיר שלך.</p>
       <p class="small">המטמון נשמר מקומית ואינו מסונכרן עם ההעדפות.</p>
       <label class="row switch">
         <input type="checkbox" id="saveListingData">
-        <span>לשמור נתוני מודעות ופרויקטים לייצוא</span>
+        <span data-icon="💾">לשמור נתוני מודעות ופרויקטים לייצוא</span>
       </label>
       <label class="field">
-        <span>מתי לשמור מודעות?</span>
+        <span data-icon="🗂️">מתי לשמור מודעות?</span>
         <select id="listingIndexingMode">
           <option value="encountered">כשאני רואה אותן בתוצאות החיפוש</option>
           <option value="opened">רק כשאני פותח/ת את עמוד המודעה</option>
@@ -232,22 +232,22 @@
       </label>
       <div id="indexMaxPriceField">
         <label class="field">
-          <span>לשמור רק מהערים האלה</span>
+          <span data-icon="🏙️">לשמור רק מהערים האלה</span>
           <textarea id="indexCities" rows="2" placeholder="פתח תקווה&#10;רמת גן"></textarea>
         </label>
         <p class="small">עיר אחת בכל שורה. ריק = כל הערים. כתיב מלא או חסר לא משנה ("פתח תקוה" = "פתח תקווה").</p>
         <label class="field">
-          <span>מחיר מינימלי לשמירה מתוצאות החיפוש (₪)</span>
+          <span data-icon="⬇️">מחיר מינימלי לשמירה מתוצאות החיפוש (₪)</span>
           <input type="number" data-thousands id="indexMinPrice" min="0" step="10000" placeholder="ריק = ללא מינימום">
         </label>
         <label class="field">
-          <span>מחיר מקסימלי לשמירה מתוצאות החיפוש (₪)</span>
+          <span data-icon="⬆️">מחיר מקסימלי לשמירה מתוצאות החיפוש (₪)</span>
           <input type="number" data-thousands id="indexMaxPrice" min="0" step="10000" placeholder="ריק = ללא הגבלה">
         </label>
         <p class="small">מודעה חדשה מהחיפוש נשמרת רק אם יש לה קישור, מחיר בטווח שהגדרת (ותמיד לפחות ₪100,000, כדי לסנן כרטיסים שעוד נטענים), רחוב או עיר, ושטח או מספר חדרים. מודעות להשכרה לא נשמרות אף פעם. היא תסומן "לא נבדקה · מהחיפוש בלבד" עד שתפתח/י את עמוד המודעה או תרענן/י אותה.</p>
       </div>
       <label class="field">
-        <span>כמה עמודים לקרוא מעסקאות האמת ביד2?</span>
+        <span data-icon="🧾">כמה עמודים לקרוא מעסקאות האמת ביד2?</span>
         <select id="dealsPages">
           <option value="0">כבוי – לא לקרוא עסקאות מיד2</option>
           <option value="1">עמוד אחד (עד 1,000 עסקאות)</option>
