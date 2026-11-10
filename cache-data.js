@@ -722,7 +722,62 @@ var LRCacheData = (() => {
     return findTwins(cache).get(key) || null;
   }
 
+  // ---------- מס רכישה (מדרגות, ניתן לעריכה בהגדרות) ----------
+  // פטור עד purchaseTaxExemptUpTo; מעליו כל מדרגה ממוסה בשיעור שלה על החלק שבתוכה.
+  // upTo: null במדרגה האחרונה = "ומעלה". ברירת מחדל: דירה יחידה, נכון לנובמבר 2026 (לפי הנתונים שהמשתמש הזין).
+  const DEFAULT_PURCHASE_TAX = Object.freeze({
+    exemptUpTo: 1978745,
+    brackets: Object.freeze([
+      Object.freeze({ upTo: 2347040, rate: 3.5 }),
+      Object.freeze({ upTo: 6055070, rate: 5 }),
+      Object.freeze({ upTo: 20183565, rate: 8 }),
+      Object.freeze({ upTo: null, rate: 10 }),
+    ]),
+  });
+
+  function normalizePurchaseTax(exemptUpTo, brackets) {
+    const exempt = Number(exemptUpTo);
+    const list = Array.isArray(brackets) ? brackets : null;
+    if (!(exempt >= 0) || !list || !list.length) {
+      return { exemptUpTo: DEFAULT_PURCHASE_TAX.exemptUpTo, brackets: DEFAULT_PURCHASE_TAX.brackets.map((b) => ({ ...b })) };
+    }
+    const clean = list
+      .map((bracket) => ({
+        upTo: bracket && bracket.upTo !== null && bracket.upTo !== "" && Number(bracket.upTo) > 0 ? Number(bracket.upTo) : null,
+        rate: Math.max(0, Math.min(100, Number(bracket && bracket.rate) || 0)),
+      }));
+    // מדרגות עם גבול – לפי הסדר, רק גבולות שעולים; המדרגה הפתוחה ("ומעלה") תמיד אחרונה
+    const bounded = clean.filter((bracket) => bracket.upTo !== null).sort((a, b) => a.upTo - b.upTo)
+      .filter((bracket, index, all) => bracket.upTo > exempt && (index === 0 || bracket.upTo > all[index - 1].upTo));
+    const open = clean.find((bracket) => bracket.upTo === null);
+    return { exemptUpTo: exempt, brackets: [...bounded, { upTo: null, rate: open ? open.rate : (bounded.length ? bounded[bounded.length - 1].rate : 0) }] };
+  }
+
+  // { tax, total, effectivePct, parts: [{ from, to, rate, tax }] } או null כשאין מחיר
+  function purchaseTax(price, settings = DEFAULT_PURCHASE_TAX) {
+    const value = Number(price);
+    if (!(value > 0)) return null;
+    const { exemptUpTo, brackets } = normalizePurchaseTax(settings.exemptUpTo, settings.brackets);
+    let from = exemptUpTo;
+    let tax = 0;
+    const parts = [];
+    for (const bracket of brackets) {
+      if (value <= from) break;
+      const to = bracket.upTo === null ? value : Math.min(value, bracket.upTo);
+      const part = ((to - from) * bracket.rate) / 100;
+      if (to > from) parts.push({ from, to, rate: bracket.rate, tax: Math.round(part) });
+      tax += part;
+      if (bracket.upTo === null) break;
+      from = bracket.upTo;
+    }
+    tax = Math.round(tax);
+    return { tax, total: value + tax, effectivePct: Math.round((tax / value) * 1000) / 10, parts };
+  }
+
   return {
+    DEFAULT_PURCHASE_TAX,
+    normalizePurchaseTax,
+    purchaseTax,
     findTwins,
     findTwin,
     cleanPriceHistory,

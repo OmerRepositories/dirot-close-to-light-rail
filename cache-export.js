@@ -821,7 +821,9 @@ var LRCacheExport = (() => {
       lines.push(fullRow({
         "סוג רשומה": "הגדרה",
         "שם הגדרה": name,
-        "ערך": Array.isArray(value) ? value.join(" | ") : typeof value === "boolean" ? (value ? "כן" : "לא") : value,
+        "ערך": Array.isArray(value)
+          ? value.map((item) => (item && typeof item === "object" ? JSON.stringify(item) : item)).join(" | ")
+          : typeof value === "boolean" ? (value ? "כן" : "לא") : value,
       }));
     }
 

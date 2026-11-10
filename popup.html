@@ -124,6 +124,28 @@
         </label>
       </fieldset>
       <p class="small">כיבוי חישוב מסתיר את התג ומבטל גם את התנאי המתאים בהדגשת מודעות.</p>
+
+      <fieldset id="purchaseTaxSettings">
+        <legend data-icon="🧾">מס רכישה</legend>
+        <label class="row switch">
+          <input type="checkbox" id="showPurchaseTax">
+          <span data-icon="💸">להציג עמודת "מחיר כולל מס רכישה" במידע השמור</span>
+        </label>
+        <label class="field">
+          <span data-icon="🛡️">פטור ממס עד סכום (₪)</span>
+          <input type="number" data-thousands id="purchaseTaxExemptUpTo" min="0" step="1" placeholder="1,978,745">
+        </label>
+        <div class="tax-brackets" role="group" aria-label="מדרגות מס רכישה">
+          <div class="tax-bracket tax-bracket-head" aria-hidden="true"><span>מ־ (₪)</span><span>עד (₪)</span><span>שיעור</span><span></span></div>
+          <div id="purchaseTaxBrackets"></div>
+        </div>
+        <div class="tax-actions">
+          <button id="addTaxBracket" type="button">+ הוספת מדרגה</button>
+          <button id="resetPurchaseTax" type="button">חזרה לערכים המקוריים</button>
+        </div>
+        <p class="small" id="purchaseTaxExample" aria-live="polite"></p>
+        <p class="small">המדרגות של דירה יחידה. כל מדרגה ממוסה רק על החלק של המחיר שבתוכה. "מ־" של כל מדרגה הוא ה"עד" של המדרגה שלפניה, והמדרגה האחרונה פתוחה ("ומעלה"). כשהמדרגות מתעדכנות, עורכים כאן את הסכומים והשיעורים.</p>
+      </fieldset>
     </section>
 
     <section class="tab-panel" id="panel-filters" role="tabpanel" aria-labelledby="tab-filters" data-panel="filters" hidden data-tone="amber">

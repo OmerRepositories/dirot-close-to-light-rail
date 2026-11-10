@@ -854,6 +854,8 @@ td.real-deals.above { color: var(--danger); }
 
 /* חיווי ענן: עמודה, מונה ושורת מצב */
 body:not([data-cloud="on"]) .cloud-col { display: none; }
+body[data-purchase-tax="off"] .price-tax-col { display: none; }
+td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cloud-chip {
   display: inline-flex;
   align-items: center;

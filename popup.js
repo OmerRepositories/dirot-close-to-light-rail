@@ -27,6 +27,9 @@ const DEFAULTS = {
   hideAds: true,
   blockedStreets: [],
   dealsPages: 10,
+  showPurchaseTax: true,
+  purchaseTaxExemptUpTo: LRCacheData.DEFAULT_PURCHASE_TAX.exemptUpTo,
+  purchaseTaxBrackets: LRCacheData.DEFAULT_PURCHASE_TAX.brackets.map((bracket) => ({ ...bracket })),
 };
 
 const DEALS_PAGE_OPTIONS = [0, 1, 2, 3, 5, 10];
@@ -115,7 +118,100 @@ const boolKeys = [
   "hideIrrelevant",
   "showPriceChange",
   "showListingAge",
+  "showPurchaseTax",
 ];
+
+// ---------- מדרגות מס רכישה ----------
+const shekel = (value) => `₪${Math.round(value).toLocaleString("he-IL")}`;
+
+function taxRowsFromSettings(s) {
+  const tax = LRCacheData.normalizePurchaseTax(s.purchaseTaxExemptUpTo, s.purchaseTaxBrackets);
+  return { exemptUpTo: tax.exemptUpTo, brackets: tax.brackets };
+}
+
+function renderTaxBrackets(brackets) {
+  const host = $("purchaseTaxBrackets");
+  host.replaceChildren();
+  brackets.forEach((bracket, index) => {
+    const last = index === brackets.length - 1;
+    const row = document.createElement("div");
+    row.className = "tax-bracket";
+    row.dataset.taxRow = String(index);
+    const from = document.createElement("span");
+    from.className = "tax-from";
+    const upTo = document.createElement("input");
+    upTo.type = "number";
+    upTo.dataset.thousands = "";
+    upTo.dataset.taxUpTo = "";
+    upTo.min = "0";
+    upTo.setAttribute("aria-label", `עד סכום – מדרגה ${index + 1}`);
+    if (last) {
+      upTo.disabled = true;
+      upTo.placeholder = "ומעלה";
+    } else {
+      upTo.value = bracket.upTo === null ? "" : String(bracket.upTo);
+    }
+    const rateWrap = document.createElement("span");
+    rateWrap.className = "tax-rate";
+    const rate = document.createElement("input");
+    rate.type = "number";
+    rate.dataset.taxRate = "";
+    rate.min = "0";
+    rate.max = "100";
+    rate.step = "0.1";
+    rate.value = String(bracket.rate);
+    rate.setAttribute("aria-label", `שיעור המס באחוזים – מדרגה ${index + 1}`);
+    rateWrap.append(rate, "%");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "tax-remove";
+    remove.textContent = "✕";
+    remove.title = "מחיקת המדרגה";
+    remove.disabled = brackets.length <= 1;
+    remove.addEventListener("click", () => {
+      const current = readTaxBrackets();
+      current.splice(index, 1);
+      if (current.length) current[current.length - 1].upTo = null;
+      renderTaxBrackets(current);
+      save();
+    });
+    row.append(from, upTo, rateWrap, remove);
+    host.appendChild(row);
+  });
+  if (window.LRNumberInput) LRNumberInput.enhanceAll(host);
+  for (const input of host.querySelectorAll("input")) input.addEventListener("input", save);
+  updateTaxPreview();
+}
+
+function readTaxBrackets() {
+  return [...document.querySelectorAll("[data-tax-row]")].map((row, index, rows) => {
+    const upTo = Number(row.querySelector("[data-tax-up-to]").value);
+    return {
+      upTo: index === rows.length - 1 || !(upTo > 0) ? null : upTo,
+      rate: Math.max(0, Math.min(100, Number(row.querySelector("[data-tax-rate]").value) || 0)),
+    };
+  });
+}
+
+// "מ־" של כל שורה = ה"עד" של השורה הקודמת (או סכום הפטור), ודוגמה לחישוב
+function updateTaxPreview() {
+  const exempt = Number($("purchaseTaxExemptUpTo").value) || 0;
+  let from = exempt;
+  for (const row of document.querySelectorAll("[data-tax-row]")) {
+    row.querySelector(".tax-from").textContent = shekel(from);
+    const upTo = Number(row.querySelector("[data-tax-up-to]").value);
+    if (upTo > 0) from = upTo;
+  }
+  const settings = { exemptUpTo: exempt, brackets: readTaxBrackets() };
+  const example = [2_500_000, 3_500_000]
+    .map((price) => {
+      const result = LRCacheData.purchaseTax(price, settings);
+      return result ? `${shekel(price)} → מס ${shekel(result.tax)} (${result.effectivePct}%), סה״כ ${shekel(result.total)}` : "";
+    })
+    .filter(Boolean)
+    .join(" · ");
+  $("purchaseTaxExample").textContent = example ? `לדוגמה: ${example}` : "";
+}
 
 function fill(s) {
   for (const k of numberKeys) $(k).value = s[k] ? s[k] : k === "nearM" ? s[k] : "";
@@ -143,6 +239,12 @@ function fill(s) {
   }
   if (document.activeElement !== $("indexCities")) {
     $("indexCities").value = (Array.isArray(s.indexCities) ? s.indexCities : []).join("\n");
+  }
+  // לא בונים מחדש את המדרגות בזמן שמקלידים בהן (השמירה האוטומטית מחזירה אותן)
+  if (!$("purchaseTaxSettings").contains(document.activeElement)) {
+    const tax = taxRowsFromSettings(s);
+    $("purchaseTaxExemptUpTo").value = String(tax.exemptUpTo);
+    renderTaxBrackets(tax.brackets);
   }
   syncDisabled();
 }
@@ -183,6 +285,9 @@ function read() {
   );
   out.blockedStreets = LRStreetFilter.parseInput($("blockedStreets").value);
   out.indexCities = LRStreetFilter.parseInput($("indexCities").value);
+  const exempt = Number($("purchaseTaxExemptUpTo").value);
+  out.purchaseTaxExemptUpTo = Number.isFinite(exempt) && exempt >= 0 ? exempt : DEFAULTS.purchaseTaxExemptUpTo;
+  out.purchaseTaxBrackets = readTaxBrackets();
   return out;
 }
 
@@ -196,6 +301,7 @@ function flash(msg) {
 let saveTimer = null;
 function save() {
   syncDisabled();
+  updateTaxPreview();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     chrome.storage.sync.set(read(), () => flash("✓ נשמר"));
@@ -213,6 +319,21 @@ $("dealsPages").addEventListener("change", save);
 $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("indexCities").addEventListener("input", save);
+$("purchaseTaxExemptUpTo").addEventListener("input", save);
+$("addTaxBracket").addEventListener("click", () => {
+  // מדרגה חדשה נכנסת לפני המדרגה הפתוחה ("ומעלה"), עם גבול מעל המדרגה הקודמת
+  const brackets = readTaxBrackets();
+  const open = brackets.pop() || { upTo: null, rate: 0 };
+  const previous = brackets.length ? brackets[brackets.length - 1].upTo : Number($("purchaseTaxExemptUpTo").value) || 0;
+  brackets.push({ upTo: Math.round((previous || 0) * 1.5) || 1_000_000, rate: open.rate }, open);
+  renderTaxBrackets(brackets);
+  save();
+});
+$("resetPurchaseTax").addEventListener("click", () => {
+  $("purchaseTaxExemptUpTo").value = String(DEFAULTS.purchaseTaxExemptUpTo);
+  renderTaxBrackets(DEFAULTS.purchaseTaxBrackets.map((bracket) => ({ ...bracket })));
+  save();
+});
 
 function amenityOption(key, label, dataKey) {
   const option = document.createElement("label");
@@ -245,7 +366,14 @@ for (const [key, label] of AMENITIES) {
 $("reset").addEventListener("click", () => {
   fill(DEFAULTS);
   chrome.storage.sync.set(
-    { ...DEFAULTS, requiredAmenities: [...DEFAULTS.requiredAmenities], dealBreakerAmenities: [], blockedStreets: [], indexCities: [] },
+    {
+      ...DEFAULTS,
+      requiredAmenities: [...DEFAULTS.requiredAmenities],
+      dealBreakerAmenities: [],
+      blockedStreets: [],
+      indexCities: [],
+      purchaseTaxBrackets: DEFAULTS.purchaseTaxBrackets.map((bracket) => ({ ...bracket })),
+    },
     () => flash("✓ אופס")
   );
 });

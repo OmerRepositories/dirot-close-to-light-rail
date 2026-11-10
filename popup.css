@@ -402,3 +402,13 @@ legend[data-icon]::before, .subhead[data-icon]::before { width: 24px; height: 24
   line-height: 1;
 }
 .tab-panel[data-tone] .row.switch input:checked { background: var(--tone); }
+/* ---------- מדרגות מס רכישה ---------- */
+.tax-brackets { margin-top: 12px; }
+.tax-bracket { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(110px, 1.2fr) 86px 32px; align-items: center; gap: 8px; margin-top: 6px; }
+.tax-bracket-head { margin-top: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.tax-from { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; direction: ltr; text-align: right; }
+.tax-bracket input { width: 100%; min-width: 0; }
+.tax-bracket input:disabled::placeholder { color: var(--ink); font-weight: 600; opacity: 1; }
+.tax-rate { display: inline-flex; align-items: center; gap: 4px; }
+.tax-remove { min-height: 30px; padding: 0; color: var(--danger); }
+.tax-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

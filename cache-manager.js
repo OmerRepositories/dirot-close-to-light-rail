@@ -267,6 +267,25 @@ function renderListingDeletionPreview() {
   button.textContent = `מחיקת ${matches.length.toLocaleString("he-IL")} המודעות המתאימות`;
 }
 
+// מס רכישה: מדרגות מההגדרות (chrome.storage.sync), לעמודת "כולל מס רכישה"
+let purchaseTaxSettings = {
+  exemptUpTo: LRCacheData.DEFAULT_PURCHASE_TAX.exemptUpTo,
+  brackets: LRCacheData.DEFAULT_PURCHASE_TAX.brackets,
+};
+const PURCHASE_TAX_KEYS = ["showPurchaseTax", "purchaseTaxExemptUpTo", "purchaseTaxBrackets"];
+
+function loadPurchaseTaxSettings(render = false) {
+  chrome.storage.sync.get(
+    { showPurchaseTax: true, purchaseTaxExemptUpTo: null, purchaseTaxBrackets: null },
+    (settings) => {
+      if (chrome.runtime.lastError || !settings) return;
+      purchaseTaxSettings = LRCacheData.normalizePurchaseTax(settings.purchaseTaxExemptUpTo, settings.purchaseTaxBrackets);
+      document.body.dataset.purchaseTax = settings.showPurchaseTax === false ? "off" : "on";
+      if (render) renderRows();
+    }
+  );
+}
+
 function readTimelinePreferences(settings) {
   timelinePreferences = {
     requiredAmenities: Array.isArray(settings.requiredAmenities)
@@ -376,6 +395,7 @@ function renderCloudCell(td, key, record) {
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
   { key: "price", label: "מחיר", sortKey: "price", className: "price-col" },
+  { key: "priceWithTax", label: "כולל מס רכישה", sortKey: "priceWithTax", className: "price-tax-col", title: "כמה הדירה תעלה בפועל: המחיר ועוד מס רכישה לפי המדרגות שבהגדרות (חישובים ← מס רכישה)" },
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
   { key: "sqm", label: "מ״ר", sortKey: "sqm" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
@@ -800,6 +820,10 @@ function rowSortValue(key, record, priceRanks) {
   if (sort.key === "recordType") return recordType(record);
   if (sort.key === "site") return recordSite(key);
   if (sort.key === "pricePerSqm") return LRCacheData.pricePerSqm(record);
+  if (sort.key === "priceWithTax") {
+    const tax = LRCacheData.purchaseTax(record.price, purchaseTaxSettings);
+    return tax ? tax.total : null;
+  }
   if (sort.key === "dealScore") {
     return LRCacheData.dealScore(record, priceRanks.get(key) ?? 0.5, realDealsFor(record)?.diffPct);
   }
@@ -930,6 +954,10 @@ function columnFilterText(key, record, recordKey, priceRanks) {
   }
   if (key === "cloud") return CLOUD_LABELS[cloudState(recordKey, record)] || "";
   if (key === "price") return `${record.price ?? ""} ${displayPrice(record.price)}`;
+  if (key === "priceWithTax") {
+    const tax = LRCacheData.purchaseTax(record.price, purchaseTaxSettings);
+    return tax ? `${tax.total} ${displayPrice(tax.total)}` : "";
+  }
   if (key === "sqm" || key === "rooms" || key === "railMeters" || key === "listingAgeDays" || key === "shelterMeters") {
     return String(record[key] ?? "");
   }
@@ -1152,6 +1180,13 @@ function renderRows() {
       } else if (column.key === "price") {
         td.className = "price-col";
         td.textContent = displayPrice(record.price);
+      } else if (column.key === "priceWithTax") {
+        td.className = "price-tax-col";
+        const tax = LRCacheData.purchaseTax(record.price, purchaseTaxSettings);
+        if (tax) {
+          td.textContent = displayPrice(tax.total);
+          td.title = `${displayPrice(record.price)} + מס רכישה ${displayPrice(tax.tax)} (${tax.effectivePct}% מהמחיר)`;
+        }
       } else if (column.key === "pricePerSqm") {
         td.textContent = displayPrice(LRCacheData.pricePerSqm(record));
         td.title = "מחיר למ״ר מחושב מהמחיר והשטח";
@@ -5020,6 +5055,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (refreshQueue.length && !currentPageLoaded) {
     skipRefreshListing(new Error("כרטיסיית הרענון נסגרה לפני טעינת הדף."), true);
   }
+});
+loadPurchaseTaxSettings();
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "sync" && PURCHASE_TAX_KEYS.some((key) => changes[key])) loadPurchaseTaxSettings(true);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "sync") {
