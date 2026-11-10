@@ -327,3 +327,28 @@ test("analyzeDeals: empty input and quantile", () => {
   assert.equal(Deals.quantile([1, 2, 3, 4, 5], 0.25), 2);
   assert.equal(Deals.quantile([10, 20], 0.5), 15);
 });
+
+test("neighborhood level: Madlan deals without a neighborhood get one from the building/street, names normalized", () => {
+  const deal = (street, house, neighborhood, n) => ({
+    city: "פתח תקווה", street, house, neighborhood, date: `2025-0${(n % 9) + 1}-01`, price: 2_000_000 + n * 1000, sqm: 100, rooms: 4,
+  });
+  const store = {};
+  let n = 0;
+  // יד2: 4 עסקאות ברחוב הרצל, בשכונה "שכונת שיפר"
+  for (let i = 0; i < 4; i++) store[`y${i}`] = deal("הרצל", String(10 + i), "שכונת שיפר", n++);
+  // מדלן: 4 עסקאות באותו רחוב, בלי שכונה
+  for (let i = 0; i < 4; i++) store[`m${i}`] = deal("הרצל", String(20 + i), null, n++);
+  // רחוב שחוצה שתי שכונות: לא משייכים
+  store.a = deal("ז׳בוטינסקי", "1", "שיפר", n++);
+  store.b = deal("ז׳בוטינסקי", "3", "כפר גנים", n++);
+  store.c = deal("ז׳בוטינסקי", "5", "כפר גנים", n++);
+  store.d = deal("ז׳בוטינסקי", "7", null, n++);
+  const index = Deals.buildIndex(store, { now: Date.UTC(2026, 0, 1) });
+  assert.equal(index.byHood.get("פתח תקווה|שיפר").length, 9);
+  // מודעה ששם השכונה שלה "שיפר" (בלי "שכונת") מקבלת את כל 9
+  const all = Deals.compareListingAll({ address: "הרצל 30, פתח תקווה", city: "פתח תקווה", neighborhood: "שיפר", sqm: 100, rooms: 4 }, index, 20000);
+  assert.equal(all.neighborhood.count, 9);
+  // מודעה עם שם שכונה אחר (כמו במדלן) – לפי הרחוב
+  const other = Deals.compareListingAll({ address: "הרצל 30, פתח תקווה", city: "פתח תקווה", neighborhood: "מרכז העיר", sqm: 100, rooms: 4 }, index, 20000);
+  assert.equal(other.neighborhood.count, 9);
+});

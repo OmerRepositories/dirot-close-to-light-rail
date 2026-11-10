@@ -32,6 +32,15 @@ var LRDeals = (() => {
       .join(" ");
   }
 
+  // "שכונת שיפר" = "שיפר"; כתיב מלא/חסר ("נווה"/"נוה") לא משנה
+  function normHood(hood) {
+    return cleanText(hood)
+      .replace(/^(?:שכונת|שכונה|שכ)\s+/, "")
+      .replace(/וו/g, "ו")
+      .replace(/יי/g, "י")
+      .trim();
+  }
+
   function normHouse(house) {
     const match = cleanText(house).match(/^(\d{1,4})\s*([א-ת])?$/);
     return match ? `${Number(match[1])}${match[2] || ""}` : "";
@@ -179,8 +188,58 @@ var LRDeals = (() => {
       city: normCity(record && record.city),
       street: normStreet(match ? match[1] : text),
       house: match ? normHouse(match[2]) : "",
-      neighborhood: cleanText(record && record.neighborhood),
+      neighborhood: normHood(record && record.neighborhood),
     };
+  }
+
+  // השכונה של בניין/רחוב לפי עסקאות אחרות שיש להן שכונה (עסקאות מדלן מגיעות בלי שכונה):
+  // בניין – השכונה הנפוצה בו; רחוב – רק כשלפחות 80% מ־3 עסקאות ומעלה באותה שכונה
+  function hoodGuesser(deals) {
+    const byBuilding = new Map();
+    const byStreet = new Map();
+    const vote = (map, key, hood) => {
+      if (!map.has(key)) map.set(key, new Map());
+      const counts = map.get(key);
+      counts.set(hood, (counts.get(hood) || 0) + 1);
+    };
+    for (const deal of deals) {
+      const hood = normHood(deal.neighborhood);
+      if (!hood) continue;
+      const streetKey = `${normCity(deal.city)}|${normStreet(deal.street)}`;
+      vote(byStreet, streetKey, hood);
+      const house = normHouse(deal.house);
+      if (house) vote(byBuilding, `${streetKey}|${house}`, hood);
+    }
+    const top = (counts) => {
+      let best = "";
+      let bestCount = 0;
+      let total = 0;
+      for (const [hood, count] of counts) {
+        total += count;
+        if (count > bestCount) {
+          best = hood;
+          bestCount = count;
+        }
+      }
+      return { hood: best, share: total ? bestCount / total : 0, total };
+    };
+    return (city, street, house) => {
+      const streetKey = `${city}|${street}`;
+      const building = house && byBuilding.get(`${streetKey}|${house}`);
+      if (building) return top(building).hood;
+      const onStreet = byStreet.get(streetKey);
+      if (!onStreet) return "";
+      const result = top(onStreet);
+      return result.total >= 3 && result.share >= 0.8 ? result.hood : "";
+    };
+  }
+
+  // השכונה של המודעה כפי שהיא באינדקס: השם שלה אם יש עסקאות בשכונה בשם הזה,
+  // אחרת לפי הבניין/הרחוב (מדלן ויד2 לא תמיד קוראות לשכונה באותו שם)
+  function listingHood(place, index) {
+    if (place.neighborhood && index.byHood.has(`${place.city}|${place.neighborhood}`)) return place.neighborhood;
+    const guessed = index.guessHood && place.street ? index.guessHood(place.city, place.street, place.house) : "";
+    return guessed || place.neighborhood;
   }
 
   function buildIndex(store, { years = 4, now = Date.now() } = {}) {
@@ -188,21 +247,25 @@ var LRDeals = (() => {
     const byStreet = new Map();
     const byHood = new Map();
     const byCity = new Map();
-    for (const deal of Object.values(store || {})) {
-      if (!deal || !(deal.price > 0) || !(deal.sqm > 0) || String(deal.date) < minDate) continue;
+    const deals = Object.values(store || {}).filter(
+      (deal) => deal && deal.price > 0 && deal.sqm > 0 && String(deal.date) >= minDate
+    );
+    const guessHood = hoodGuesser(deals);
+    for (const deal of deals) {
       const city = normCity(deal.city);
       if (!byCity.has(city)) byCity.set(city, []);
       byCity.get(city).push(deal);
       const streetKey = `${city}|${normStreet(deal.street)}`;
       if (!byStreet.has(streetKey)) byStreet.set(streetKey, []);
       byStreet.get(streetKey).push(deal);
-      if (deal.neighborhood) {
-        const hoodKey = `${city}|${cleanText(deal.neighborhood)}`;
+      const hood = normHood(deal.neighborhood) || guessHood(city, normStreet(deal.street), normHouse(deal.house));
+      if (hood) {
+        const hoodKey = `${city}|${hood}`;
         if (!byHood.has(hoodKey)) byHood.set(hoodKey, []);
         byHood.get(hoodKey).push(deal);
       }
     }
-    return { byStreet, byHood, byCity, years };
+    return { byStreet, byHood, byCity, years, guessHood };
   }
 
   function summarize(level, deals, listingPpsm, similar) {
@@ -238,7 +301,8 @@ var LRDeals = (() => {
     if (!place.city || !place.street) return null;
     const street = index.byStreet.get(`${place.city}|${place.street}`) || [];
     const building = place.house ? street.filter((deal) => normHouse(deal.house) === place.house) : [];
-    const hood = place.neighborhood ? index.byHood.get(`${place.city}|${place.neighborhood}`) || [] : [];
+    const hoodName = listingHood(place, index);
+    const hood = hoodName ? index.byHood.get(`${place.city}|${hoodName}`) || [] : [];
     const levels = [["building", building, 3], ["street", street, 3], ["neighborhood", hood, 5]];
     const similar = similarTo(record);
     for (const [level, deals, minimum] of levels) {
@@ -264,7 +328,10 @@ var LRDeals = (() => {
     const groups = {
       building: place.house ? street.filter((deal) => normHouse(deal.house) === place.house) : [],
       street,
-      neighborhood: place.neighborhood ? index.byHood.get(`${place.city}|${place.neighborhood}`) || [] : [],
+      neighborhood: (() => {
+        const hoodName = listingHood(place, index);
+        return hoodName ? index.byHood.get(`${place.city}|${hoodName}`) || [] : [];
+      })(),
       city: (index.byCity && index.byCity.get(place.city)) || [],
     };
     const similar = similarTo(record);
@@ -584,7 +651,7 @@ var LRDeals = (() => {
       byCity: groupBy(deals, (deal) => normCity(deal.city), (deal) => ({ city: deal.city })),
       byNeighborhood: groupBy(
         deals,
-        (deal) => (deal.neighborhood ? `${normCity(deal.city)}|${cleanText(deal.neighborhood)}` : ""),
+        (deal) => (deal.neighborhood ? `${normCity(deal.city)}|${normHood(deal.neighborhood)}` : ""),
         (deal) => ({ city: deal.city, neighborhood: deal.neighborhood })
       ),
       byStreet: groupBy(
@@ -622,7 +689,7 @@ var LRDeals = (() => {
       if (!(year >= firstYear && year <= lastYear)) continue;
       add(cities, normCity(deal.city), { city: deal.city }, deal, year);
       if (deal.neighborhood) {
-        add(hoods, `${normCity(deal.city)}|${cleanText(deal.neighborhood)}`, { city: deal.city, neighborhood: deal.neighborhood }, deal, year);
+        add(hoods, `${normCity(deal.city)}|${normHood(deal.neighborhood)}`, { city: deal.city, neighborhood: deal.neighborhood }, deal, year);
       }
     }
     const finish = (entry) => ({
