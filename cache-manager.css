@@ -841,6 +841,13 @@ body:not([data-cloud="on"]) .cloud-col { display: none; }
 .deals-card-note { margin: -6px 0 10px; color: var(--muted); font-size: 13px; }
 .deals-stats .dash-card > .deals-card-note:last-child { margin: 10px 0 0; }
 .deals-stats-table td { font-variant-numeric: tabular-nums; }
+/* הטבלאות נשארות בתוך הכרטיס: הכרטיס יכול להתכווץ בגריד, תאים צפופים יותר,
+   כותרות נשברות לשורה שנייה, ואם עדיין לא נכנס – גלילה אופקית בתוך הכרטיס בלבד */
+.deals-stats .dash-grid { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.deals-stats .dash-card { min-width: 0; overflow-x: auto; }
+.deals-stats-table th, .deals-stats-table td { padding: 7px 5px; }
+.deals-stats-table th { white-space: normal; vertical-align: bottom; line-height: 1.25; }
+.deals-stats-table th .deals-sort { white-space: normal; text-align: right; }
 .deals-stats-table tbody tr.static { cursor: default; }
 .deals-stats-table tbody tr:focus-visible td { outline: 2px solid var(--action); outline-offset: -2px; }
 /* מיון בטבלאות הסטטיסטיקה: כותרת לחיצה עם חץ כיוון */
