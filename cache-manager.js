@@ -92,6 +92,13 @@ function irrelevantTitle(relevance) {
     : `חסרים ${relevance.missing.length} מתוך ${relevance.requiredCount} מאפייני החובה: ${relevance.missing.map(label).join(", ")}`;
   return `לא רלוונטית – ${reason}. מודעה כזו לא נכללת ברענונים.`;
 }
+// יוצר אלמנט עם מחלקה וטקסט (גלובלי: משמש את מסך הסנכרון ואת ייצוא לפי כתובות)
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
 const expandedPriceHistory = new Set();
 const timelineAmenityLabels = {
   parking: "חניה",
