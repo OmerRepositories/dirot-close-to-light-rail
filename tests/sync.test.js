@@ -5,6 +5,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const LRSync = require("../sync-core.js");
+const LRListingStore = require("../listing-store.js");
 
 // ---------- פונקציות טהורות ----------
 
@@ -272,8 +273,8 @@ function computer(server, initialCache) {
     connect: () =>
       send({ type: "lightrail:sync-connect", url: "https://demo.example.test", apiKey: "public-key", email: "me@example.test", password: "pw-1" }),
     syncNow: () => send({ type: "lightrail:sync-now" }),
-    setCache: (cache) => local.set({ yad2AmenityCache_v1: cache }),
-    cache: () => store.yad2AmenityCache_v1,
+    setCache: (cache) => local.set(LRListingStore.split(cache)),
+    cache: () => LRListingStore.fold(store),
     setSettings: (values) => syncArea.set(values),
     settings: () => clone(syncStore),
     // עסקאות נכתבות בפורמט הישן (מפתח אחד) – הסנכרון מעביר אותן לשמירה לפי עיר
@@ -288,6 +289,28 @@ function computer(server, initialCache) {
     },
   };
 }
+
+test("tab cache patches: old single key migrates, only the changed shard is written, deleted records stay deleted", async () => {
+  const initial = {};
+  for (let i = 0; i < 100; i++) initial[`yad2:a${i}`] = { updatedAt: 10, price: i };
+  const pc = computer(fakeSupabase(), initial);
+  const tab = { id: "ext", tab: { id: 7 }, url: "https://www.yad2.co.il/item/a1" };
+  const response = await pc.send({
+    type: "lightrail:cache-patch",
+    puts: [
+      { key: "yad2:a1", record: { updatedAt: 20, price: 111 }, existed: true },
+      { key: "yad2:gone", record: { updatedAt: 20 }, existed: true },
+    ],
+    prunes: [],
+  }, tab);
+  assert.equal(response.ok, true);
+  assert.deepEqual([...response.deleted], ["yad2:gone"]);
+  assert.equal(LRListingStore.LEGACY_KEY in pc.store, false, "old key migrated away");
+  const cache = pc.cache();
+  assert.equal(cache["yad2:a1"].price, 111);
+  assert.equal(Object.keys(cache).length, 100);
+  assert.equal("yad2:gone" in cache, false);
+});
 
 test("real deals sync through their own table: one row per deal, sources merged, nothing overwritten", async () => {
   const Deals = require("../deals-core.js");

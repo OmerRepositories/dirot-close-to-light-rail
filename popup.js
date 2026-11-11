@@ -439,15 +439,10 @@ $("reset").addEventListener("click", () => {
 });
 
 function updateCacheStatus() {
-  chrome.storage.local.get(LISTING_CACHE_KEY, (stored) => {
+  LRListingStore.read(chrome.storage.local).then((cache) => {
     const status = $("cacheStatus");
-    if (chrome.runtime.lastError) {
-      status.textContent = "לא ניתן לקרוא את המטמון";
-      status.dataset.error = "true";
-      return;
-    }
     const now = Date.now();
-    const records = Object.values(stored[LISTING_CACHE_KEY] || {}).filter(
+    const records = Object.values(cache).filter(
       (record) =>
         record &&
         Number.isFinite(record.updatedAt) &&
@@ -456,12 +451,16 @@ function updateCacheStatus() {
     status.textContent = `${records.length} מודעות שמורות`;
     $("launcherCount").textContent = `${records.length.toLocaleString("he-IL")} מודעות שמורות · חיפוש ושינויי מחירים`;
     status.dataset.error = "false";
+  }, () => {
+    const status = $("cacheStatus");
+    status.textContent = "לא ניתן לקרוא את המטמון";
+    status.dataset.error = "true";
   });
 }
 
 $("clearListingCache").addEventListener("click", () => {
   $("clearListingCache").disabled = true;
-  chrome.storage.local.remove(LISTING_CACHE_KEY, () => {
+  chrome.storage.local.remove(LRListingStore.ALL_KEYS, () => {
     $("clearListingCache").disabled = false;
     const status = $("cacheStatus");
     if (chrome.runtime.lastError) {
@@ -477,7 +476,7 @@ $("clearListingCache").addEventListener("click", () => {
 });
 
 chrome.storage.local.onChanged.addListener((changes) => {
-  if (changes[LISTING_CACHE_KEY]) updateCacheStatus();
+  if (Object.keys(changes).some(LRListingStore.isCacheKey)) updateCacheStatus();
 });
 
 updateCacheStatus();
@@ -504,15 +503,7 @@ async function exportListingCache(format) {
 
   try {
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const stored = await new Promise((resolve, reject) => {
-      chrome.storage.local.get(LISTING_CACHE_KEY, (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        resolve(result && result[LISTING_CACHE_KEY] ? result[LISTING_CACHE_KEY] : {});
-      });
-    });
+    const stored = await LRListingStore.read(chrome.storage.local);
     const count = Object.keys(stored).length;
     const formatName = format === "excel" ? "Excel" : format.toUpperCase();
     const progress = (complete, total) => {

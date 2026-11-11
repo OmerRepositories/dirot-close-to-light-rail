@@ -1,6 +1,6 @@
 // Service worker: גיאוקוד כתובות (Nominatim) + רשימת תחנות רכבת קלה (Overpass / OpenStreetMap)
 // + סנכרון אונליין אופציונלי (sync-core.js)
-importScripts("sync-core.js", "deals-core.js");
+importScripts("sync-core.js", "deals-core.js", "listing-store.js");
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_ENDPOINTS = [
@@ -373,7 +373,13 @@ async function flushCachePatches() {
   if (!batch.length) return;
   try {
     await withListingCacheLock(async () => {
-      const stored = (await chrome.storage.local.get(LRSync.CACHE_KEY))[LRSync.CACHE_KEY] || {};
+      // רק החלקים של המודעות שהשתנו נקראים ונכתבים – לא כל המטמון
+      const keys = [];
+      for (const item of batch) {
+        for (const put of item.puts) if (put && typeof put.key === "string") keys.push(put.key);
+        for (const prune of item.prunes) if (Array.isArray(prune) && typeof prune[0] === "string") keys.push(prune[0]);
+      }
+      const { cache: stored, shardKeys } = await LRListingStore.loadShards(chrome.storage.local, keys);
       let cache = stored;
       const results = [];
       for (const item of batch) {
@@ -381,7 +387,15 @@ async function flushCachePatches() {
         cache = result.cache;
         results.push(result);
       }
-      if (cache !== stored) await chrome.storage.local.set({ [LRSync.CACHE_KEY]: cache });
+      // נקראו רק החלקים האלה, ולכן כותבים רק מתוכם – ורק את אלה שבאמת השתנו
+      if (cache !== stored) {
+        const changedShards = new Set(
+          Object.keys(cache).filter((key) => cache[key] !== stored[key])
+            .concat(Object.keys(stored).filter((key) => !(key in cache)))
+            .map(LRListingStore.shardKeyOf)
+        );
+        await LRListingStore.saveShards(chrome.storage.local, cache, shardKeys.filter((key) => changedShards.has(key)));
+      }
       batch.forEach((item, index) => {
         const { deleted, newer } = results[index];
         item.resolve({ ok: true, deleted, newer });
@@ -593,8 +607,8 @@ async function ensureSyncSession(settings) {
 }
 
 async function syncPush(settings) {
-  const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
-  const cache = stored[LRSync.CACHE_KEY] || {};
+  const stored = await chrome.storage.local.get([LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
+  const cache = await LRListingStore.load(chrome.storage.local);
   const hashes = { ...(stored[LRSync.HASHES_KEY] || {}) };
   const tombstones = Array.isArray(stored[LRSync.TOMBSTONES_KEY]) ? stored[LRSync.TOMBSTONES_KEY] : [];
   const keys = LRSync.changedKeys(cache, hashes);
@@ -690,7 +704,8 @@ async function syncPull(settings) {
     }, true);
     // באותו מנעול של כתיבות הלשוניות – כדי שמיזוג מהשרת וכתיבה מלשונית לא ידרסו זה את זה
     const { merge, relevantRows } = await withListingCacheLock(async () => {
-    const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
+    const stored = await chrome.storage.local.get([LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
+    const storedCache = await LRListingStore.load(chrome.storage.local);
     // מודעה שהמשתמש מחק כאן ומחיקתה עוד ממתינה לשליחה – לא מחזירים אותה מהשרת
     // (אלא אם מחשב אחר עדכן אותה אחרי המחיקה)
     const pendingDeletes = new Map(
@@ -704,7 +719,7 @@ async function syncPull(settings) {
     const relevantRows = split.rows.filter(
       (row) => !pendingDeletes.has(row.key) || (Number(row.client_updated_at) || 0) > pendingDeletes.get(row.key)
     );
-    const merge = LRSync.mergeRemoteRows(stored[LRSync.CACHE_KEY] || {}, relevantRows);
+    const merge = LRSync.mergeRemoteRows(storedCache, relevantRows);
     const hashes = { ...(stored[LRSync.HASHES_KEY] || {}) };
     for (const [key, hash] of Object.entries(merge.hashUpdates)) {
       if (hash === null) delete hashes[key];
@@ -712,9 +727,8 @@ async function syncPull(settings) {
     }
     // קודם ה-hash-ים: כך שינוי המטמון שנגרם מהמשיכה לא נשלח בחזרה לשרת
     await chrome.storage.local.set({ [LRSync.HASHES_KEY]: hashes });
-    if (merge.cache !== stored[LRSync.CACHE_KEY]) {
-      await chrome.storage.local.set({ [LRSync.CACHE_KEY]: merge.cache });
-    }
+    // רק החלקים שבהם מודעה באמת השתנתה
+    if (merge.cache !== storedCache) await LRListingStore.save(chrome.storage.local, merge.cache, storedCache);
     return { merge, relevantRows };
     });
     applied += merge.applied;

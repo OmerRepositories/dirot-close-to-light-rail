@@ -460,6 +460,12 @@ const columns = [
 ];
 
 function storageGet(key = CACHE_KEY) {
+  // מטמון המודעות שמור בחלקים (listing-store.js)
+  if (key === CACHE_KEY) {
+    return LRListingStore.load(chrome.storage.local).catch((error) => {
+      throw new Error((error && error.message) || `טעינת ${key} נכשלה.`);
+    });
+  }
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(key, (result) => {
       const error = chrome.runtime.lastError;
@@ -478,7 +484,18 @@ function storageGet(key = CACHE_KEY) {
   });
 }
 
-function storageSet(values) {
+async function storageSet(values) {
+  // מטמון המודעות נכתב לחלקים שלו; שאר המפתחות כרגיל
+  if (values && CACHE_KEY in values) {
+    const { [CACHE_KEY]: listingCache, ...rest } = values;
+    try {
+      await LRListingStore.save(chrome.storage.local, listingCache);
+    } catch (error) {
+      throw new Error((error && error.message) || "שמירת הנתונים נכשלה.");
+    }
+    if (!Object.keys(rest).length) return;
+    values = rest;
+  }
   return new Promise((resolve, reject) => {
     chrome.storage.local.set(values, () => {
       const error = chrome.runtime.lastError;
@@ -4904,9 +4921,10 @@ async function exportFullBackup() {
       storageGetAll("local"),
       storageGetAll("sync"),
     ]);
-    local[CACHE_KEY] = local[CACHE_KEY] && typeof local[CACHE_KEY] === "object"
-      ? local[CACHE_KEY]
-      : {};
+    // בקובץ הגיבוי המטמון נשמר כמפתח אחד (כמו תמיד), לא בחלקים
+    const listingCache = LRListingStore.fold(local);
+    LRListingStore.stripCacheKeys(local);
+    local[CACHE_KEY] = listingCache;
     // פרטי החיבור לסנכרון (אסימון כניסה) ומצב הסנכרון לא נכנסים לקובץ גיבוי
     for (const key of SYNC_LOCAL_KEYS) delete local[key];
     const runtime = local[REFRESH_RUNTIME_KEY] || {};
@@ -4993,9 +5011,13 @@ async function importFullBackup(file) {
     if (currentRuntime && currentRuntime.running === true) {
       throw new Error("מתבצע כרגע רענון בכרטיסייה אחרת. יש לעצור אותו לפני ייבוא.");
     }
+    const currentCache = LRListingStore.fold(currentLocal);
+    const importedLocal = { ...backup.local };
+    const importedCache = importedLocal[CACHE_KEY];
+    LRListingStore.stripCacheKeys(importedLocal);
     const mergedLocal = mode === "replace"
-      ? { ...backup.local }
-      : { ...currentLocal, ...backup.local };
+      ? { ...importedLocal }
+      : { ...LRListingStore.stripCacheKeys({ ...currentLocal }), ...importedLocal };
     // ייבוא לא מחליף ולא מוחק את חיבור הסנכרון של המחשב הזה
     for (const key of SYNC_LOCAL_KEYS) {
       if (key in currentLocal) mergedLocal[key] = currentLocal[key];
@@ -5004,12 +5026,9 @@ async function importFullBackup(file) {
     const mergedSync = mode === "replace"
       ? { ...backup.sync }
       : { ...currentSync, ...backup.sync };
-    if (mode === "merge") {
-      mergedLocal[CACHE_KEY] = {
-        ...(currentLocal[CACHE_KEY] || {}),
-        ...backup.local[CACHE_KEY],
-      };
-    }
+    const finalCache = mode === "merge" ? { ...currentCache, ...importedCache } : importedCache;
+    // המטמון נכתב בחלקים (כל 32 החלקים, כך שרשומות שלא בגיבוי נמחקות במצב החלפה)
+    Object.assign(mergedLocal, LRListingStore.split(finalCache));
     const importedRuntime = backup.local[REFRESH_RUNTIME_KEY] || {};
     mergedLocal[REFRESH_RUNTIME_KEY] = {
       managerTabId: null,
@@ -5051,7 +5070,7 @@ async function importFullBackup(file) {
         throw error;
       }
     }
-    cache = mergedLocal[CACHE_KEY];
+    cache = finalCache;
     renderRows();
     renderListingDeletionPreview();
     const scheduleResult = await new Promise((resolve) => {
@@ -5527,27 +5546,30 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
   }
   if (changes[REFRESH_RUNTIME_KEY]) loadRefreshSchedule();
-  if (!changes[CACHE_KEY] || writing) return;
+  const cacheKeys = Object.keys(changes).filter(LRListingStore.isCacheKey);
+  if (!cacheKeys.length || writing) return;
   if (dirtyFields.size) {
     $("saveStatus").textContent = "המטמון השתנה בחלון אחר. רענן לפני שמירה.";
     $("saveStatus").dataset.error = "true";
     return;
   }
   // בזמן גלישה/רענון כל עמוד מודעה כותב למטמון; מאחדים את השינויים לעדכון אחד
-  // ומשתמשים בערך החדש שהגיע עם האירוע במקום לקרוא שוב את כל המאגר
-  pendingCacheValue = changes[CACHE_KEY].newValue;
+  // ומחילים רק את החלקים שהשתנו (מגיעים עם האירוע) במקום לקרוא שוב את כל המאגר
+  for (const key of cacheKeys) pendingShardChanges[key] = changes[key].newValue;
   scheduleCacheReload();
 });
 
-let pendingCacheValue;
+let pendingShardChanges = {};
 const scheduleCacheReload = debounce(async () => {
-  const next = pendingCacheValue;
-  pendingCacheValue = undefined;
+  const shardChanges = pendingShardChanges;
+  pendingShardChanges = {};
   if (writing || dirtyFields.size) return;
-  if (!next || typeof next !== "object") {
+  // המפתח הישן (לפני החלוקה לחלקים) – קוראים הכל מחדש
+  if (LRListingStore.LEGACY_KEY in shardChanges) {
     loadCache();
     return;
   }
+  const next = LRListingStore.applyShardChanges(cache, shardChanges);
   try {
     cache = await migrateEstimatedBaselineDates(next);
     applyCacheToViews();
@@ -6013,7 +6035,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (Object.keys(changes).some(LRDeals.isDealsKey)) scheduleDealsReload();
   if (changes[LRSync.SETTINGS_KEY] || changes[LRSync.HASHES_KEY]) scheduleCloudIndicators(300);
   // שינוי במטמון מגיע לטבלה אחרי עיכוב קצר – מעדכנים את החיווי אחריו
-  else if (changes[CACHE_KEY]) scheduleCloudIndicators(1500);
+  else if (Object.keys(changes).some(LRListingStore.isCacheKey)) scheduleCloudIndicators(1500);
 });
 
 loadCloudSync().then(refreshCloudIndicators).catch(() => {});

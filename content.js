@@ -2617,15 +2617,12 @@
   });
 
   try {
-    chrome.storage.local.get(["lastMedian", LISTING_CACHE_KEY], (r) => {
+    chrome.storage.local.get("lastMedian", (r) => {
       const m = r && r.lastMedian;
       if (m && Date.now() - m.at < 14 * 24 * 3600 * 1000) storedMedian = m;
-      if (chrome.runtime.lastError) {
-        console.warn("[lightrail-ext] failed to load listing cache", chrome.runtime.lastError.message);
-        listingCacheLoaded = true;
-        scheduleRefresh();
-      } else {
-        const storedCache = (r && r[LISTING_CACHE_KEY]) || {};
+    });
+    LRListingStore.read(chrome.storage.local).then(
+      (storedCache) => {
         adoptStoredCache(storedCache);
         // רשומות שפג תוקפן נמחקות דרך הרקע (רק הן – בלי לכתוב מחדש את כל המטמון)
         for (const key of Object.keys(storedCache)) {
@@ -2637,8 +2634,13 @@
         listingCacheLoaded = true;
         if (pendingCacheSave || dirtyCacheKeys.size || cachePruneQueue.size) saveListingCache();
         scheduleRefresh();
+      },
+      (error) => {
+        console.warn("[lightrail-ext] failed to load listing cache", error && error.message);
+        listingCacheLoaded = true;
+        scheduleRefresh();
       }
-    });
+    );
     chrome.storage.sync.get(DEFAULTS, (s) => {
       applySettings(s || {});
       updateSiteState();
@@ -2650,11 +2652,10 @@
       if (document.hidden || !listingCacheLoaded || Date.now() - lastCacheReadAt < CACHE_RELOAD_MS) return;
       lastCacheReadAt = Date.now();
       try {
-        chrome.storage.local.get(LISTING_CACHE_KEY, (r) => {
-          if (chrome.runtime.lastError) return;
-          adoptStoredCache((r && r[LISTING_CACHE_KEY]) || {});
+        LRListingStore.read(chrome.storage.local).then((stored) => {
+          adoptStoredCache(stored);
           scheduleRefresh();
-        });
+        }, () => {});
       } catch {}
     });
     // רק אזור sync (הגדרות) – מאזין כללי היה מקבל גם כל כתיבה גדולה לאחסון המקומי
