@@ -506,7 +506,11 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
         newer[put.key] = stored;
         continue;
       }
-      next[put.key] = put.record;
+      // סימון לב (מועדפים) נעשה במנהל המידע; לשונית שבנתה את הרשומה מעותק ישן לא מבטלת אותו
+      const record = stored && (Number(stored.favoriteAt) || 0) > (Number(put.record.favoriteAt) || 0)
+        ? { ...put.record, favorite: stored.favorite, favoriteAt: stored.favoriteAt }
+        : put.record;
+      next[put.key] = record;
       changed = true;
     }
     for (const prune of prunes) {

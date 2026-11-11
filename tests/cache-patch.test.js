@@ -29,6 +29,17 @@ test("applyCachePatch does not bring back a record deleted since the tab read it
   assert.equal("yad2:a" in result.cache, false);
 });
 
+test("applyCachePatch keeps a favorite set after the tab read the record", () => {
+  const cache = { "yad2:a": { updatedAt: 5, favorite: true, favoriteAt: 5 } };
+  const result = LRSync.applyCachePatch(cache, [{ key: "yad2:a", record: { updatedAt: 9, price: 3 }, existed: true }]);
+  assert.equal(result.cache["yad2:a"].price, 3);
+  assert.equal(result.cache["yad2:a"].favorite, true);
+  // הסרה מהמועדפים (favorite:false עם זמן) נשמרת באותו אופן
+  const off = { "yad2:a": { updatedAt: 5, favorite: false, favoriteAt: 7 } };
+  const kept = LRSync.applyCachePatch(off, [{ key: "yad2:a", record: { updatedAt: 9, favorite: true, favoriteAt: 2 }, existed: true }]);
+  assert.equal(kept.cache["yad2:a"].favorite, false);
+});
+
 test("applyCachePatch prunes only records that were not updated since", () => {
   const cache = { "yad2:old": { updatedAt: 1 }, "yad2:touched": { updatedAt: 9 } };
   const result = LRSync.applyCachePatch(cache, [], [["yad2:old", 1], ["yad2:touched", 3], ["yad2:none", 1]]);

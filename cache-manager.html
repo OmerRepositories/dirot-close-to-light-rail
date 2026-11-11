@@ -44,6 +44,10 @@
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10l8-6 8 6v10"/><path d="M9.5 20v-5h5v5"/><path d="M16 4.5h3.5V8"/></svg></span>
         <span class="nav-text"><span class="nav-label">עסקאות</span><span class="nav-hint">עסקאות אמת שנמכרו</span></span> <span id="dealsCount" class="tab-count">0</span>
       </button>
+        <button id="favoritesTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="favoritesPanel" tabindex="-1" title="מועדפים – מודעות שסימנת בלב">
+          <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></svg></span>
+          <span class="nav-text"><span class="nav-label">מועדפים</span></span> <span id="favoritesCount" class="tab-count" hidden></span>
+        </button>
         <span class="nav-sep" aria-hidden="true"></span>
       <button id="addressExportTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="addressExportPanel" tabindex="-1" title="ייצוא לפי כתובות">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
@@ -481,6 +485,16 @@
       </div>
       </div>
       </div>
+    </section>
+
+    <section id="favoritesPanel" class="tab-panel record-list favorites-panel" role="tabpanel" aria-labelledby="favoritesTab" aria-label="מודעות מועדפות" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>מועדפים</h2>
+          <p>מודעות שסימנת בלב (♥) בטבלת המודעות או בחיפוש מודעה. לחיצה על הלב מסירה מהמועדפים.</p>
+        </div>
+      </div>
+      <div id="favoritesHost" class="favorites-host"></div>
     </section>
 
     <section id="dealsPanel" class="tab-panel deals-panel" role="tabpanel" aria-labelledby="dealsTab" aria-label="חיפוש עסקאות אמת" hidden>

@@ -1174,3 +1174,12 @@ td.price-col { font-size: 14px; }
 .city-table th, .city-table td { padding: 5px 6px; }
 .multi-options-scroll { max-height: 280px; overflow: auto; }
 .multi-count { color: var(--muted); font-size: 12px; }
+/* ---------- מועדפים ---------- */
+.favorite-col { width: 36px; min-width: 36px; text-align: center; }
+th.favorite-col { min-width: 36px; }
+.favorite-toggle { min-width: 28px; min-height: 28px; padding: 0 4px; border: 0; background: transparent; color: var(--faint); font-size: 18px; line-height: 1; }
+.favorite-toggle:hover { color: #d6336c; background: transparent; transform: scale(1.15); }
+.favorite-toggle.on { color: #d6336c; }
+#favoritesPanel:not([hidden]) { overflow: hidden; }
+.favorites-host { display: flex; flex: 1 1 auto; min-height: 0; }
+.favorites-host .table-wrap { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); }

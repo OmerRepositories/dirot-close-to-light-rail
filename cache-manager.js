@@ -422,6 +422,7 @@ function renderCloudCell(td, key, record) {
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
+  { key: "favorite", label: "♥", sortKey: "favorite", className: "favorite-col", title: "מועדפים: לחיצה על הלב בשורה מוסיפה או מסירה את המודעה מהמועדפים" },
   { key: "price", label: "מחיר", sortKey: "price", className: "price-col" },
   { key: "priceWithTax", label: "כולל מס רכישה", sortKey: "priceWithTax", className: "price-tax-col", title: "כמה הדירה תעלה בפועל: המחיר ועוד מס רכישה לפי המדרגות שבהגדרות (חישובים ← מס רכישה). המדרגות נכונות לשנת 2026 – כדאי לוודא שהן עדיין מעודכנות." },
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
@@ -849,6 +850,7 @@ function floorText(record) {
 }
 
 function rowSortValue(key, record, priceRanks, sortKey = sort.key) {
+  if (sortKey === "favorite") return record.favorite === true ? 1 : 0;
   if (sortKey === "recordType") return recordType(record);
   if (sortKey === "site") return recordSite(key);
   if (sortKey === "pricePerSqm") return LRCacheData.pricePerSqm(record);
@@ -1030,11 +1032,12 @@ function renderBoolean(value) {
 // הרשומות שעונות על המסננים של מסך מסוים: searchMode = "חיפוש מודעה", אחרת טבלת המודעות.
 // נפרד מהציור כדי שרענון "תוצאות מסוננות" ישתמש תמיד במסנני טבלת המודעות – גם אם הטבלה
 // האחרונה שצוירה הייתה מסך החיפוש (שבלי מסננים ריק) או שעוד לא צוירה בכלל.
-function filterRecordsFor(searchMode) {
-  const query = $(searchMode ? "listingSearchQuery" : "searchInput").value.trim().toLocaleLowerCase("he");
+// favoritesMode = מסך "מועדפים": רק מודעות שסומנו בלב; מסנני הצד של טבלת המודעות לא חלים שם.
+function filterRecordsFor(searchMode, favoritesMode = false) {
+  const query = favoritesMode ? "" : $(searchMode ? "listingSearchQuery" : "searchInput").value.trim().toLocaleLowerCase("he");
   const queryWords = searchWords(query);
-  const site = $(searchMode ? "listingSearchSite" : "siteFilter").value;
-  const type = $(searchMode ? "listingSearchType" : "typeFilter").value;
+  const site = favoritesMode ? "" : $(searchMode ? "listingSearchSite" : "siteFilter").value;
+  const type = favoritesMode ? "" : $(searchMode ? "listingSearchType" : "typeFilter").value;
   const boolFilters = searchMode ? [] : [...document.querySelectorAll("[data-boolean-filter]")]
     .map((select) => [select.dataset.booleanFilter, select.value])
     .filter(([, value]) => value);
@@ -1050,7 +1053,7 @@ function filterRecordsFor(searchMode) {
     .filter(([, value]) => value);
   const ranges = searchMode
     ? activeNumericRanges("[data-search-range-min], [data-search-range-max]")
-    : activeNumericRanges();
+    : favoritesMode ? new Map() : activeNumericRanges();
   ensureListingAges(cache);
   const priceRanks = priceRanksFor(cache);
   // במסך החיפוש לא טוענים את כל המאגר מראש: מחכים שהמשתמש יקליד או יבחר מסנן
@@ -1069,6 +1072,7 @@ function filterRecordsFor(searchMode) {
   const list = waiting ? [] : Object.entries(cache)
     .filter(([key, record]) => {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
+      if (favoritesMode && record.favorite !== true) return false;
       if (preset && !preset.keys.has(key)) return false;
       if (site && recordSite(key) !== site) return false;
       if (searchCities.length && !LRStreetFilter.cityAllowed(searchCities, record.city || "")) return false;
@@ -1125,7 +1129,8 @@ function filterRecordsFor(searchMode) {
 
 function renderRows() {
   const searchMode = activeTab === "search";
-  const filtered = filterRecordsFor(searchMode);
+  const favoritesMode = activeTab === "favorites";
+  const filtered = filterRecordsFor(searchMode, favoritesMode);
   const { priceRanks } = filtered;
   searchWaiting = filtered.waiting;
   visibleRecords = filtered.list;
@@ -1228,6 +1233,18 @@ function renderRows() {
           link.title = "זוהתה לפי כתובת או מיקום, חדרים, קומה ושטח. שתי המודעות ממשיכות להתרענן בנפרד.";
           td.appendChild(link);
         }
+      } else if (column.key === "favorite") {
+        td.className = "favorite-col";
+        const heart = document.createElement("button");
+        heart.type = "button";
+        heart.dataset.action = "favorite";
+        const on = record.favorite === true;
+        heart.className = `favorite-toggle${on ? " on" : ""}`;
+        heart.textContent = on ? "♥" : "♡";
+        heart.setAttribute("aria-pressed", String(on));
+        heart.title = on ? "במועדפים – לחיצה מסירה" : "הוספה למועדפים";
+        heart.setAttribute("aria-label", heart.title);
+        td.appendChild(heart);
       } else if (column.key === "notes") {
         td.className = "notes-cell";
         td.textContent = record.notes || "";
@@ -1372,6 +1389,7 @@ function renderRows() {
   const savedListingCount = listingCountFor(cache);
   $("listingsCount").textContent = savedListingCount.toLocaleString("he-IL");
   $("listingsCount").title = `${savedListingCount.toLocaleString("he-IL")} מודעות שמורות`;
+  renderFavoritesCount();
   $("listingsTab").setAttribute(
     "aria-label",
     `מודעות ופרויקטים, ${savedListingCount.toLocaleString("he-IL")} מודעות שמורות`
@@ -1381,7 +1399,9 @@ function renderRows() {
   $("emptyState").hidden = visibleRecords.length > 0;
   $("emptyState").textContent = searchWaiting
     ? "התחילו להקליד מילת חיפוש או לבחור מסנן – התוצאות יופיעו כאן."
-    : "לא נמצאו רשומות מתאימות.";
+    : favoritesMode
+      ? "עוד אין מועדפים. לחצו על ♡ ליד מודעה בטבלת המודעות או בחיפוש מודעה."
+      : "לא נמצאו רשומות מתאימות.";
   $("sortSelect").value = sort.key;
   renderHeaderSortState();
   // ציר הזמן נבנה רק כשהוא מוצג; אחרת רק מסמנים שצריך לבנות אותו מחדש
@@ -1817,7 +1837,7 @@ function showSettingsSection(section) {
   }
 }
 
-const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "deals", "refresh", "transfer", "addressExport", "sync"];
+const VIEW_NAMES = ["dashboard", "listings", "search", "favorites", "delete", "priceChanges", "deals", "refresh", "transfer", "addressExport", "sync"];
 
 // ---------- לוח בקרה ----------
 // מדד לחץ למכור (LRCacheData.sellerPressure) – נשמר בזיכרון לכל רשומה כדי שמיון וציור לא יחשבו שוב ושוב
@@ -2389,10 +2409,12 @@ function setActiveTab(tab) {
   activeTab = tab;
   const tableWrap = rows.closest(".table-wrap");
   if (tab === "search") $("searchResultsHost").appendChild(tableWrap);
+  else if (tab === "favorites") $("favoritesHost").appendChild(tableWrap);
   else $("listingsMain").appendChild(tableWrap);
   for (const [id, name] of [
     ["listingsTab", "listings"],
     ["listingSearchTab", "search"],
+    ["favoritesTab", "favorites"],
     ["listingDeleteTab", "delete"],
     ["priceChangesTab", "priceChanges"],
     ["dealsTab", "deals"],
@@ -2409,6 +2431,7 @@ function setActiveTab(tab) {
   }
   $("listingsPanel").hidden = tab !== "listings";
   $("listingSearchPanel").hidden = tab !== "search";
+  $("favoritesPanel").hidden = tab !== "favorites";
   $("listingDeletePanel").hidden = tab !== "delete";
   $("priceChangesPanel").hidden = tab !== "priceChanges";
   $("dealsPanel").hidden = tab !== "deals";
@@ -2431,7 +2454,7 @@ function setActiveTab(tab) {
   $("listingAdvancedFilters").hidden = tab === "search" || tab === "delete" || tab === "priceChanges" || tab === "deals";
   if (tab === "deals") renderDeals();
   document.body.dataset.activeTab = tab;
-  if (tab === "search" || tab === "listings") renderRows();
+  if (tab === "search" || tab === "listings" || tab === "favorites") renderRows();
   if (tab === "delete") renderListingDeletionPreview();
   if (tab === "priceChanges" && timelineDirty) renderPriceTimeline();
   if (tab === "dashboard") renderDashboard();
@@ -2733,6 +2756,38 @@ async function saveRecord(event) {
   } finally {
     writing = false;
   }
+}
+
+// מועדפים: favorite + favoriteAt על הרשומה (נשמר בסנכרון כמו כל שדה). updatedAt חדש – אחרת
+// הסנכרון מחזיר את הגרסה הקודמת. נכתב רק החלק של המודעה הזו באחסון.
+async function toggleFavorite(key) {
+  if (writing) return;
+  writing = true;
+  try {
+    const latest = await storageGet();
+    const record = latest[key];
+    if (!record) throw new Error("הרשומה כבר אינה קיימת במטמון.");
+    const now = Date.now();
+    const next = { ...latest, [key]: { ...record, favorite: record.favorite !== true, favoriteAt: now, updatedAt: now } };
+    await LRListingStore.save(chrome.storage.local, next, latest);
+    cache = next;
+    renderRows();
+    renderFavoritesCount();
+  } catch (error) {
+    console.error("[lightrail-ext] failed to toggle favorite", error);
+    $("saveStatus").textContent = error.message || "עדכון המועדפים נכשל.";
+    $("saveStatus").dataset.error = "true";
+  } finally {
+    writing = false;
+  }
+}
+
+function renderFavoritesCount() {
+  const count = Object.values(cache).filter((record) => record && record.favorite === true).length;
+  const badge = $("favoritesCount");
+  badge.textContent = count.toLocaleString("he-IL");
+  badge.hidden = !count;
+  badge.title = `${count.toLocaleString("he-IL")} מודעות במועדפים`;
 }
 
 async function deleteRecord(key) {
@@ -5126,6 +5181,9 @@ rows.addEventListener("click", (event) => {
   } else if (button && button.dataset.action === "copy") {
     event.stopPropagation();
     copyListingText(row.dataset.key, button);
+  } else if (button && button.dataset.action === "favorite") {
+    event.stopPropagation();
+    toggleFavorite(row.dataset.key);
   } else {
     openRecord(row.dataset.key);
   }
@@ -5224,6 +5282,8 @@ $("togglePriceHistory").addEventListener("click", (event) => {
 });
 $("listingsTab").addEventListener("click", () => setActiveTab("listings"));
 $("listingSearchTab").addEventListener("click", () => setActiveTab("search"));
+$("favoritesTab").addEventListener("click", () => setActiveTab("favorites"));
+$("favoritesTab").addEventListener("keydown", handleTabKeydown);
 $("listingDeleteTab").addEventListener("click", () => setActiveTab("delete"));
 $("priceChangesTab").addEventListener("click", () => setActiveTab("priceChanges"));
 $("dealsTab").addEventListener("click", () => setActiveTab("deals"));
