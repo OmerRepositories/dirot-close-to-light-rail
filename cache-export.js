@@ -876,6 +876,22 @@ var LRCacheExport = (() => {
     return match ? Number(match[1]) : null;
   };
 
+  // מילות הרחוב בלי תארים ("הרב משה בלוי" ⊇ "בלוי"), כתיב מלא/חסר לא משנה
+  const TITLE_WORDS = new Set(["הרב", "רב", "רבי", "ר", "דר", "דוקטור", "פרופ", "פרופסור", "השופט", "הנשיא", "המשורר", "הרבנית", "האדמור", "אדמור", "סגן", "אלוף", "רס", "סרן", "שדה"]);
+  const wordsMemo = new Map();
+  function streetWords(street) {
+    const key = String(street || "");
+    let words = wordsMemo.get(key);
+    if (!words) {
+      words = LRDeals.normStreet(key).split(" ")
+        .filter((word) => word && !TITLE_WORDS.has(word))
+        .map((word) => word.replace(/וו/g, "ו").replace(/יי/g, "י"));
+      if (wordsMemo.size > 50_000) wordsMemo.clear();
+      wordsMemo.set(key, words);
+    }
+    return words;
+  }
+
   function parseAddressQuery(line) {
     const label = String(line || "").trim();
     if (!label) return null;
@@ -883,8 +899,10 @@ var LRCacheExport = (() => {
     const city = rest.join(" ").trim();
     const text = streetPart.trim();
     const match = text.match(/^(.*?)\s+(\d{1,4}\s*[א-ת]?)(?:\s*(?:-|–|־|עד)\s*(\d{1,4}))?$/);
-    const street = LRDeals.normStreet(match ? match[1] : text);
-    if (!street) return null;
+    const streetText = match ? match[1] : text;
+    const street = LRDeals.normStreet(streetText);
+    const words = streetWords(streetText);
+    if (!street || !words.length) return null;
     let house = null;
     if (match && match[3]) {
       const a = Number(match[2].replace(/\D/g, ""));
@@ -894,11 +912,17 @@ var LRCacheExport = (() => {
       const exact = LRDeals.normHouse(match[2]);
       house = /[א-ת]$/.test(exact) ? { exact } : { min: Number(exact), max: Number(exact) };
     }
-    return { label, street, city: city ? looseCity(city) : "", house };
+    return { label, street, words, city: city ? looseCity(city) : "", house };
   }
 
-  function addressMatches(query, { city, street, house }) {
-    if (!query || street !== query.street) return false;
+  // רחוב מתאים כשכל מילות החיפוש נמצאות בשם הרחוב: "בלוי" מוצא גם "הרב משה בלוי"
+  function streetMatches(query, streetText) {
+    const words = streetWords(streetText);
+    return query.words.every((word) => words.includes(word));
+  }
+
+  function addressMatches(query, { city, streetText, house }) {
+    if (!query || !streetMatches(query, streetText)) return false;
     if (query.city && looseCity(city) !== query.city) return false;
     if (!query.house) return true;
     if (query.house.exact) return LRDeals.normHouse(house) === query.house.exact;
@@ -908,16 +932,32 @@ var LRCacheExport = (() => {
 
   // addresses: רשימת שורות. מחזיר { csv, counts, queries } – כל מה שיש בכתובות: מודעות ופרויקטים
   // (עם גיל, תאריכים, מחיר ראשון), עליות וירידות מחיר שלהן, ועסקאות אמת באותם בניינים/רחובות.
-  async function buildAddressCsv({ cache = {}, deals = {}, addresses = [], now = Date.now() } = {}, onProgress = () => {}) {
+  async function buildAddressCsv({ cache = {}, deals = {}, addresses = [], now = Date.now(), countOnly = false } = {}, onProgress = () => {}) {
     const queries = addresses.map(parseAddressQuery).filter(Boolean);
     const recordLabels = new Map();
     const dealLabels = new Map();
     const counts = queries.map((query) => ({ label: query.label, listings: 0, deals: 0 }));
     const add = (map, key, label) => map.set(key, map.has(key) ? `${map.get(key)} | ${label}` : label);
     const subset = {};
+    // כתובת בלי תוצאות: אילו רחובות דומים כן קיימים (ואילו מספרי בתים יש בהם) – כדי שיהיה ברור למה
+    const near = queries.map(() => new Map());
+    const noteNear = (index, city, streetText, house, kind) => {
+      const query = queries[index];
+      if (query.city && looseCity(city) !== query.city) return;
+      const words = streetWords(streetText);
+      if (!query.words.some((word) => words.some((other) => other.includes(word) || word.includes(other)))) return;
+      const id = `${looseCity(city)}|${words.join(" ")}`;
+      const item = near[index].get(id) || { street: String(streetText).trim(), city, listings: 0, deals: 0, houses: new Set() };
+      item[kind]++;
+      if (house) item.houses.add(String(house));
+      near[index].set(id, item);
+    };
     for (const [key, record] of getRecords(cache)) {
       const place = LRDeals.listingPlace(record);
-      const where = { city: record.city, street: place.street, house: place.house };
+      const first = String(record.address || "").split(",")[0];
+      const streetText = first.replace(/\s+\d{1,4}\s*[א-ת]?\s*$/, "");
+      const where = { city: record.city, streetText, house: place.house };
+      queries.forEach((_query, index) => noteNear(index, record.city, streetText, place.house, "listings"));
       queries.forEach((query, index) => {
         if (!addressMatches(query, where)) return;
         add(recordLabels, key, query.label);
@@ -927,7 +967,8 @@ var LRCacheExport = (() => {
     }
     const dealSubset = [];
     for (const [key, deal] of dealEntries(deals)) {
-      const where = { city: deal.city, street: LRDeals.normStreet(deal.street), house: deal.house };
+      const where = { city: deal.city, streetText: deal.street, house: deal.house };
+      queries.forEach((_query, index) => noteNear(index, deal.city, deal.street, deal.house, "deals"));
       let matched = false;
       queries.forEach((query, index) => {
         if (!addressMatches(query, where)) return;
@@ -937,10 +978,20 @@ var LRCacheExport = (() => {
       });
       if (matched) dealSubset.push([key, deal]);
     }
+    counts.forEach((item, index) => {
+      item.similar = [...near[index].values()]
+        .sort((a, b) => b.listings + b.deals - (a.listings + a.deals))
+        .slice(0, 5)
+        .map((entry) => ({
+          ...entry,
+          houses: [...entry.houses].sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0)).slice(0, 15),
+        }));
+    });
     // עסקאות: מהחדשה לישנה
     dealSubset.sort((a, b) => String(b[1].date || "").localeCompare(String(a[1].date || "")));
     const changes = getPriceTimelineEvents(subset).filter((event) => event.kind === "increase" || event.kind === "decrease").length;
-    const csv = await buildFullCsv({ cache: subset, deals: dealSubset, labels: { records: recordLabels, deals: dealLabels }, now }, onProgress);
+    // בדיקה בלבד (כמה נמצא) – בלי לבנות את הקובץ
+    const csv = countOnly ? "" : await buildFullCsv({ cache: subset, deals: dealSubset, labels: { records: recordLabels, deals: dealLabels }, now }, onProgress);
     return {
       csv,
       queries,

@@ -968,3 +968,5 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 .address-export-summary { margin: 8px 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
 .address-export-summary li.empty { opacity: .6; }
 #addressExportStatus[data-error="true"] { color: var(--danger); }
+.address-similar-title { font-size: 12px; margin-top: 4px; opacity: .8; }
+.address-similar { margin: 2px 0 0; padding-inline-start: 18px; font-size: 12px; opacity: .85; }

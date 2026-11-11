@@ -5021,11 +5021,24 @@ function addressExportLines() {
   return $("addressExportInput").value.split(/\r?\n|;/).map((line) => line.trim()).filter(Boolean);
 }
 
-// תצוגה מקדימה: כמה נמצא בכל כתובת (בלי לבנות קובץ)
+// תצוגה מקדימה: כמה נמצא בכל כתובת (בלי לבנות קובץ) – 6 שניות אחרי שמפסיקים להקליד, או בכפתור "בדיקה"
+const ADDRESS_PREVIEW_DELAY_MS = 6000;
 let addressPreviewTimer = null;
 function scheduleAddressPreview() {
   clearTimeout(addressPreviewTimer);
-  addressPreviewTimer = setTimeout(() => runAddressExport(false).catch(() => {}), 400);
+  const status = $("addressExportStatus");
+  status.dataset.error = "false";
+  status.textContent = addressExportLines().length ? "הבדיקה תתחיל כמה שניות אחרי שתסיים להקליד (או לחץ „בדיקה”)." : "";
+  addressPreviewTimer = setTimeout(() => runAddressExport(false).catch(() => {}), ADDRESS_PREVIEW_DELAY_MS);
+}
+
+// עסקאות נטענות פעם אחת ונשמרות עד שהן משתנות
+let addressDealsMemo = { version: -1, deals: null };
+async function addressExportDeals() {
+  if (addressDealsMemo.version !== dealsVersion || !addressDealsMemo.deals) {
+    addressDealsMemo = { version: dealsVersion, deals: await LRDeals.loadAll(chrome.storage.local) };
+  }
+  return addressDealsMemo.deals;
 }
 
 async function runAddressExport(download) {
@@ -5039,23 +5052,37 @@ async function runAddressExport(download) {
     status.dataset.error = String(download);
     return;
   }
-  if (download) {
-    button.disabled = true;
-    status.dataset.error = "false";
-    status.textContent = "אוסף מודעות, שינויי מחיר ועסקאות…";
-  }
+  clearTimeout(addressPreviewTimer);
+  button.disabled = true;
+  $("addressExportCheck").disabled = true;
+  status.dataset.error = "false";
+  status.textContent = download ? "אוסף מודעות, שינויי מחיר ועסקאות…" : "בודק…";
   try {
-    const deals = await LRDeals.loadAll(chrome.storage.local);
-    const result = await LRCacheExport.buildAddressCsv({ cache, deals, addresses: lines }, (done, total) => {
+    const deals = await addressExportDeals();
+    const result = await LRCacheExport.buildAddressCsv({ cache, deals, addresses: lines, countOnly: !download }, (done, total) => {
       if (download && total) status.textContent = `בונה את הקובץ… ${Math.round((done / total) * 100)}%`;
     });
     const unparsed = lines.length - result.queries.length;
+    const n = (value) => value.toLocaleString("he-IL");
     summary.replaceChildren(...result.counts.map((item) => {
-      const row = el("li", item.listings || item.deals ? "" : "empty");
+      const found = item.listings || item.deals;
+      const row = el("li", found ? "" : "empty");
       row.append(
         el("strong", "", item.label),
-        el("span", "", ` – ${item.listings.toLocaleString("he-IL")} מודעות · ${item.deals.toLocaleString("he-IL")} עסקאות`)
+        el("span", "", ` – ${n(item.listings)} מודעות · ${n(item.deals)} עסקאות`)
       );
+      // לא נמצא כלום: מראים אילו רחובות דומים כן יש, ובאילו מספרי בתים
+      const similar = (item.similar || []).filter((entry) => entry.listings || entry.deals);
+      if (!found && similar.length) {
+        const list = el("ul", "address-similar");
+        for (const entry of similar) {
+          list.append(el("li", "", `${entry.street}, ${entry.city}: ${n(entry.listings)} מודעות, ${n(entry.deals)} עסקאות` +
+            (entry.houses.length ? ` · בתים: ${entry.houses.join(", ")}` : "")));
+        }
+        row.append(el("div", "address-similar-title", "רחובות דומים שקיימים במידע:"), list);
+      } else if (!found) {
+        row.append(el("div", "address-similar-title", "אין במידע רחוב עם השם הזה בעיר הזו."));
+      }
       return row;
     }));
     const { listings, changes, deals: dealCount } = result.totals;
@@ -5079,10 +5106,12 @@ async function runAddressExport(download) {
     status.textContent = error.message || "הייצוא נכשל.";
   } finally {
     button.disabled = false;
+    $("addressExportCheck").disabled = false;
   }
 }
 
 $("addressExportInput").addEventListener("input", scheduleAddressPreview);
+$("addressExportCheck").addEventListener("click", () => runAddressExport(false));
 $("addressExportRun").addEventListener("click", () => runAddressExport(true));
 for (const button of document.querySelectorAll("[data-settings]")) {
   button.addEventListener("click", () => setActiveTab(`settings-${button.dataset.settings}`));

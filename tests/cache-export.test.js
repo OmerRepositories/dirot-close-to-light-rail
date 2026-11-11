@@ -718,3 +718,20 @@ test("address export: listings, their price changes and deals at the typed addre
   assert.equal(CacheExport.parseAddressQuery("בלוי 28א").house.exact, "28א");
   assert.equal(CacheExport.parseAddressQuery("   "), null);
 });
+
+test("address export: a short street name finds the full one ('בלוי' → 'הרב משה בלוי'); no match lists similar streets", async () => {
+  global.LRDeals = require("../deals-core.js");
+  const cache = { "yad2:a": { title: "A", address: "הרב משה בלוי 28, פתח תקווה", city: "פתח תקווה", price: 2_000_000 } };
+  const deals = {
+    k1: { city: "פתח תקווה", street: "הרב משה בלוי", house: "28", date: "2025-03-01", price: 1_800_000, sqm: 90 },
+    k2: { city: "פתח תקוה", street: "בלוי", house: "28", date: "2025-04-01", price: 1_900_000, sqm: 95 },
+    k3: { city: "פתח תקווה", street: "שרגא רפאלי", house: "12", date: "2025-04-01", price: 1_900_000, sqm: 95 },
+  };
+  const result = await CacheExport.buildAddressCsv({ cache, deals, addresses: ["בלוי 28, פתח תקווה", "שרגא 10, פתח תקווה"] });
+  assert.deepEqual(result.counts.map((item) => [item.listings, item.deals]), [[1, 2], [0, 0]]);
+  assert.equal(result.counts[1].similar[0].street, "שרגא רפאלי");
+  assert.deepEqual(result.counts[1].similar[0].houses, ["12"]);
+  const counted = await CacheExport.buildAddressCsv({ cache, deals, addresses: ["בלוי 28"], countOnly: true });
+  assert.equal(counted.csv, "");
+  assert.equal(counted.totals.deals, 2);
+});
