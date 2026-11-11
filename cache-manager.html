@@ -134,11 +134,13 @@
           <span>מילות חיפוש</span>
           <input id="listingSearchQuery" type="search" placeholder="כתובת, עיר, שכונה, תחנה, הערה, קישור…">
         </label>
-        <label class="search-choice">
-          <span>עיר</span>
-          <input id="listingSearchCity" type="search" list="listingSearchCities" placeholder="הקלידו עיר…" autocomplete="off">
-          <datalist id="listingSearchCities"></datalist>
-        </label>
+        <div class="search-choice multi-choice">
+          <span id="listingSearchCityLabel">עיר</span>
+          <details id="listingSearchCity" class="multi-select" data-multi-select data-empty="כל הערים">
+            <summary aria-labelledby="listingSearchCityLabel">כל הערים</summary>
+            <div id="listingSearchCities" class="multi-options multi-options-scroll" role="group" aria-labelledby="listingSearchCityLabel"></div>
+          </details>
+        </div>
         <label class="search-choice">
           <span>אתר</span>
           <select id="listingSearchSite">

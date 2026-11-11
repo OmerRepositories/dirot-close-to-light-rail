@@ -1145,3 +1145,32 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 /* מיון לפי כמה עמודות: מספר העמודה בסדר המיון ליד החץ */
 .sort-button[data-rank][aria-sort="ascending"]::after { content: attr(data-rank) "↑"; }
 .sort-button[data-rank][aria-sort="descending"]::after { content: attr(data-rank) "↓"; }
+
+/* ================= פריסה צפופה (1.46.0): פחות ריווח, יותר מידע על המסך ================= */
+.page-header { padding: 3px 12px; }
+.top-nav > .view-tab, .top-nav .nav-menu-trigger { min-height: 50px; padding: 3px 7px; gap: 2px; }
+.top-nav > .view-tab .nav-tile, .top-nav .nav-menu-trigger .nav-tile { width: 26px; height: 26px; flex-basis: 26px; }
+.sub-nav { padding: 4px 12px; }
+.sub-tab { min-height: 28px; padding: 2px 12px; }
+.views { padding: 8px 10px; }
+.record-list, .listing-search-panel, .listing-delete-panel, .deals-panel { padding: 10px 12px; }
+.tool-panel { padding: 12px 14px; }
+.panel-head, .search-panel-heading { margin-bottom: 8px; }
+.timeline-heading { padding-bottom: 8px; }
+.side-layout { gap: 10px; }
+.side-filters { width: 290px; flex-basis: 290px; gap: 8px; }
+.side-filters .listing-search-grid, .side-filters .toolbar, .side-filters .advanced-filters,
+.side-filters .timeline-filter-details, .side-filters .timeline-controls, .side-sort { padding: 10px; gap: 8px; }
+.side-filters .listing-search-grid > label, .side-filters .range-filter { gap: 2px; }
+.side-filters input, .side-filters select, .side-filters .multi-select summary { min-height: 30px; padding-block: 3px; }
+.side-filters button { min-height: 30px; padding-block: 3px; }
+#searchResultsHost { margin-top: 8px; }
+th { padding: 5px 6px; }
+td { padding: 4px 6px; }
+td.price-col { font-size: 14px; }
+.row-actions button { min-height: 26px; padding: 2px 8px; }
+.deals-table th, .deals-table td { padding: 4px 8px; }
+.deals-stats-table th, .deals-stats-table td { padding: 4px 5px; }
+.city-table th, .city-table td { padding: 5px 6px; }
+.multi-options-scroll { max-height: 280px; overflow: auto; }
+.multi-count { color: var(--muted); font-size: 12px; }

@@ -204,8 +204,8 @@ function multiSelectValues(id) {
 function updateMultiSelectSummary(details) {
   const checked = [...details.querySelectorAll('input[type="checkbox"]:checked')];
   details.querySelector("summary").textContent = checked.length
-    ? checked.map((input) => input.parentElement.textContent.trim()).join(", ")
-    : "כל הסטטוסים";
+    ? checked.map((input) => input.dataset.label || input.parentElement.textContent.trim()).join(", ")
+    : details.dataset.empty || "כל הסטטוסים";
 }
 
 function setMultiSelectValues(id, values) {
@@ -1041,12 +1041,12 @@ function filterRecordsFor(searchMode) {
     .some((input) => input.value);
   const searchStatuses = searchMode ? multiSelectValues("listingSearchStatus") : [];
   // עיר: כתיב מלא או חסר לא משנה ("פתח תקוה" = "פתח תקווה"), וחלק מהשם מספיק ("רמת" = רמת גן / רמת השרון)
-  const searchCity = searchMode ? $("listingSearchCity").value.trim() : "";
   if (searchMode) fillListingCities();
+  const searchCities = searchMode ? multiSelectValues("listingSearchCity") : [];
   const preset = searchMode ? searchPreset : null;
   if (searchMode) renderSearchPresetChip();
   const waiting = searchMode && !(
-    preset || query || site || type || searchStatuses.length || searchCity ||
+    preset || query || site || type || searchStatuses.length || searchCities.length ||
     searchBoolFilters.length || amenityFilters.length || ranges.size || searchDates
   );
   const list = waiting ? [] : Object.entries(cache)
@@ -1054,7 +1054,7 @@ function filterRecordsFor(searchMode) {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (preset && !preset.keys.has(key)) return false;
       if (site && recordSite(key) !== site) return false;
-      if (searchCity && !LRStreetFilter.cityAllowed([searchCity], record.city || "")) return false;
+      if (searchCities.length && !LRStreetFilter.cityAllowed(searchCities, record.city || "")) return false;
       if (type && recordType(record) !== type) return false;
       if (searchStatuses.length) {
         // סטטוס אחד לכל מודעה: "פעילה" לא כוללת מודעות שסומנו לא רלוונטיות
@@ -1420,13 +1420,20 @@ function fillListingCities() {
     const city = record && typeof record === "object" && String(record.city || "").trim();
     if (city) counts.set(city, (counts.get(city) || 0) + 1);
   }
+  // בחירה מרובה של ערים (תיבות סימון, הנפוצות קודם); מה שכבר סומן נשאר מסומן
+  const checked = new Set(multiSelectValues("listingSearchCity"));
   const options = [...counts].sort((a, b) => b[1] - a[1]).map(([city, count]) => {
-    const option = document.createElement("option");
-    option.value = city;
-    option.label = `${count.toLocaleString("he-IL")} מודעות`;
-    return option;
+    const label = el("label", "", "");
+    const input = el("input");
+    input.type = "checkbox";
+    input.value = city;
+    input.dataset.label = city;
+    input.checked = checked.has(city);
+    label.append(input, ` ${city} `, el("span", "multi-count", `(${count.toLocaleString("he-IL")})`));
+    return label;
   });
   $("listingSearchCities").replaceChildren(...options);
+  updateMultiSelectSummary($("listingSearchCity"));
 }
 
 function matchesSearchWords(key, record, words) {
@@ -1851,7 +1858,7 @@ function openSearchWith({ status = "", query = "", site = "", preset = null } = 
     .forEach((input) => { input.value = ""; });
   $("listingSearchQuery").value = query;
   $("listingSearchSite").value = site;
-  $("listingSearchCity").value = "";
+  setMultiSelectValues("listingSearchCity", []);
   $("listingSearchType").value = "listing";
   setMultiSelectValues("listingSearchStatus", status);
   setActiveTab("search");
@@ -5162,7 +5169,7 @@ $("clearListingSearch").addEventListener("click", () => {
   recordSorts = []; // גם המיונים חוזרים לברירת המחדל
   $("listingSearchQuery").value = "";
   $("listingSearchSite").value = "";
-  $("listingSearchCity").value = "";
+  setMultiSelectValues("listingSearchCity", []);
   $("listingSearchType").value = "";
   setMultiSelectValues("listingSearchStatus", []);
   document.querySelectorAll("[data-search-range-min], [data-search-range-max], [data-search-date-min], [data-search-date-max]").forEach((input) => {
