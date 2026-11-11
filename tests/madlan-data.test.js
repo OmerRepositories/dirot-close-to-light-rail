@@ -205,3 +205,11 @@ test("Madlan listing page status: 'המודעה הוסרה' page is removed, a p
   assert.equal(CacheData.listingStatusKey("madlan", { listingStatus: "removed" }, false), "removed");
   assert.equal(CacheData.listingStatusKey("madlan", {}, false), "unchecked");
 });
+
+test("Madlan removed listing that redirected to a search page is still recognized as removed", () => {
+  const { LRMadlan, document } = madlanPage([], "/for-sale/%D7%A9%D7%9B%D7%95%D7%A0%D7%94");
+  document.body = { innerText: "המודעה הוסרה המודעה שחיפשת אינה זמינה יותר בלוח הדירות" };
+  assert.deepEqual(JSON.parse(JSON.stringify(LRMadlan.listingPageStatus(document))), { id: null, status: "removed", redirected: true });
+  document.body = { innerText: "דירות למכירה בשכונה" };
+  assert.equal(LRMadlan.listingPageStatus(document), null);
+});

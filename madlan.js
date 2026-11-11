@@ -518,12 +518,15 @@ var LRMadlan = (() => {
   }
 
   // עמוד מודעה במדלן: "המודעה הוסרה … אינה זמינה יותר" = הוסרה; עמוד עם פרטי נכס (שטח/מחיר) = פעילה
+  // מודעה שהוסרה: הקישור /listings/ID מנתב לעמוד חיפוש (/for-sale/…) עם ההודעה – אז אין מזהה בכתובת
+  // (redirected: true), והמנהל משייך את התוצאה למודעה שהוא עצמו פתח באותה לשונית.
   function listingPageStatus(root = document) {
-    const match = location.pathname.match(/\/(?:listings|bulletin)\/([^/?#]+)/);
-    if (!match) return null;
-    const id = match[1];
     const text = String((root.body && (root.body.innerText || root.body.textContent)) || "").replace(/\s+/g, " ");
-    if (text.includes("המודעה הוסרה") && text.includes("אינה זמינה יותר")) return { id, status: "removed" };
+    const removed = text.includes("המודעה הוסרה") && text.includes("אינה זמינה יותר");
+    const match = location.pathname.match(/\/(?:listings|bulletin)\/([^/?#]+)/);
+    if (!match) return removed ? { id: null, status: "removed", redirected: true } : null;
+    const id = match[1];
+    if (removed) return { id, status: "removed" };
     if (root.querySelector('[data-auto="area"]') || root.querySelector('[data-auto="current-price"]')) {
       return { id, status: "active" };
     }

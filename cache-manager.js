@@ -3016,7 +3016,14 @@ function checkCurrentYad2ListingStatus(tabId, key, record, retries = 4) {
       console.warn("[lightrail-ext] could not check Yad2 listing status", error.message);
       return;
     }
-    if (!result || result.id !== expectedId) return;
+    // עוד אין סטטוס (העמוד עדיין נטען, או מדלן עוד לא סיימה לנתב) – בודקים שוב בעוד רגע
+    if (!result && retries > 0 && refreshQueue.length && refreshAttemptId === attemptId && refreshIndex === index) {
+      setTimeout(() => checkCurrentYad2ListingStatus(tabId, key, record, retries - 1), 1500);
+      return;
+    }
+    // מדלן מנתבת מודעה שהוסרה לעמוד חיפוש – התוצאה מגיעה בלי מזהה, מהלשונית שבה פתחנו את המודעה הזו
+    const redirectedRemoval = result && result.redirected && result.status === "removed" && recordSite(key) === "madlan";
+    if (!result || (result.id !== expectedId && !redirectedRemoval)) return;
     saveYad2ListingStatus(key, result.status, attemptId, index);
   });
 }
