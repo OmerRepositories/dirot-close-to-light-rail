@@ -2345,7 +2345,7 @@ function setActiveTab(tab) {
   activeTab = tab;
   const tableWrap = rows.closest(".table-wrap");
   if (tab === "search") $("searchResultsHost").appendChild(tableWrap);
-  else $("listingsPanel").appendChild(tableWrap);
+  else $("listingsMain").appendChild(tableWrap);
   for (const [id, name] of [
     ["listingsTab", "listings"],
     ["listingSearchTab", "search"],
@@ -2392,7 +2392,34 @@ function setActiveTab(tab) {
   if (tab === "priceChanges" && timelineDirty) renderPriceTimeline();
   if (tab === "dashboard") renderDashboard();
   if (tab === "sync") renderSyncPanel();
+  syncNavMenus();
 }
+
+// תפריט עליון: קטגוריה שהעמוד הפעיל בתוכה מודגשת; תפריט נפתח בלחיצה ונסגר בבחירה / בלחיצה בחוץ / Escape
+function syncNavMenus(openMenu = null) {
+  for (const menu of document.querySelectorAll(".nav-menu")) {
+    const open = menu === openMenu;
+    menu.classList.toggle("open", open);
+    menu.classList.toggle("has-active", Boolean(menu.querySelector(".view-tab.active")));
+    const trigger = menu.querySelector(".nav-menu-trigger");
+    if (trigger) trigger.setAttribute("aria-expanded", String(open));
+  }
+}
+document.querySelectorAll(".nav-menu-trigger").forEach((trigger) => {
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const menu = trigger.closest(".nav-menu");
+    syncNavMenus(menu.classList.contains("open") ? null : menu);
+  });
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest || !event.target.closest(".nav-menu-trigger")) {
+    if (document.querySelector(".nav-menu.open")) syncNavMenus();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.querySelector(".nav-menu.open")) syncNavMenus();
+});
 
 function handleTabKeydown(event) {
   // סדר הלשוניות כפי שהן מופיעות בתפריט הצד
@@ -3763,6 +3790,54 @@ const DEALS_SORT_MAX = 3;
 const DEALS_SORT_DEFAULT = [{ key: "date", direction: -1 }];
 let dealsSort = [];
 const dealsSortOrder = () => (dealsSort.length ? dealsSort : DEALS_SORT_DEFAULT);
+const DEALS_SORT_LABELS = { date: "תאריך", address: "כתובת", rooms: "חדרים", sqm: "מ״ר", price: "מחיר", ppsm: "₪ למ״ר" };
+const DEALS_SORT_WORDS = {
+  date: ["הישן קודם", "החדש קודם"],
+  address: ["א→ת", "ת→א"],
+};
+function dealsSortDirectionText(key, direction) {
+  const words = DEALS_SORT_WORDS[key] || ["מהנמוך לגבוה", "מהגבוה לנמוך"];
+  return `${direction < 0 ? "▼" : "▲"} ${direction < 0 ? words[1] : words[0]}`;
+}
+// תיבת המיון בצד: הסדר הנוכחי, הפיכת כיוון, הסרה והוספה
+function renderDealsSortBox(order) {
+  const list = $("dealsSortList");
+  if (!list) return;
+  list.replaceChildren();
+  order.forEach((sort, index) => {
+    const item = el("li", "side-sort-item");
+    item.append(el("span", "side-sort-rank", String(index + 1)), el("span", "side-sort-name", DEALS_SORT_LABELS[sort.key] || sort.key));
+    const flip = el("button", "side-sort-dir", dealsSortDirectionText(sort.key, sort.direction));
+    flip.type = "button";
+    flip.title = "הפיכת כיוון המיון";
+    flip.addEventListener("click", () => {
+      const base = dealsSort.length ? dealsSort : DEALS_SORT_DEFAULT;
+      dealsSort = base.map((s, i) => (i === index ? { ...s, direction: -s.direction } : s));
+      renderDeals();
+    });
+    item.append(flip);
+    if (dealsSort.length) {
+      const remove = el("button", "side-sort-remove", "✕");
+      remove.type = "button";
+      remove.title = "הסרה מהמיון";
+      remove.setAttribute("aria-label", `הסרת ${DEALS_SORT_LABELS[sort.key] || sort.key} מהמיון`);
+      remove.addEventListener("click", () => {
+        dealsSort = dealsSort.filter((_, i) => i !== index);
+        renderDeals();
+      });
+      item.append(remove);
+    } else {
+      item.append(el("span", "side-sort-default", "ברירת מחדל"));
+    }
+    list.append(item);
+  });
+  const add = $("dealsSortAdd");
+  for (const option of add.options) {
+    if (option.value) option.disabled = dealsSort.some((sort) => sort.key === option.value);
+  }
+  add.disabled = dealsSort.length >= DEALS_SORT_MAX;
+  add.value = "";
+}
 function toggleDealsSort(key) {
   const index = dealsSort.findIndex((sort) => sort.key === key);
   const initial = key === "address" ? 1 : -1;
@@ -3899,6 +3974,7 @@ function renderDeals() {
     );
   }
   const order = dealsSortOrder();
+  renderDealsSortBox(order);
   for (const button of document.querySelectorAll("[data-deals-sort]")) {
     const index = order.findIndex((sort) => sort.key === button.dataset.dealsSort);
     const active = index >= 0;
@@ -4997,24 +5073,6 @@ for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
   $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
 }
-// הסתרת התפריט הצדדי (נשמר במכשיר הזה)
-function setNavHidden(hidden) {
-  document.querySelector(".app").classList.toggle("nav-hidden", hidden);
-  const button = $("toggleNav");
-  button.setAttribute("aria-expanded", String(!hidden));
-  button.title = hidden ? "הצגת התפריט הצדדי" : "הסתרת התפריט הצדדי";
-  button.querySelector("span").textContent = hidden ? "הצגת תפריט" : "הסתרת תפריט";
-}
-try {
-  setNavHidden(localStorage.getItem("lightrailNavHidden") === "1");
-} catch {}
-$("toggleNav").addEventListener("click", () => {
-  const hidden = !document.querySelector(".app").classList.contains("nav-hidden");
-  setNavHidden(hidden);
-  try {
-    localStorage.setItem("lightrailNavHidden", hidden ? "1" : "0");
-  } catch {}
-});
 document.querySelectorAll("[data-multi-select]").forEach((details) => {
   details.addEventListener("change", () => updateMultiSelectSummary(details));
 });
@@ -5116,6 +5174,12 @@ document.querySelectorAll("[data-deals-sort]").forEach((button) => {
     toggleDealsSort(button.dataset.dealsSort);
     renderDeals();
   });
+});
+$("dealsSortAdd").addEventListener("change", (event) => {
+  const key = event.target.value;
+  if (!key || dealsSort.some((sort) => sort.key === key) || dealsSort.length >= DEALS_SORT_MAX) return;
+  dealsSort = [...dealsSort, { key, direction: key === "address" ? 1 : -1 }];
+  renderDeals();
 });
 $("clearDealsSearch").addEventListener("click", () => {
   $("dealsQuery").value = "";

@@ -211,7 +211,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 .views {
   display: flex;
@@ -675,10 +675,6 @@ pre {
 #saveStatus[data-error="true"] { color: var(--danger); }
 
 @media (max-width: 1100px) {
-  .app:not(.nav-hidden) { grid-template-columns: 76px minmax(0, 1fr); }
-  .view-tabs { padding: 12px 8px; }
-  .nav-text, .nav-group, .view-tab .tab-count { display: none; }
-  .view-tab { justify-content: center; padding: 8px; }
   .filter-grid { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
 }
 @media (max-width: 950px) {
@@ -971,3 +967,132 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 .address-similar-title { font-size: 12px; margin-top: 4px; opacity: .8; }
 .address-similar { margin: 2px 0 0; padding-inline-start: 18px; font-size: 12px; opacity: .85; }
 .row-actions .copy-action { white-space: nowrap; }
+
+/* ================= תפריט עליון + עמודת סינון בצד ימין (1.43.0) ================= */
+.page-header { position: relative; z-index: 20; gap: 12px; }
+.brand .eyebrow { display: none; }
+.brand { flex-shrink: 0; }
+.header-actions { flex-shrink: 0; gap: 6px; }
+.icon-button { display: inline-grid; width: 34px; min-width: 34px; height: 34px; min-height: 34px; padding: 0; place-items: center; }
+.icon-button svg, .font-controls .icon-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.font-controls .icon-button { width: 28px; min-width: 28px; height: 26px; min-height: 26px; }
+.header-actions .theme-switch button { padding-inline: 7px; }
+
+/* תפריט: שורה אחת בכותרת, קטגוריות עם טקסט; קטגוריה עם כמה עמודים נפתחת לרשימה */
+.top-nav.view-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+.top-nav > .view-tab, .nav-menu-trigger {
+  display: inline-flex;
+  width: auto;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.top-nav > .view-tab .nav-tile { width: 26px; height: 26px; flex-basis: 26px; border-radius: 8px; }
+.top-nav > .view-tab .nav-icon { width: 16px; height: 16px; }
+.top-nav > .view-tab .nav-text { flex: 0 0 auto; }
+.top-nav > .view-tab:hover, .nav-menu-trigger:hover, .nav-menu.open > .nav-menu-trigger { border-color: transparent; background: var(--surface-alt); transform: none; }
+.top-nav > .view-tab.active, .nav-menu.has-active > .nav-menu-trigger { border-color: var(--line); color: var(--action); background: var(--action-soft); }
+.nav-caret { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s var(--ease); }
+.nav-menu.open .nav-caret { transform: rotate(180deg); }
+.nav-menu { position: relative; }
+.nav-menu-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  inset-inline-start: 0;
+  display: none;
+  min-width: 250px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: 0 14px 34px -14px rgba(0, 0, 0, .35);
+}
+.nav-menu.open > .nav-menu-list { display: flex; }
+.nav-menu-list .view-tab { min-height: 44px; }
+
+/* עמודת סינון ומיון בצד ימין (ב־RTL האלמנט הראשון יושב מימין) */
+.side-layout { display: flex; flex: 1 1 auto; min-height: 0; align-items: flex-start; gap: 16px; }
+.side-filters {
+  position: sticky;
+  top: 0;
+  display: flex;
+  width: 330px;
+  flex: 0 0 330px;
+  max-height: calc(100vh - 120px);
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.side-main { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; }
+.side-filters .listing-search-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+/* טווח "מ־ / עד": תווית למעלה ושני השדות באותה שורה, ברוחב מלא */
+.side-filters .listing-search-grid .search-field,
+.side-filters .listing-search-grid > .range-filter,
+.side-filters .listing-search-grid > .multi-choice,
+.side-filters .listing-search-grid > label:has(input[type="date"]),
+.side-filters .listing-search-grid > button { grid-column: 1 / -1; }
+.side-filters .search-filter-hint { flex: none; }
+.side-filters .toolbar { flex-direction: column; align-items: stretch; gap: 10px; margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-alt); }
+.side-filters .toolbar label { min-width: 0; }
+.side-filters .toolbar .search-field { flex: none; }
+.side-filters .toolbar .record-count { margin: 0; padding: 0; }
+.side-filters .advanced-filters, .side-filters .timeline-filter-details { margin: 0; }
+.side-filters .filter-grid, .side-filters .timeline-filter-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.side-filters .timeline-controls { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-alt); }
+.side-filters .timeline-filters { display: flex; }
+.side-filters .timeline-filters button { flex: 1 1 0; }
+.side-filters .timeline-amenity-filters, .side-filters .search-amenity-filters { display: contents; }
+
+/* לוח המודעות: הטבלה ממלאת את הגובה ומגלגלת בעצמה */
+#listingsPanel .side-layout { align-items: stretch; }
+#listingsPanel .side-filters { position: static; max-height: none; }
+#listingsPanel .side-main { min-height: 0; }
+
+/* תיבת המיון (חיפוש עסקאות) */
+.side-sort { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-alt); }
+.side-sort h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.side-sort-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.side-sort-item { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.side-sort-rank { display: inline-grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center; border-radius: 999px; color: var(--on-action); background: var(--action); font-size: 12px; font-weight: 700; }
+.side-sort-name { flex: 1 1 auto; font-weight: 600; }
+.side-sort-dir { min-height: 28px; padding: 2px 8px; font-size: 13px; white-space: nowrap; }
+.side-sort-remove { width: 28px; min-width: 28px; min-height: 28px; padding: 0; }
+.side-sort-default { color: var(--muted); font-size: 12px; }
+.side-sort-add { display: grid; gap: 4px; }
+.side-sort-add span, .side-sort-hint { color: var(--muted); font-size: 13px; }
+.side-sort-hint { margin: 0; }
+
+@media (max-width: 1000px) {
+  .side-layout { flex-direction: column; align-items: stretch; }
+  .side-filters { position: static; width: auto; flex: none; max-height: none; }
+  .side-filters .listing-search-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+}
+/* בכותרת רק הסמל – השם נשאר לקוראי מסך בלבד */
+.brand > div { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.side-filters .toolbar input, .side-filters .toolbar select, .side-filters .toolbar button { width: 100%; }
+#listingsPanel .side-filters .toolbar { align-items: stretch; padding: 14px; border: 1px solid var(--line); background: var(--surface-alt); }

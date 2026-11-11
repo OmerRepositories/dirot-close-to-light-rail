@@ -18,91 +18,105 @@
       <p class="intro">צפייה ועריכה של מודעות ופרויקטים שנשמרו במכשיר הזה.</p>
       </div>
     </div>
+      <nav id="viewTabs" class="view-tabs top-nav" role="tablist" aria-label="תצוגות מידע שמור">
+      <button id="dashboardTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="dashboardPanel" tabindex="-1" title="לוח בקרה">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="9" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="15.5" width="7" height="5" rx="1.5"/></svg></span>
+        <span class="nav-text"><span class="nav-label">לוח בקרה</span><span class="nav-hint">כל המספרים במבט אחד</span></span>
+      </button>
+        <div class="nav-menu">
+          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">ניקוי וסינון<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          <div class="nav-menu-list">
+          <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
+            <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
+          </button>
+          <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
+            <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
+          </button>
+          </div>
+        </div>
+      <button id="priceChangesTab" class="view-tab" data-tone="amber" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel" tabindex="-1" title="שינויי מחירים">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
+        <span class="nav-text"><span class="nav-label">שינויי מחירים</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
+      </button>
+        <div class="nav-menu">
+          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">חיפושי מידע<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          <div class="nav-menu-list">
+          <button id="listingsTab" class="view-tab active" data-tone="teal" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel" title="מודעות ופרויקטים">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M9 9.5v10"/></svg></span>
+            <span class="nav-text"><span class="nav-label">מודעות ופרויקטים</span><span class="nav-hint">הטבלה המלאה</span></span> <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
+          </button>
+          <button id="listingSearchTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel" tabindex="-1" title="חיפוש מודעה">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span>
+            <span class="nav-text"><span class="nav-label">חיפוש מודעה</span><span class="nav-hint">לפי טווחים ומאפיינים</span></span>
+          </button>
+          <button id="dealsTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="dealsPanel" tabindex="-1" title="חיפוש עסקאות">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10l8-6 8 6v10"/><path d="M9.5 20v-5h5v5"/><path d="M16 4.5h3.5V8"/></svg></span>
+            <span class="nav-text"><span class="nav-label">חיפוש עסקאות</span><span class="nav-hint">עסקאות אמת שנמכרו</span></span> <span id="dealsCount" class="tab-count">0</span>
+          </button>
+          </div>
+        </div>
+        <div class="nav-menu">
+          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">ייצוא מידע<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          <div class="nav-menu-list">
+          <button id="addressExportTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="addressExportPanel" tabindex="-1" title="ייצוא לפי כתובות">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
+            <span class="nav-text"><span class="nav-label">ייצוא לפי כתובות</span><span class="nav-hint">כל המידע על כתובות ל־CSV</span></span>
+          </button>
+          <button id="transferTab" class="view-tab" data-tone="slate" type="button" role="tab" aria-selected="false" aria-controls="transferPanel" tabindex="-1" title="גיבוי וייצוא">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
+            <span class="nav-text"><span class="nav-label">גיבוי וייצוא</span><span class="nav-hint">Excel והעברה בין מחשבים</span></span>
+          </button>
+          </div>
+        </div>
+          <button id="syncTab" class="view-tab" data-tone="teal" type="button" role="tab" aria-selected="false" aria-controls="syncPanel" tabindex="-1" title="סנכרון אונליין">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97"/><path d="M12 12v7M9.5 16.5 12 19l2.5-2.5"/></svg></span>
+            <span class="nav-text"><span class="nav-label">סנכרון אונליין</span><span class="nav-hint">כמה מחשבים, מידע אחד</span></span>
+            <span id="syncTabState" class="tab-count" hidden></span>
+          </button>
+        <div class="nav-menu">
+          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">הגדרות<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          <div class="nav-menu-list">
+          <button id="settings-calculationsTab" class="view-tab" data-tone="blue" data-settings="calculations" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="חישובים">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8.5 7.5h7M8.5 12h1M12 12h1M8.5 16h1M12 16h1"/></svg></span>
+            <span class="nav-text"><span class="nav-label">חישובים</span><span class="nav-hint">מחיר למ״ר ומרחק מהרכבת</span></span>
+          </button>
+          <button id="settings-filtersTab" class="view-tab" data-tone="amber" data-settings="filters" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="הדגשות וסינון">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg></span>
+            <span class="nav-text"><span class="nav-label">הדגשות וסינון</span><span class="nav-hint">תיווך, פרויקטים, רחובות</span></span>
+          </button>
+          <button id="settings-amenitiesTab" class="view-tab" data-tone="green" data-settings="amenities" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="מאפייני חובה">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7M6.5 9v10.5h11V9M10 19.5v-5h4v5"/></svg></span>
+            <span class="nav-text"><span class="nav-label">מאפייני חובה</span><span class="nav-hint">ומתי מודעה לא רלוונטית</span></span>
+          </button>
+          <button id="settings-cacheTab" class="view-tab" data-tone="teal" data-settings="cache" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="שמירת מודעות">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg></span>
+            <span class="nav-text"><span class="nav-label">שמירת מודעות</span><span class="nav-hint">מתי לשמור, ערים, מחירים</span></span>
+          </button>
+          <button id="settings-sitesTab" class="view-tab" data-tone="slate" data-settings="sites" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="אתרים פעילים">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/></svg></span>
+            <span class="nav-text"><span class="nav-label">אתרים פעילים</span><span class="nav-hint">יד2, מדלן, פייסבוק</span></span>
+          </button>
+          </div>
+        </div>
+      </nav>
     <div class="header-actions">
-      <button id="toggleNav" class="nav-toggle" type="button" aria-controls="viewTabs" aria-expanded="true" title="הסתרת התפריט הצדדי"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M15 4.5v15"/></svg><span>הסתרת תפריט</span></button>
-      <div class="theme-switch" role="radiogroup" aria-label="ערכת צבעים"><button type="button" role="radio" data-theme-choice="light" title="מצב בהיר"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg><span>בהיר</span></button><button type="button" role="radio" data-theme-choice="dark" title="מצב כהה"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z"/></svg><span>כהה</span></button><button type="button" role="radio" data-theme-choice="system" title="לפי הגדרת המחשב"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M9 20h6M12 16v4"/></svg><span>אוטומטי</span></button></div>
+      <div class="theme-switch" role="radiogroup" aria-label="ערכת צבעים"><button type="button" role="radio" data-theme-choice="light" title="מצב בהיר"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg></button><button type="button" role="radio" data-theme-choice="dark" title="מצב כהה"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z"/></svg></button><button type="button" role="radio" data-theme-choice="system" title="לפי הגדרת המחשב"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M9 20h6M12 16v4"/></svg></button></div>
       
       <div class="font-controls" role="group" aria-label="שינוי גודל הטקסט">
         <button id="decreaseFont" type="button" aria-label="הקטנת הטקסט" title="הקטנת הטקסט">א−</button>
         <span id="fontScaleValue" aria-live="polite">100%</span>
         <button id="increaseFont" type="button" aria-label="הגדלת הטקסט" title="הגדלת הטקסט">א+</button>
-        <button id="resetFont" type="button" aria-label="איפוס גודל הטקסט" title="איפוס גודל הטקסט">איפוס</button>
+        <button id="resetFont" class="icon-button" type="button" aria-label="איפוס גודל הטקסט" title="איפוס גודל הטקסט"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/></svg></button>
         <span id="fontScaleStatus" class="visually-hidden" role="status" aria-live="polite"></span>
       </div>
-      <button id="refreshButton" type="button">רענון תצוגה</button>
+      <button id="refreshButton" class="icon-button" type="button" aria-label="רענון תצוגה" title="רענון תצוגה – טוען מחדש את המידע השמור"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button>
     </div>
   </header>
 
   <div class="app">
-    <nav id="viewTabs" class="view-tabs" role="tablist" aria-label="תצוגות מידע שמור" aria-orientation="vertical">
-      <p class="nav-group">עמוד ראשי</p>
-      <button id="dashboardTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="dashboardPanel" tabindex="-1" title="לוח בקרה">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="9" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="15.5" width="7" height="5" rx="1.5"/></svg></span>
-        <span class="nav-text"><span class="nav-label">לוח בקרה</span><span class="nav-hint">כל המספרים במבט אחד</span></span>
-      </button>
-      <p class="nav-group">ניקוי וסינון</p>
-      <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
-        <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
-      </button>
-      <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
-        <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
-      </button>
-      <p class="nav-group">סטטיסטיקות</p>
-      <button id="priceChangesTab" class="view-tab" data-tone="amber" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel" tabindex="-1" title="שינויי מחירים">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
-        <span class="nav-text"><span class="nav-label">שינויי מחירים</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
-      </button>
-      <p class="nav-group">חיפושי מידע</p>
-      <button id="listingsTab" class="view-tab active" data-tone="teal" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel" title="מודעות ופרויקטים">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M9 9.5v10"/></svg></span>
-        <span class="nav-text"><span class="nav-label">מודעות ופרויקטים</span><span class="nav-hint">הטבלה המלאה</span></span> <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
-      </button>
-      <button id="listingSearchTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel" tabindex="-1" title="חיפוש מודעה">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span>
-        <span class="nav-text"><span class="nav-label">חיפוש מודעה</span><span class="nav-hint">לפי טווחים ומאפיינים</span></span>
-      </button>
-      <button id="dealsTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="dealsPanel" tabindex="-1" title="חיפוש עסקאות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10l8-6 8 6v10"/><path d="M9.5 20v-5h5v5"/><path d="M16 4.5h3.5V8"/></svg></span>
-        <span class="nav-text"><span class="nav-label">חיפוש עסקאות</span><span class="nav-hint">עסקאות אמת שנמכרו</span></span> <span id="dealsCount" class="tab-count">0</span>
-      </button>
-      <p class="nav-group">ייצוא מידע</p>
-      <button id="addressExportTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="addressExportPanel" tabindex="-1" title="ייצוא לפי כתובות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
-        <span class="nav-text"><span class="nav-label">ייצוא לפי כתובות</span><span class="nav-hint">כל המידע על כתובות ל־CSV</span></span>
-      </button>
-      <button id="transferTab" class="view-tab" data-tone="slate" type="button" role="tab" aria-selected="false" aria-controls="transferPanel" tabindex="-1" title="גיבוי וייצוא">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
-        <span class="nav-text"><span class="nav-label">גיבוי וייצוא</span><span class="nav-hint">Excel והעברה בין מחשבים</span></span>
-      </button>
-      <button id="syncTab" class="view-tab" data-tone="teal" type="button" role="tab" aria-selected="false" aria-controls="syncPanel" tabindex="-1" title="סנכרון אונליין">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97"/><path d="M12 12v7M9.5 16.5 12 19l2.5-2.5"/></svg></span>
-        <span class="nav-text"><span class="nav-label">סנכרון אונליין</span><span class="nav-hint">כמה מחשבים, מידע אחד</span></span>
-        <span id="syncTabState" class="tab-count" hidden></span>
-      </button>
-      <p class="nav-group">הגדרות</p>
-      <button id="settings-calculationsTab" class="view-tab" data-tone="blue" data-settings="calculations" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="חישובים">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8.5 7.5h7M8.5 12h1M12 12h1M8.5 16h1M12 16h1"/></svg></span>
-        <span class="nav-text"><span class="nav-label">חישובים</span><span class="nav-hint">מחיר למ״ר ומרחק מהרכבת</span></span>
-      </button>
-      <button id="settings-filtersTab" class="view-tab" data-tone="amber" data-settings="filters" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="הדגשות וסינון">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg></span>
-        <span class="nav-text"><span class="nav-label">הדגשות וסינון</span><span class="nav-hint">תיווך, פרויקטים, רחובות</span></span>
-      </button>
-      <button id="settings-amenitiesTab" class="view-tab" data-tone="green" data-settings="amenities" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="מאפייני חובה">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7M6.5 9v10.5h11V9M10 19.5v-5h4v5"/></svg></span>
-        <span class="nav-text"><span class="nav-label">מאפייני חובה</span><span class="nav-hint">ומתי מודעה לא רלוונטית</span></span>
-      </button>
-      <button id="settings-cacheTab" class="view-tab" data-tone="teal" data-settings="cache" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="שמירת מודעות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg></span>
-        <span class="nav-text"><span class="nav-label">שמירת מודעות</span><span class="nav-hint">מתי לשמור, ערים, מחירים</span></span>
-      </button>
-      <button id="settings-sitesTab" class="view-tab" data-tone="slate" data-settings="sites" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="אתרים פעילים">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/></svg></span>
-        <span class="nav-text"><span class="nav-label">אתרים פעילים</span><span class="nav-hint">יד2, מדלן, פייסבוק</span></span>
-      </button>
-    </nav>
+
     <main class="views">
     
 
@@ -124,6 +138,8 @@
           <button id="exportSearchCsv" class="export-results" type="button" title="מוריד קובץ CSV עם המודעות שמוצגות כרגע לפי המסננים">⬇ ייצוא התוצאות ל־CSV</button>
         </span>
       </div>
+      <div class="side-layout">
+      <aside class="side-filters" aria-label="סינון ומיון">
       <div class="listing-search-grid">
         <label class="search-field">
           <span>מילות חיפוש</span>
@@ -253,9 +269,13 @@
         <div id="searchAmenityFilters" class="search-amenity-filters" role="group" aria-label="סינון לפי מאפייני הנכס"></div>
         <button id="clearListingSearch" type="button">ניקוי כל המסננים</button>
       </div>
+      </aside>
+      <div class="side-main">
       <p id="searchPresetChip" class="search-preset-chip" hidden><span></span> <button id="clearSearchPreset" type="button" aria-label="הסרת הסינון מלוח הבקרה">✕ הסרה</button></p>
       <p class="search-filter-hint">ברשומות עם מחיר או שטח שמורים כטווח, תוצאה תופיע אם הטווח שלה חופף לטווח שבחרת. מאפיינים לא ידועים ניתנים לסינון בנפרד.</p>
       <div id="searchResultsHost"></div>
+      </div>
+      </div>
     </section>
 
     <section id="listingDeletePanel" class="tab-panel listing-delete-panel record-list" role="tabpanel" aria-labelledby="listingDeleteTab" aria-label="מחיקת מודעות שמורות" hidden>
@@ -270,6 +290,8 @@
         תחילה תוצג רשימת התאמות; שום מודעה לא תימחק עד שתלחץ על כפתור המחיקה ותאשר את הפעולה.
         פרויקטים אינם מושפעים.
       </div>
+      <div class="side-layout">
+      <aside class="side-filters" aria-label="סינון ומיון">
       <div class="listing-search-grid">
         <label class="search-field">
           <span>מילים בשם, בכתובת או בפרטי המודעה (רשות)</span>
@@ -359,12 +381,16 @@
         <button id="clearListingDeleteFilters" type="button">ניקוי מסננים</button>
       </div>
       <p class="search-filter-hint">כשמסמנים „לא”, יימחקו רק מודעות שבהן המאפיין זוהה בוודאות כלא קיים. „לא ידוע” מאפשר לבחור בנפרד מודעות שלא ידוע אם המאפיין קיים. טווח מחיר או שטח מתאים גם לרשומה שמורה עם טווח חופף.</p>
+      </aside>
+      <div class="side-main">
       <section class="delete-preview" aria-live="polite" aria-labelledby="deletePreviewTitle">
         <h3 id="deletePreviewTitle">בדיקת התאמות לפני מחיקה</h3>
         <p id="deletePreviewStatus">בחר מסנן אחד או יותר כדי להציג התאמות. ללא מסנן לא ניתן לבצע מחיקה.</p>
         <ul id="deletePreviewList"></ul>
         <button id="deleteMatchingListings" class="danger" type="button" disabled>מחיקת המודעות המתאימות</button>
       </section>
+      </div>
+      </div>
     </section>
 
     <section id="listingsPanel" class="tab-panel record-list" role="tabpanel" aria-labelledby="listingsTab" aria-label="טבלת מודעות ופרויקטים שמורים">
@@ -374,6 +400,8 @@
           <p>כל מה שנשמר מיד2 וממדלן. לחיצה על שורה פותחת עריכה; לחיצה על הכותרת פותחת את המודעה.</p>
         </div>
       </div>
+      <div class="side-layout">
+      <aside class="side-filters" aria-label="סינון ומיון">
       <section id="listingToolbar" class="toolbar" aria-label="חיפוש וסינון מידע שמור">
       <label class="search-field">
         <span>חיפוש בכל העמודות</span>
@@ -412,7 +440,7 @@
       <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
       <span id="recordCount" class="record-count" aria-live="polite"></span>
     </section>
-      <details id="listingAdvancedFilters" class="advanced-filters">
+      <details id="listingAdvancedFilters" class="advanced-filters" open>
       <summary>מסננים מתקדמים <span>אפשר לשלב כמה טווחים יחד, למשל מרחק מהרכבת ומחיר למ״ר</span></summary>
       <div class="filter-grid">
         <label class="range-filter">
@@ -453,12 +481,16 @@
         <button id="clearAdvancedFilters" type="button">ניקוי טווחים</button>
       </div>
     </details>
+      </aside>
+      <div class="side-main" id="listingsMain">
       <div class="table-wrap">
         <table id="recordsTable">
           <thead id="gridHead"></thead>
           <tbody id="recordRows"></tbody>
         </table>
         <p id="emptyState" class="empty-state" hidden>לא נמצאו רשומות מתאימות.</p>
+      </div>
+      </div>
       </div>
     </section>
 
@@ -470,6 +502,8 @@
         </div>
         <button id="exportDealsCsv" class="export-results" type="button" title="מוריד קובץ CSV עם כל העסקאות שעונות על המסננים (לא רק אלה שמוצגות בטבלה)">⬇ ייצוא העסקאות ל־CSV</button>
       </div>
+      <div class="side-layout">
+      <aside class="side-filters" aria-label="סינון ומיון">
       <div class="listing-search-grid">
         <label class="search-field">
           <span>רחוב או כתובת</span>
@@ -543,6 +577,14 @@
         </label>
         <button id="clearDealsSearch" type="button">ניקוי מסננים</button>
       </div>
+      <section class="side-sort" aria-labelledby="dealsSortTitle">
+        <h3 id="dealsSortTitle">מיון</h3>
+        <ol id="dealsSortList" class="side-sort-list"></ol>
+        <label class="side-sort-add"><span>הוספת עמודה למיון</span><select id="dealsSortAdd"><option value="">בחרו עמודה…</option><option value="date">תאריך</option><option value="address">כתובת</option><option value="rooms">חדרים</option><option value="sqm">מ״ר</option><option value="price">מחיר</option><option value="ppsm">₪ למ״ר</option></select></label>
+        <p class="side-sort-hint">אפשר גם ללחוץ על כותרות העמודות בטבלה. עד 3 עמודות, לפי הסדר.</p>
+      </section>
+      </aside>
+      <div class="side-main">
       <p id="dealsSummary" class="deals-summary" role="status" aria-live="polite"></p>
       <div id="dealsStats" class="deals-stats" hidden></div>
       <div id="dealsTip" class="deals-tip" role="tooltip" hidden></div>
@@ -567,6 +609,8 @@
         </table>
         <div id="dealsMore" class="more-rows" hidden><span></span><button type="button">הצג עוד</button></div>
       </div>
+      </div>
+      </div>
     </section>
 
     <section id="priceChangesPanel" class="tab-panel price-timeline-panel" role="tabpanel" aria-labelledby="priceChangesTab" aria-label="ציר זמן של שינויי מחירים" hidden>
@@ -576,6 +620,10 @@
           <p>כל שינויי המחיר מכל המודעות, ללא תלות בסינון הטבלה. ליד כל שינוי מצוין כמה התאריך ודאי: „תאריך מהאתר” הוא תאריך אמיתי; „זוהה ברענון” – השינוי קרה בטווח שמוצג; „תאריך לא ידוע” – ידוע רק שהשינוי קרה לפני שהמודעה נשמרה. הסינון משנה רק את התצוגה ולא את המידע השמור.</p>
           <p id="timelinePreferencesSummary" class="timeline-preferences-summary"></p>
         </div>
+        <span id="timelineCount"></span>
+      </div>
+      <div class="side-layout">
+      <aside class="side-filters" aria-label="סינון ומיון">
         <div class="timeline-controls">
           <button id="timelinePreferences" type="button" aria-pressed="false" aria-describedby="timelinePreferencesSummary">רק מודעות שמתאימות להגדרות שלי</button>
           <div class="timeline-filters" role="group" aria-label="סינון ציר הזמן לפי שינוי מחיר">
@@ -583,10 +631,8 @@
             <button type="button" data-price-filter="increase" aria-pressed="false">עלו ↑</button>
             <button type="button" data-price-filter="decrease" aria-pressed="false">ירדו ↓</button>
           </div>
-          <span id="timelineCount"></span>
         </div>
-      </div>
-      <details class="timeline-filter-details">
+      <details class="timeline-filter-details" open>
         <summary>סינון מודעות לפי מחיר ומאפיינים</summary>
         <div class="timeline-filter-grid">
           <label class="timeline-range">
@@ -631,8 +677,12 @@
         </div>
         <p class="timeline-filter-hint">הסינון משפיע רק על התצוגה. המחיר הוא המחיר העדכני שנשמר למודעה; הוא אינו מוחק מידע מהמאגר.</p>
       </details>
+      </aside>
+      <div class="side-main">
       <ol id="priceTimeline" class="price-timeline"></ol>
       <p id="emptyTimeline" class="empty-state" hidden>אין אירועים בסינון הזה.</p>
+      </div>
+      </div>
     </section>
     <section id="refreshPanel" class="tab-panel tool-panel" role="tabpanel" aria-labelledby="refreshTab" aria-label="רענון מודעות" hidden>
       <div class="panel-head">
