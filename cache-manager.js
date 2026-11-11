@@ -994,8 +994,10 @@ function renderBoolean(value) {
   return span;
 }
 
-function renderRows() {
-  const searchMode = activeTab === "search";
+// הרשומות שעונות על המסננים של מסך מסוים: searchMode = "חיפוש מודעה", אחרת טבלת המודעות.
+// נפרד מהציור כדי שרענון "תוצאות מסוננות" ישתמש תמיד במסנני טבלת המודעות – גם אם הטבלה
+// האחרונה שצוירה הייתה מסך החיפוש (שבלי מסננים ריק) או שעוד לא צוירה בכלל.
+function filterRecordsFor(searchMode) {
   const query = $(searchMode ? "listingSearchQuery" : "searchInput").value.trim().toLocaleLowerCase("he");
   const queryWords = searchWords(query);
   const site = $(searchMode ? "listingSearchSite" : "siteFilter").value;
@@ -1003,10 +1005,11 @@ function renderRows() {
   const boolFilters = searchMode ? [] : [...document.querySelectorAll("[data-boolean-filter]")]
     .map((select) => [select.dataset.booleanFilter, select.value])
     .filter(([, value]) => value);
-  const searchBoolFilters = [...document.querySelectorAll("[data-search-boolean]")]
+  // מסנני מסך החיפוש לא משפיעים על טבלת המודעות (ועל הרענון)
+  const searchBoolFilters = !searchMode ? [] : [...document.querySelectorAll("[data-search-boolean]")]
     .map((select) => [select.dataset.searchBoolean, select.value])
     .filter(([, value]) => value);
-  const amenityFilters = [...document.querySelectorAll("[data-search-amenity]")]
+  const amenityFilters = !searchMode ? [] : [...document.querySelectorAll("[data-search-amenity]")]
     .map((select) => [select.dataset.searchAmenity, select.value])
     .filter(([, value]) => value);
   const columnFilters = searchMode ? [] : [...document.querySelectorAll("[data-column-filter]")]
@@ -1026,11 +1029,11 @@ function renderRows() {
   if (searchMode) fillListingCities();
   const preset = searchMode ? searchPreset : null;
   if (searchMode) renderSearchPresetChip();
-  searchWaiting = searchMode && !(
+  const waiting = searchMode && !(
     preset || query || site || type || searchStatuses.length || searchCity ||
     searchBoolFilters.length || amenityFilters.length || ranges.size || searchDates
   );
-  visibleRecords = searchWaiting ? [] : Object.entries(cache)
+  const list = waiting ? [] : Object.entries(cache)
     .filter(([key, record]) => {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (preset && !preset.keys.has(key)) return false;
@@ -1074,6 +1077,15 @@ function renderRows() {
           : collator.compare(String(a), String(b));
       return comparison * sort.direction;
     });
+  return { list, waiting, priceRanks };
+}
+
+function renderRows() {
+  const searchMode = activeTab === "search";
+  const filtered = filterRecordsFor(searchMode);
+  const { priceRanks } = filtered;
+  searchWaiting = filtered.waiting;
+  visibleRecords = filtered.list;
 
   rows.replaceChildren();
   const twins = LRCacheData.findTwins(cache);
@@ -3206,9 +3218,10 @@ async function startRefresh(options = {}) {
   const uncheckedOnly = options.uncheckedOnly === true || $("refreshScope").value === "unchecked";
   const site = normalizeRefreshSite(options.site || $("refreshSite").value);
   const siteName = REFRESH_SITE_NAMES[site];
+  // תמיד לפי מסנני טבלת המודעות (לא לפי הטבלה האחרונה שצוירה – מסך "חיפוש מודעה" בלי מסננים ריק)
   const sourceRecords = options.scheduled === true
     ? Object.entries(cache)
-    : visibleRecords;
+    : filterRecordsFor(false).list;
   // מודעות "לא רלוונטיות" (חסרים בהן מאפייני חובה) לא נפתחות שוב – חוסך אלפי טעינות דף
   let irrelevantSkipped = 0;
   refreshQueue = sourceRecords.filter(([key, record]) => {
