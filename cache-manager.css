@@ -290,8 +290,9 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .view-tab:hover .nav-tile { transform: translateY(-1px); }
 .nav-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nav-text { display: grid; min-width: 0; flex: 1 1 auto; line-height: 1.3; }
-.nav-label { font-weight: 600; }
-.nav-hint { color: var(--muted); font-size: 13px; }
+/* תפריט: שם קצר בשורה אחת, בלי הערות (ההסבר נשאר ב-title של הכפתור) */
+.nav-label { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-hint { display: none; }
 .tab-count {
   display: inline-flex;
   min-width: 24px;
@@ -306,6 +307,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .view-tab.active .tab-count { color: var(--tone); background: var(--surface); }
 .tab-panel[hidden] { display: none; }
