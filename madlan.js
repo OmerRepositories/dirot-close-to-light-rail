@@ -524,7 +524,19 @@ var LRMadlan = (() => {
     const text = String((root.body && (root.body.innerText || root.body.textContent)) || "").replace(/\s+/g, " ");
     const removed = text.includes("המודעה הוסרה") && text.includes("אינה זמינה יותר");
     const match = location.pathname.match(/\/(?:listings|bulletin)\/([^/?#]+)/);
-    if (!match) return removed ? { id: null, status: "removed", redirected: true } : null;
+    if (!match) {
+      if (!removed) return null;
+      // הניתוב של מדלן הוא בתוך אותו עמוד (history), כך שהכתובת המקורית שמורה ברשומת הניווט
+      let originalId = null;
+      try {
+        const nav = typeof performance !== "undefined" && performance.getEntriesByType
+          ? performance.getEntriesByType("navigation")[0]
+          : null;
+        const original = nav && nav.name ? new URL(nav.name).pathname.match(/\/(?:listings|bulletin)\/([^/?#]+)/) : null;
+        originalId = original ? original[1] : null;
+      } catch {}
+      return { id: originalId, status: "removed", redirected: true };
+    }
     const id = match[1];
     if (removed) return { id, status: "removed" };
     if (root.querySelector('[data-auto="area"]') || root.querySelector('[data-auto="current-price"]')) {

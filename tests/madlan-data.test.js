@@ -213,3 +213,17 @@ test("Madlan removed listing that redirected to a search page is still recognize
   document.body = { innerText: "דירות למכירה בשכונה" };
   assert.equal(LRMadlan.listingPageStatus(document), null);
 });
+
+test("Madlan removed listing after the in-page redirect: the original listing id comes from the navigation entry", () => {
+  const fsMod = require("fs");
+  const pathMod = require("path");
+  const vmMod = require("vm");
+  const document = { scripts: [], querySelector: () => null, body: { innerText: "המודעה הוסרה המודעה שחיפשת אינה זמינה יותר" } };
+  const sandbox = {
+    LR, URL, document,
+    location: { pathname: "/for-sale/abc", href: "https://www.madlan.co.il/for-sale/abc" },
+    performance: { getEntriesByType: () => [{ name: "https://www.madlan.co.il/listings/6QSGOq5UKag" }] },
+  };
+  vmMod.runInNewContext(fsMod.readFileSync(pathMod.join(__dirname, "..", "madlan.js"), "utf8"), sandbox);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.LRMadlan.listingPageStatus(document))), { id: "6QSGOq5UKag", status: "removed", redirected: true });
+});

@@ -2498,25 +2498,53 @@
 
   // מדלן: מודעה שהוסרה מנתבת מהר מאוד לעמוד חיפוש עם הודעת "המודעה הוסרה". העמוד מדווח בעצמו
   // ברגע שההודעה מופיעה (בודק כל שנייה, 20 שניות) – מנהל הרענון משייך את הדיווח למודעה שפתח בלשונית.
+  // גם כשפותחים בעצמך מודעה שהוסרה (לא רק ברענון): המודעה השמורה מסומנת "הוסרה".
+  // איזו מודעה? הכתובת /listings/ID האחרונה שהעמוד עבר בה ב-20 השניות האחרונות (מדלן מנתבת בתוך
+  // אותו עמוד), ואם לא נראתה – הכתובת שהעמוד נפתח בה (רשומת הניווט).
   if (!IS_YAD2) {
-    let removedNoticeSent = false;
-    let removedChecks = 0;
-    const removedTimer = setInterval(() => {
-      removedChecks++;
+    const reportedRemoved = new Set();
+    const loadedAt = Date.now();
+    let lastListing = null;
+    let lastCheckAt = 0;
+    setInterval(() => {
+      const match = location.pathname.match(/\/(?:listings|bulletin)\/([^/?#]+)/);
+      if (match) {
+        lastListing = { id: match[1], at: Date.now() };
+        return;
+      }
+      // בודקים את טקסט העמוד רק סמוך לפתיחה או למעבר ממודעה, ולא יותר מפעם בשנייה
+      const now = Date.now();
+      const recent = now - loadedAt < 30000 || (lastListing && now - lastListing.at < 30000);
+      if (!recent || now - lastCheckAt < 1000) return;
+      lastCheckAt = now;
       let status = null;
       try {
         status = LRMadlan.listingPageStatus();
       } catch {}
-      if (status && status.status === "removed" && !removedNoticeSent) {
-        removedNoticeSent = true;
-        try {
-          chrome.runtime.sendMessage({ type: "lightrail:listing-status-notice", status: "removed", id: status.id || null }, () => {
-            void chrome.runtime.lastError; // אין מאזין (אין רענון פתוח) – לא שגיאה
-          });
-        } catch {}
-      }
-      if (removedNoticeSent || removedChecks >= 20) clearInterval(removedTimer);
-    }, 1000);
+      if (!status || status.status !== "removed") return;
+      const id = lastListing && now - lastListing.at < 30000 ? lastListing.id : status.id;
+      if (!id || reportedRemoved.has(id)) return;
+      // המטמון עוד לא נטען – ננסה שוב בבדיקה הבאה
+      if (!markListingRemoved(id)) return;
+      reportedRemoved.add(id);
+      try {
+        chrome.runtime.sendMessage({ type: "lightrail:listing-status-notice", status: "removed", id }, () => {
+          void chrome.runtime.lastError; // אין מאזין (אין רענון פתוח) – לא שגיאה
+        });
+      } catch {}
+    }, 250);
+  }
+
+  function markListingRemoved(id) {
+    if (!listingCacheLoaded) return false;
+    const key = cacheKeyForListing(id);
+    const previous = listingCache[key];
+    if (!previous || previous.listingStatus === "removed") return true;
+    const now = Date.now();
+    // updatedAt חדש – אחרת הסנכרון מחזיר את הגרסה הקודמת מהענן
+    listingCache[key] = { ...previous, listingStatus: "removed", listingStatusCheckedAt: now, updatedAt: now };
+    saveListingCache();
+    return true;
   }
 
   // דפדוף בעמודי חיפוש (ממנהל המידע): גלילה איטית עד סוף העמוד, כדי שכל הכרטיסים ייטענו וייאספו
