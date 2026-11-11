@@ -1757,7 +1757,7 @@ function showSettingsSection(section) {
   }
 }
 
-const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "deals", "refresh", "transfer", "sync"];
+const VIEW_NAMES = ["dashboard", "listings", "search", "delete", "priceChanges", "deals", "refresh", "transfer", "addressExport", "sync"];
 
 // ---------- לוח בקרה ----------
 // מדד לחץ למכור (LRCacheData.sellerPressure) – נשמר בזיכרון לכל רשומה כדי שמיון וציור לא יחשבו שוב ושוב
@@ -2304,6 +2304,7 @@ function setActiveTab(tab) {
     ["dealsTab", "deals"],
     ["refreshTab", "refresh"],
     ["transferTab", "transfer"],
+    ["addressExportTab", "addressExport"],
     ["syncTab", "sync"],
     ["dashboardTab", "dashboard"],
   ]) {
@@ -2319,6 +2320,7 @@ function setActiveTab(tab) {
   $("dealsPanel").hidden = tab !== "deals";
   $("refreshPanel").hidden = tab !== "refresh";
   $("transferPanel").hidden = tab !== "transfer";
+  $("addressExportPanel").hidden = tab !== "addressExport";
   $("syncPanel").hidden = tab !== "sync";
   $("dashboardPanel").hidden = tab !== "dashboard";
   const settingsSection = tab.startsWith("settings-") ? tab.slice("settings-".length) : "";
@@ -5004,6 +5006,77 @@ $("refreshTab").addEventListener("keydown", handleTabKeydown);
 $("transferTab").addEventListener("keydown", handleTabKeydown);
 $("syncTab").addEventListener("click", () => setActiveTab("sync"));
 $("syncTab").addEventListener("keydown", handleTabKeydown);
+$("addressExportTab").addEventListener("click", () => setActiveTab("addressExport"));
+$("addressExportTab").addEventListener("keydown", handleTabKeydown);
+
+// ---------- ייצוא לפי כתובות ----------
+function addressExportLines() {
+  return $("addressExportInput").value.split(/\r?\n|;/).map((line) => line.trim()).filter(Boolean);
+}
+
+// תצוגה מקדימה: כמה נמצא בכל כתובת (בלי לבנות קובץ)
+let addressPreviewTimer = null;
+function scheduleAddressPreview() {
+  clearTimeout(addressPreviewTimer);
+  addressPreviewTimer = setTimeout(() => runAddressExport(false).catch(() => {}), 400);
+}
+
+async function runAddressExport(download) {
+  const status = $("addressExportStatus");
+  const button = $("addressExportRun");
+  const lines = addressExportLines();
+  const summary = $("addressExportSummary");
+  if (!lines.length) {
+    summary.replaceChildren();
+    status.textContent = download ? "יש להקליד לפחות כתובת אחת." : "";
+    status.dataset.error = String(download);
+    return;
+  }
+  if (download) {
+    button.disabled = true;
+    status.dataset.error = "false";
+    status.textContent = "אוסף מודעות, שינויי מחיר ועסקאות…";
+  }
+  try {
+    const deals = await LRDeals.loadAll(chrome.storage.local);
+    const result = await LRCacheExport.buildAddressCsv({ cache, deals, addresses: lines }, (done, total) => {
+      if (download && total) status.textContent = `בונה את הקובץ… ${Math.round((done / total) * 100)}%`;
+    });
+    const unparsed = lines.length - result.queries.length;
+    summary.replaceChildren(...result.counts.map((item) => {
+      const row = el("li", item.listings || item.deals ? "" : "empty");
+      row.append(
+        el("strong", "", item.label),
+        el("span", "", ` – ${item.listings.toLocaleString("he-IL")} מודעות · ${item.deals.toLocaleString("he-IL")} עסקאות`)
+      );
+      return row;
+    }));
+    const { listings, changes, deals: dealCount } = result.totals;
+    const found = `נמצאו ${listings.toLocaleString("he-IL")} מודעות, ${changes.toLocaleString("he-IL")} שינויי מחיר ו-${dealCount.toLocaleString("he-IL")} עסקאות אמת` +
+      (unparsed ? ` (${unparsed} שורות לא זוהו ככתובת)` : "");
+    if (!download) {
+      status.dataset.error = "false";
+      status.textContent = found;
+      return;
+    }
+    if (!listings && !dealCount) {
+      status.dataset.error = "true";
+      status.textContent = "לא נמצא מידע בכתובות האלה. בדקו את שם הרחוב (כמו שהוא מופיע במודעות) ואת העיר.";
+      return;
+    }
+    LRCacheExport.downloadCsv(result.csv, new Date(), "addresses");
+    status.textContent = `${found}. הקובץ ירד.`;
+  } catch (error) {
+    console.error("[lightrail-ext] address export failed", error);
+    status.dataset.error = "true";
+    status.textContent = error.message || "הייצוא נכשל.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+$("addressExportInput").addEventListener("input", scheduleAddressPreview);
+$("addressExportRun").addEventListener("click", () => runAddressExport(true));
 for (const button of document.querySelectorAll("[data-settings]")) {
   button.addEventListener("click", () => setActiveTab(`settings-${button.dataset.settings}`));
   button.addEventListener("keydown", handleTabKeydown);

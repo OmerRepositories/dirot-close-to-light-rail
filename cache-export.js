@@ -700,8 +700,33 @@ var LRCacheExport = (() => {
     "סוג רשומה", "מפתח", "אתר", "מזהה", "קישור", "כותרת", "עיר", "שכונה", "כתובת", "רחוב", "מספר בית",
     "תאריך", "מחיר", "מחיר קודם", "מחיר חדש", "שינוי (₪)", "שינוי (%)", "שטח (מ״ר)", "מחיר למ״ר",
     "חדרים", "קומה", "קומות בבניין", "שנת בנייה", "מרחק מהרכבת (מ׳)", "תחנה", "תיווך", "סטטוס",
+    "גיל המודעה (ימים)", "תאריך עדכון במודעה", "נראתה לראשונה בתוסף", "עודכנה לאחרונה בתוסף",
+    "מחיר ראשון שנראה", "שינוי מהמחיר הראשון (%)", "מספר שינויי מחיר",
     "מקור", "הערות", "שם הגדרה", "ערך", "נתונים מלאים (JSON)",
   ];
+
+  // גיל, תאריכים ומחיר ראשון של מודעה – מהמידע שנשמר (בלי לשנות את הרשומה)
+  function listingTimeline(record, now = Date.now()) {
+    const created = listingDateMs(record.listingCreatedAt);
+    const points = (Array.isArray(record.priceHistory) ? record.priceHistory : [])
+      .filter((point) => point && point.price > 0 && Number.isFinite(point.at))
+      .sort((a, b) => a.at - b.at);
+    const seenPoints = points.filter((point) => point.src !== "site");
+    const first = points[0];
+    let changes = 0;
+    for (let index = 1; index < points.length; index++) if (points[index].price !== points[index - 1].price) changes++;
+    return {
+      ageDays: Number.isFinite(record.listingAgeDays)
+        ? record.listingAgeDays
+        : Number.isFinite(created) && created > 0 ? Math.max(0, Math.floor((now - created) / DAY_MS)) : null,
+      firstSeen: seenPoints.length ? seenPoints[0].at : null,
+      firstPrice: first ? first.price : null,
+      firstChangePct: first && record.price > 0 && first.price !== record.price
+        ? Math.round(((record.price - first.price) / first.price) * 1000) / 10
+        : null,
+      changes,
+    };
+  }
   const SITE_LABELS = { yad2: "יד2", madlan: "מדלן", facebook: "פייסבוק" };
   const STATUS_LABELS = { active: "פעילה", removed: "הוסרה" };
   const SETTING_LIST_TYPES = { blockedStreets: "החרגת כתובת", indexCities: "עיר לאינדוקס" };
@@ -714,11 +739,11 @@ var LRCacheExport = (() => {
     return typeof value === "string" ? value : "";
   }
 
-  function fullRow(fields) {
-    return FULL_COLUMNS.map((column) => cell(fields[column])).join(",");
-  }
-
-  async function buildFullCsv({ cache = {}, deals = {}, settings = {} } = {}, onProgress = () => {}) {
+  // labels (לא חובה): { records: Map מפתח→תווית, deals: Map מפתח→תווית } – מוסיף עמודה ראשונה
+  // "כתובת שחיפשת" (ייצוא לפי כתובות). בלי labels – אותו קובץ כמו "CSV מלא".
+  async function buildFullCsv({ cache = {}, deals = {}, settings = {}, labels = null, now = Date.now() } = {}, onProgress = () => {}) {
+    const columns = labels ? ["כתובת שחיפשת", ...FULL_COLUMNS] : FULL_COLUMNS;
+    const fullRow = (fields) => columns.map((column) => cell(fields[column])).join(",");
     const records = getRecords(cache);
     const changes = getPriceTimelineEvents(cache).filter((event) => event.kind === "increase" || event.kind === "decrease");
     const dealList = dealEntries(deals);
@@ -731,12 +756,21 @@ var LRCacheExport = (() => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
     };
-    const lines = [FULL_COLUMNS.map(cell).join(",")];
+    const lines = [columns.map(cell).join(",")];
     onProgress(0, total);
 
     for (const [key, record] of records) {
       const { site, listingId } = parseCacheKey(key);
+      const timeline = listingTimeline(record, now);
       lines.push(fullRow({
+        "כתובת שחיפשת": labels && labels.records && labels.records.get(key),
+        "גיל המודעה (ימים)": timeline.ageDays,
+        "תאריך עדכון במודעה": isoDate(record.listingUpdatedAt),
+        "נראתה לראשונה בתוסף": timeline.firstSeen ? isoDate(timeline.firstSeen) : "",
+        "עודכנה לאחרונה בתוסף": Number.isFinite(record.updatedAt) ? isoDate(record.updatedAt) : "",
+        "מחיר ראשון שנראה": timeline.firstPrice,
+        "שינוי מהמחיר הראשון (%)": timeline.firstChangePct,
+        "מספר שינויי מחיר": timeline.changes,
         "סוג רשומה": record.recordType === "project" ? "פרויקט" : "מודעה",
         "מפתח": key,
         "אתר": SITE_LABELS[site] || site,
@@ -767,6 +801,7 @@ var LRCacheExport = (() => {
     for (const change of changes) {
       const pct = change.fromPrice > 0 ? Math.round((change.change / change.fromPrice) * 1000) / 10 : null;
       lines.push(fullRow({
+        "כתובת שחיפשת": labels && labels.records && labels.records.get(change.key),
         "סוג רשומה": change.kind === "decrease" ? "ירידת מחיר" : "עליית מחיר",
         "מפתח": change.key,
         "אתר": SITE_LABELS[change.site] || change.site,
@@ -790,6 +825,7 @@ var LRCacheExport = (() => {
 
     for (const [key, deal] of dealList) {
       lines.push(fullRow({
+        "כתובת שחיפשת": labels && labels.deals && labels.deals.get(key),
         "סוג רשומה": "עסקת אמת",
         "מפתח": key,
         "עיר": deal.city,
@@ -829,6 +865,88 @@ var LRCacheExport = (() => {
 
     onProgress(total, total);
     return `﻿${lines.join("\r\n")}\r\n`;
+  }
+
+  // ---------- ייצוא לפי כתובות ----------
+  // שורה: "רחוב מספר, עיר" – מספר בית אחד ("בלוי 28"), עם אות ("28א"), טווח ("בלוי 28-30") או בלי מספר
+  // (כל הרחוב). העיר לא חובה; כתיב מלא/חסר בעיר ("פתח תקוה"/"פתח תקווה") לא משנה.
+  const looseCity = (city) => LRDeals.normCity(city).replace(/וו/g, "ו").replace(/יי/g, "י");
+  const houseNumberOf = (house) => {
+    const match = String(house || "").match(/^(\d{1,4})/);
+    return match ? Number(match[1]) : null;
+  };
+
+  function parseAddressQuery(line) {
+    const label = String(line || "").trim();
+    if (!label) return null;
+    const [streetPart, ...rest] = label.split(",");
+    const city = rest.join(" ").trim();
+    const text = streetPart.trim();
+    const match = text.match(/^(.*?)\s+(\d{1,4}\s*[א-ת]?)(?:\s*(?:-|–|־|עד)\s*(\d{1,4}))?$/);
+    const street = LRDeals.normStreet(match ? match[1] : text);
+    if (!street) return null;
+    let house = null;
+    if (match && match[3]) {
+      const a = Number(match[2].replace(/\D/g, ""));
+      const b = Number(match[3]);
+      house = { min: Math.min(a, b), max: Math.max(a, b) };
+    } else if (match) {
+      const exact = LRDeals.normHouse(match[2]);
+      house = /[א-ת]$/.test(exact) ? { exact } : { min: Number(exact), max: Number(exact) };
+    }
+    return { label, street, city: city ? looseCity(city) : "", house };
+  }
+
+  function addressMatches(query, { city, street, house }) {
+    if (!query || street !== query.street) return false;
+    if (query.city && looseCity(city) !== query.city) return false;
+    if (!query.house) return true;
+    if (query.house.exact) return LRDeals.normHouse(house) === query.house.exact;
+    const number = houseNumberOf(house);
+    return number !== null && number >= query.house.min && number <= query.house.max;
+  }
+
+  // addresses: רשימת שורות. מחזיר { csv, counts, queries } – כל מה שיש בכתובות: מודעות ופרויקטים
+  // (עם גיל, תאריכים, מחיר ראשון), עליות וירידות מחיר שלהן, ועסקאות אמת באותם בניינים/רחובות.
+  async function buildAddressCsv({ cache = {}, deals = {}, addresses = [], now = Date.now() } = {}, onProgress = () => {}) {
+    const queries = addresses.map(parseAddressQuery).filter(Boolean);
+    const recordLabels = new Map();
+    const dealLabels = new Map();
+    const counts = queries.map((query) => ({ label: query.label, listings: 0, deals: 0 }));
+    const add = (map, key, label) => map.set(key, map.has(key) ? `${map.get(key)} | ${label}` : label);
+    const subset = {};
+    for (const [key, record] of getRecords(cache)) {
+      const place = LRDeals.listingPlace(record);
+      const where = { city: record.city, street: place.street, house: place.house };
+      queries.forEach((query, index) => {
+        if (!addressMatches(query, where)) return;
+        add(recordLabels, key, query.label);
+        subset[key] = record;
+        counts[index].listings++;
+      });
+    }
+    const dealSubset = [];
+    for (const [key, deal] of dealEntries(deals)) {
+      const where = { city: deal.city, street: LRDeals.normStreet(deal.street), house: deal.house };
+      let matched = false;
+      queries.forEach((query, index) => {
+        if (!addressMatches(query, where)) return;
+        add(dealLabels, key, query.label);
+        counts[index].deals++;
+        matched = true;
+      });
+      if (matched) dealSubset.push([key, deal]);
+    }
+    // עסקאות: מהחדשה לישנה
+    dealSubset.sort((a, b) => String(b[1].date || "").localeCompare(String(a[1].date || "")));
+    const changes = getPriceTimelineEvents(subset).filter((event) => event.kind === "increase" || event.kind === "decrease").length;
+    const csv = await buildFullCsv({ cache: subset, deals: dealSubset, labels: { records: recordLabels, deals: dealLabels }, now }, onProgress);
+    return {
+      csv,
+      queries,
+      counts,
+      totals: { listings: Object.keys(subset).length, changes, deals: dealSubset.length },
+    };
   }
 
   // deals: האובייקט השמור של עסקאות האמת ({ מפתח: עסקה }). מחזיר null כשאין עסקאות (אין גיליון)
@@ -1303,6 +1421,8 @@ var LRCacheExport = (() => {
     buildCsv,
     buildDealsCsv,
     buildFullCsv,
+    buildAddressCsv,
+    parseAddressQuery,
     downloadCsv,
     buildExcel,
     whatsappMessage,

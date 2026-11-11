@@ -35,11 +35,17 @@
 
   <div class="app">
     <nav id="viewTabs" class="view-tabs" role="tablist" aria-label="תצוגות מידע שמור" aria-orientation="vertical">
-      <p class="nav-group">המידע שלי</p>
+      <p class="nav-group">עמוד ראשי</p>
       <button id="dashboardTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="dashboardPanel" tabindex="-1" title="לוח בקרה">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="9" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="15.5" width="7" height="5" rx="1.5"/></svg></span>
         <span class="nav-text"><span class="nav-label">לוח בקרה</span><span class="nav-hint">כל המספרים במבט אחד</span></span>
       </button>
+      <p class="nav-group">סטטיסטיקות</p>
+      <button id="priceChangesTab" class="view-tab" data-tone="amber" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel" tabindex="-1" title="שינויי מחירים">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
+        <span class="nav-text"><span class="nav-label">שינויי מחירים</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
+      </button>
+      <p class="nav-group">חיפושי מידע</p>
       <button id="listingsTab" class="view-tab active" data-tone="teal" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel" title="מודעות ופרויקטים">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M9 9.5v10"/></svg></span>
         <span class="nav-text"><span class="nav-label">מודעות ופרויקטים</span><span class="nav-hint">הטבלה המלאה</span></span> <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
@@ -48,18 +54,14 @@
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span>
         <span class="nav-text"><span class="nav-label">חיפוש מודעה</span><span class="nav-hint">לפי טווחים ומאפיינים</span></span>
       </button>
-      <button id="priceChangesTab" class="view-tab" data-tone="amber" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel" tabindex="-1" title="שינויי מחירים">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
-        <span class="nav-text"><span class="nav-label">שינויי מחירים</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
-      </button>
       <button id="dealsTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="dealsPanel" tabindex="-1" title="חיפוש עסקאות">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10l8-6 8 6v10"/><path d="M9.5 20v-5h5v5"/><path d="M16 4.5h3.5V8"/></svg></span>
         <span class="nav-text"><span class="nav-label">חיפוש עסקאות</span><span class="nav-hint">עסקאות אמת שנמכרו</span></span> <span id="dealsCount" class="tab-count">0</span>
       </button>
-      <p class="nav-group">כלים</p>
-      <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
-        <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
+      <p class="nav-group">ייצוא מידע</p>
+      <button id="addressExportTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="addressExportPanel" tabindex="-1" title="ייצוא לפי כתובות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
+        <span class="nav-text"><span class="nav-label">ייצוא לפי כתובות</span><span class="nav-hint">כל המידע על כתובות ל־CSV</span></span>
       </button>
       <button id="transferTab" class="view-tab" data-tone="slate" type="button" role="tab" aria-selected="false" aria-controls="transferPanel" tabindex="-1" title="גיבוי וייצוא">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
@@ -70,7 +72,11 @@
         <span class="nav-text"><span class="nav-label">סנכרון אונליין</span><span class="nav-hint">כמה מחשבים, מידע אחד</span></span>
         <span id="syncTabState" class="tab-count" hidden></span>
       </button>
-      <p class="nav-group">ניקוי</p>
+      <p class="nav-group">ניקוי וסינון</p>
+      <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
+        <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
+      </button>
       <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
         <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
@@ -722,6 +728,30 @@
           </div>
           <span id="walkerStatus" role="status" aria-live="polite">הדביקו כתובת, בחרו טווח עמודים ולחצו „התחלת דפדוף”.</span>
           <p class="schedule-note">הדפדוף נפתח בכרטיסייה חדשה. השאירו אותה גלויה – כשהכרטיסייה ברקע הדפדפן מאט את הגלילה והטעינה. אם עמוד נטען בלי מודעות (סוף התוצאות או בדיקת „אני לא רובוט”), הדפדוף מושהה עד שתמשיכו.</p>
+        </section>
+      </div>
+    </section>
+
+    <section id="addressExportPanel" class="tab-panel tool-panel" role="tabpanel" aria-labelledby="addressExportTab" aria-label="ייצוא לפי כתובות" hidden>
+      <div class="panel-head">
+        <div>
+          <h2>ייצוא לפי כתובות</h2>
+          <p>כל המידע על כתובות מסוימות בקובץ CSV אחד: מודעות ופרויקטים (מחיר, תאריך עלייה, גיל המודעה, מחיר ראשון), ירידות ועליות מחיר, ועסקאות אמת באותם בניינים.</p>
+        </div>
+      </div>
+      <div class="tool-grid">
+        <section class="tool-card address-export-card" data-tone="blue">
+          <h3><span class="card-dot"></span>כתובות</h3>
+          <p class="card-text">כתובת בכל שורה, בצורה „רחוב מספר, עיר”. אפשר טווח בתים („בלוי 28-30”), בית עם אות („28א”) או רחוב בלי מספר (כל הרחוב). העיר לא חובה.</p>
+          <label class="address-export-field"><span class="visually-hidden">כתובות לייצוא</span>
+            <textarea id="addressExportInput" rows="6" placeholder="בלוי 28, פתח תקווה&#10;רוטשילד 10-14, פתח תקווה&#10;סוקולוב, חולון"></textarea>
+          </label>
+          <ul id="addressExportSummary" class="address-export-summary"></ul>
+          <div class="card-actions">
+            <button id="addressExportRun" class="primary" type="button">⬇ ייצוא ל־CSV</button>
+          </div>
+          <span id="addressExportStatus" role="status" aria-live="polite"></span>
+          <p class="backup-note">בקובץ יש עמודה „סוג רשומה” (מודעה / פרויקט / ירידת מחיר / עליית מחיר / עסקת אמת) ועמודה „כתובת שחיפשת”, כך שקל לסנן ב-Excel. העסקאות הן אלה שנאספו במחשב הזה (וסונכרנו), לא חיפוש חדש באתרים.</p>
         </section>
       </div>
     </section>

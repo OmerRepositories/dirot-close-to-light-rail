@@ -684,3 +684,37 @@ test("full CSV puts listings, price changes, deals, settings and exclusions in o
   assert.equal(rows[3][headers.indexOf("ערך")], "הרצל");
   assert.ok(!csv.includes("never"));
 });
+test("address export: listings, their price changes and deals at the typed addresses (house, range, whole street)", async () => {
+  global.LRDeals = require("../deals-core.js");
+  const day = 86_400_000;
+  const cache = {
+    "yad2:a": { title: "A", address: "בלוי 28, פתח תקווה", city: "פתח תקווה", price: 1_900_000, listingCreatedAt: "2026-10-01",
+      priceHistory: [{ price: 2_000_000, at: Date.parse("2026-10-02") }, { price: 1_900_000, at: Date.parse("2026-10-20") }] },
+    "yad2:b": { title: "B", address: "בלוי 30, פתח תקוה", city: "פתח תקוה", price: 2_500_000 },
+    "yad2:c": { title: "C", address: "בלוי 31, פתח תקווה", city: "פתח תקווה", price: 2_600_000 },
+    "madlan:d": { title: "D", address: "רוטשילד 5, חולון", city: "חולון", price: 3_000_000 },
+    "madlan:e": { title: "E", address: "רוטשילד 5, פתח תקווה", city: "פתח תקווה", price: 3_100_000 },
+  };
+  const deals = {
+    k1: { city: "פתח תקווה", street: "בלוי", house: "28", date: "2025-03-01", price: 1_800_000, sqm: 90 },
+    k2: { city: "פתח תקווה", street: "בלוי", house: "40", date: "2025-04-01", price: 1_700_000, sqm: 85 },
+    k3: { city: "חולון", street: "רוטשילד", house: "5", date: "2024-01-01", price: 2_000_000, sqm: 100 },
+  };
+  const result = await CacheExport.buildAddressCsv({
+    cache, deals, addresses: ["בלוי 28-30, פתח תקווה", "", "רוטשילד, חולון"], now: Date.parse("2026-11-11"),
+  });
+  assert.deepEqual(result.totals, { listings: 3, changes: 1, deals: 2 });
+  assert.deepEqual(result.counts.map((item) => [item.listings, item.deals]), [[2, 1], [1, 1]]);
+  const [headers, ...rows] = result.csv.slice(1).trimEnd().split("\r\n").map(parseCsvRow);
+  assert.equal(headers[0], "כתובת שחיפשת");
+  const col = (name) => headers.indexOf(name);
+  const a = rows.find((row) => row[col("מפתח")] === "yad2:a" && row[col("סוג רשומה")] === "מודעה");
+  assert.equal(a[0], "בלוי 28-30, פתח תקווה");
+  assert.equal(a[col("גיל המודעה (ימים)")], "41");
+  assert.equal(a[col("מחיר ראשון שנראה")], "2000000");
+  assert.equal(a[col("שינוי מהמחיר הראשון (%)")], "-5");
+  assert.ok(rows.some((row) => row[col("סוג רשומה")] === "ירידת מחיר" && row[0] === "בלוי 28-30, פתח תקווה"));
+  assert.ok(rows.some((row) => row[col("סוג רשומה")] === "עסקת אמת" && row[0] === "רוטשילד, חולון"));
+  assert.equal(CacheExport.parseAddressQuery("בלוי 28א").house.exact, "28א");
+  assert.equal(CacheExport.parseAddressQuery("   "), null);
+});

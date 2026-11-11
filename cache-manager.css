@@ -958,3 +958,10 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 .deals-period-label { color: var(--muted); font-size: 13px; font-weight: 600; }
 .deals-period-body { display: grid; gap: 14px; }
 .deals-period-bar .timeline-filters button:disabled { opacity: .45; cursor: default; }
+
+/* ייצוא לפי כתובות */
+.address-export-card { grid-column: 1 / -1; }
+.address-export-field textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line, #d9e2e8); background: var(--surface, #fff); color: inherit; resize: vertical; }
+.address-export-summary { margin: 8px 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.address-export-summary li.empty { opacity: .6; }
+#addressExportStatus[data-error="true"] { color: var(--danger); }
