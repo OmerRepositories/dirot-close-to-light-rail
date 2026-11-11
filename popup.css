@@ -414,4 +414,7 @@ legend[data-icon]::before, .subhead[data-icon]::before { width: 24px; height: 24
 .tax-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .tax-flat { display: grid; grid-template-columns: 1fr 110px; gap: 8px; align-items: end; }
 .tax-notice { margin: 6px 0 4px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); border-radius: var(--r-sm); color: var(--warn); background: var(--warn-soft); font-size: 13px; line-height: 1.5; }
-.tax-bracket input.tax-from { color: var(--muted); }
+.tax-bracket input.tax-from { color: var(--muted); }/* הצעות לרחובות מועדפים */
+.street-suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.street-suggestions[hidden] { display: none; }
+.street-chip { min-height: 26px; padding: 2px 10px; border-radius: 999px; font-size: 12.5px; }

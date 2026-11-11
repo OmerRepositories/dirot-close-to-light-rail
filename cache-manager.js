@@ -1143,6 +1143,8 @@ function renderRows() {
     row.tabIndex = 0;
     row.dataset.key = key;
     row.setAttribute("aria-selected", String(key === selectedKey));
+    const onFavoriteStreet = Boolean(favoriteStreetRule(record));
+    if (onFavoriteStreet) row.classList.add("fav-street");
     for (const column of columns) {
       const td = document.createElement("td");
       if (column.key === "type") {
@@ -1214,6 +1216,19 @@ function renderRows() {
             textCell(title, "record-title"),
             textCell(address, "record-address")
           );
+        }
+        // רחוב מועדף: ★ מסמן/מבטל את הרחוב של המודעה ברשימת הרחובות המועדפים
+        if (recordStreetName(record)) {
+          const star = document.createElement("button");
+          star.type = "button";
+          star.dataset.action = "favorite-street";
+          star.className = `favorite-street-toggle${onFavoriteStreet ? " on" : ""}`;
+          star.textContent = onFavoriteStreet ? "★ רחוב מועדף" : "☆ רחוב";
+          star.title = onFavoriteStreet
+            ? "הרחוב ברשימת הרחובות המועדפים – לחיצה מסירה"
+            : `הוספת "${recordStreetName(record).replace(/\s+\d{1,4}\s*[א-ת]?\s*$/, "")}" לרחובות המועדפים (מודעות ברחוב יודגשו)`;
+          star.setAttribute("aria-pressed", String(onFavoriteStreet));
+          td.appendChild(star);
         }
         // אותה דירה באתר השני
         const twinKey = twins.get(key);
@@ -2781,6 +2796,56 @@ async function toggleFavorite(key) {
     writing = false;
   }
 }
+
+// ---------- רחובות מועדפים ----------
+// רשימה בהגדרות (chrome.storage.sync, עוברת בסנכרון) – שורה לכל רחוב, אפשר ", עיר". מודעות ברחובות
+// האלה מודגשות בטבלאות. אפשר להוסיף/להסיר רחוב ישירות מהטבלה (★ ליד הכתובת).
+let favoriteStreets = [];
+let favoriteStreetRules = [];
+function setFavoriteStreets(list) {
+  favoriteStreets = Array.isArray(list) ? list.map(String).filter(Boolean) : [];
+  favoriteStreetRules = LRStreetFilter.parseRules(favoriteStreets);
+}
+function recordStreetName(record) {
+  return String((record && record.address) || "").split(",")[0].trim();
+}
+function favoriteStreetRule(record) {
+  if (!favoriteStreetRules.length || !record) return null;
+  return LRStreetFilter.match(favoriteStreetRules, recordStreetName(record), record.city || "");
+}
+async function toggleFavoriteStreet(key) {
+  const record = cache[key];
+  const street = LRStreetFilter.normalize(recordStreetName(record));
+  if (!street) return;
+  const rule = favoriteStreetRule(record);
+  let next;
+  if (rule) {
+    // מסירים את השורה שהתאימה (גם אם נכתבה עם עיר או בכתיב אחר)
+    next = favoriteStreets.filter((line) => {
+      const [parsed] = LRStreetFilter.parseRules([line]);
+      return !parsed || parsed.street.join(" ") !== rule.street.join(" ") || parsed.city !== rule.city;
+    });
+  } else {
+    const streetText = recordStreetName(record).replace(/\s+\d{1,4}\s*[א-ת]?\s*$/, "").trim();
+    next = [...favoriteStreets, record.city ? `${streetText}, ${record.city}` : streetText];
+  }
+  setFavoriteStreets(next);
+  renderRows();
+  try {
+    await chrome.storage.sync.set({ favoriteStreets: next });
+  } catch (error) {
+    console.error("[lightrail-ext] failed to save favorite streets", error);
+  }
+}
+chrome.storage.sync.get({ favoriteStreets: [] }).then((stored) => {
+  setFavoriteStreets(stored.favoriteStreets);
+  if (["listings", "search", "favorites"].includes(activeTab)) renderRows();
+}).catch(() => {});
+chrome.storage.sync.onChanged.addListener((changes) => {
+  if (!changes.favoriteStreets) return;
+  setFavoriteStreets(changes.favoriteStreets.newValue);
+  if (["listings", "search", "favorites"].includes(activeTab)) renderRows();
+});
 
 function renderFavoritesCount() {
   const count = Object.values(cache).filter((record) => record && record.favorite === true).length;
@@ -5184,6 +5249,9 @@ rows.addEventListener("click", (event) => {
   } else if (button && button.dataset.action === "favorite") {
     event.stopPropagation();
     toggleFavorite(row.dataset.key);
+  } else if (button && button.dataset.action === "favorite-street") {
+    event.stopPropagation();
+    toggleFavoriteStreet(row.dataset.key);
   } else {
     openRecord(row.dataset.key);
   }

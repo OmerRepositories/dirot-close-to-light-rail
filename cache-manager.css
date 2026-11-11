@@ -1183,3 +1183,12 @@ th.favorite-col { min-width: 36px; }
 #favoritesPanel:not([hidden]) { overflow: hidden; }
 .favorites-host { display: flex; flex: 1 1 auto; min-height: 0; }
 .favorites-host .table-wrap { flex: 1 1 auto; min-height: 0; border: 1px solid var(--line); }
+/* ---------- רחובות מועדפים ---------- */
+tbody tr.fav-street td { background: color-mix(in srgb, #f5b301 11%, var(--surface)); }
+tbody tr.fav-street td.record-name { box-shadow: inset -3px 0 0 #e0a100; }
+tbody tr.fav-street:hover td { background: color-mix(in srgb, #f5b301 18%, var(--surface)); }
+.favorite-street-toggle { display: block; min-height: 20px; margin-top: 2px; padding: 0 6px; border: 0; border-radius: 6px; color: var(--faint); background: transparent; font-size: 12px; opacity: 0; }
+tbody tr:hover .favorite-street-toggle, .favorite-street-toggle:focus-visible { opacity: 1; }
+.favorite-street-toggle.on { opacity: 1; color: #b07d00; font-weight: 700; }
+:root[data-theme="dark"] .favorite-street-toggle.on { color: #f5c542; }
+.favorite-street-toggle:hover { color: #b07d00; background: color-mix(in srgb, #f5b301 15%, transparent); transform: none; }

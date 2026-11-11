@@ -26,6 +26,7 @@ const DEFAULTS = {
   showListingAge: true,
   hideAds: true,
   blockedStreets: [],
+  favoriteStreets: [],
   dealsPages: 10,
   showPurchaseTax: true,
   purchaseTaxTrack: "single",
@@ -282,6 +283,10 @@ function fill(s) {
   if (document.activeElement !== $("blockedStreets")) {
     $("blockedStreets").value = (Array.isArray(s.blockedStreets) ? s.blockedStreets : []).join("\n");
   }
+  if (document.activeElement !== $("favoriteStreets")) {
+    $("favoriteStreets").value = (Array.isArray(s.favoriteStreets) ? s.favoriteStreets : []).join("\n");
+  }
+  renderFavoriteStreetSuggestions(Array.isArray(s.favoriteStreets) ? s.favoriteStreets : []);
   if (document.activeElement !== $("indexCities")) {
     $("indexCities").value = (Array.isArray(s.indexCities) ? s.indexCities : []).join("\n");
   }
@@ -293,6 +298,50 @@ function fill(s) {
     renderTaxTrack(taxTrack);
   }
   syncDisabled();
+}
+
+// הצעות לרחובות מועדפים: הרחובות של המודעות שסימנת בלב (♥), הנפוצים קודם, שעוד לא ברשימה.
+// לחיצה מוסיפה לרשימה.
+let suggestionsFor = "";
+function renderFavoriteStreetSuggestions(current) {
+  const host = $("favoriteStreetSuggestions");
+  if (!host) return;
+  const signature = JSON.stringify(current);
+  if (signature === suggestionsFor) return;
+  suggestionsFor = signature;
+  const rules = LRStreetFilter.parseRules(current);
+  LRListingStore.read(chrome.storage.local).then((cache) => {
+    const counts = new Map();
+    for (const record of Object.values(cache)) {
+      if (!record || record.favorite !== true) continue;
+      const street = String(record.address || "").split(",")[0].replace(/\s+\d{1,4}\s*[א-ת]?\s*$/, "").trim();
+      if (!street || LRStreetFilter.match(rules, street, record.city || "")) continue;
+      const line = record.city ? `${street}, ${record.city}` : street;
+      counts.set(line, (counts.get(line) || 0) + 1);
+    }
+    const lines = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    host.replaceChildren();
+    host.hidden = !lines.length;
+    if (!lines.length) return;
+    const title = document.createElement("span");
+    title.className = "small";
+    title.textContent = "הצעות מהמודעות שבמועדפים:";
+    host.append(title);
+    for (const [line, count] of lines) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "street-chip";
+      chip.textContent = `+ ${line}${count > 1 ? ` (${count})` : ""}`;
+      chip.title = "הוספה לרחובות המועדפים";
+      chip.addEventListener("click", () => {
+        const area = $("favoriteStreets");
+        area.value = [...LRStreetFilter.parseInput(area.value), line].join("\n");
+        save();
+        renderFavoriteStreetSuggestions(LRStreetFilter.parseInput(area.value));
+      });
+      host.append(chip);
+    }
+  }).catch(() => {});
 }
 
 // כשמבטלים את הדרישה לרכבת, שדה המרחק לא רלוונטי
@@ -330,6 +379,7 @@ function read() {
     (input) => input.dataset.dealBreaker
   );
   out.blockedStreets = LRStreetFilter.parseInput($("blockedStreets").value);
+  out.favoriteStreets = LRStreetFilter.parseInput($("favoriteStreets").value);
   out.indexCities = LRStreetFilter.parseInput($("indexCities").value);
   storeTaxEditor();
   out.purchaseTaxTrack = taxTrack;
@@ -366,6 +416,7 @@ $("listingIndexingMode").addEventListener("change", save);
 $("dealsPages").addEventListener("change", save);
 $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
+$("favoriteStreets").addEventListener("input", save);
 $("indexCities").addEventListener("input", save);
 $("purchaseTaxExemptUpTo").addEventListener("input", save);
 $("purchaseTaxFlatAbove").addEventListener("input", save);
@@ -429,6 +480,7 @@ $("reset").addEventListener("click", () => {
       requiredAmenities: [...DEFAULTS.requiredAmenities],
       dealBreakerAmenities: [],
       blockedStreets: [],
+      favoriteStreets: [],
       indexCities: [],
       purchaseTaxTracks: null,
       purchaseTaxExemptUpTo: null,
