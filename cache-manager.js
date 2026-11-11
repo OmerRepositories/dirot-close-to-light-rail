@@ -2094,6 +2094,15 @@ function drawDashboard(stats, cities) {
   heroes.append(
     tile("מודעות שמורות", number(stats.listings), `יד2 ${number(stats.yad2)} · מדלן ${number(stats.madlan)} · ${number(stats.projects)} פרויקטים`, () => openSearchWith({}), "teal", "🏠"),
     tile("לא רלוונטיות", number(stats.irrelevant), `${pct(stats.irrelevant, stats.listings)} מהמודעות · לא נכללות ברענון`, () => openSearchWith({ status: "irrelevant" }), "amber", "🚫"),
+    // רלוונטיות = יש בהן את מאפייני החובה (מודעות שהמאפיינים שלהן עוד לא ידועים לא נספרות)
+    tile(
+      "מודעות רלוונטיות",
+      number(stats.relevant),
+      `${pct(stats.relevant, stats.listings)} מהמודעות · ${number(stats.amenitiesUnknown)} עם מאפיינים לא ידועים`,
+      show("מודעות רלוונטיות", stats.keys.relevant),
+      "blue",
+      "✅"
+    ),
     tile("ירדו במחיר", number(stats.drops), `${number(stats.rises)} עלו במחיר`, show("ירדו במחיר", stats.keys.drops), "green", "📉"),
     tile(
       "לחץ גבוה למכור",
