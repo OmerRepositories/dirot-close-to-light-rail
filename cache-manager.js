@@ -2945,12 +2945,10 @@ async function logListingRefreshed(key) {
 
 async function saveListingStatus(key, status, attemptId, index) {
   if (!["active", "removed"].includes(status)) return;
-  if (
-    !refreshQueue.length ||
-    refreshAttemptId !== attemptId ||
-    refreshIndex !== index ||
-    writing
-  ) {
+  if (!refreshQueue.length || refreshAttemptId !== attemptId || refreshIndex !== index) return;
+  // כתיבה אחרת באמצע – לא מוותרים על הסטטוס, מנסים שוב בעוד רגע
+  if (writing) {
+    setTimeout(() => saveListingStatus(key, status, attemptId, index), 400);
     return;
   }
   try {
@@ -2964,16 +2962,18 @@ async function saveListingStatus(key, status, attemptId, index) {
     ) {
       return;
     }
+    const checkedAt = Date.now();
     latest[key] = {
       ...latest[key],
       listingStatus: status,
-      listingStatusCheckedAt: Date.now(),
+      listingStatusCheckedAt: checkedAt,
     };
     writing = true;
     await storageSet({ [CACHE_KEY]: latest });
     cache = latest;
     renderRows();
     renderListingDeletionPreview();
+    ensureListingStatusKept(key, status, checkedAt);
   } catch (error) {
     console.error("[lightrail-ext] failed to save listing status", error);
     setRefreshStatus(`הדף נטען, אך סטטוס המודעה לא נשמר: ${error.message}`, true);
@@ -2982,7 +2982,37 @@ async function saveListingStatus(key, status, attemptId, index) {
   }
 }
 
-function checkCurrentListingStatus(tabId, key, record, retries = 4) {
+// העמוד שנפתח ברענון שומר בעצמו את כל המטמון מהזיכרון שלו. במדלן מודעה שהוסרה מנתבת לעמוד חיפוש
+// עם עשרות כרטיסים, שכתיבה שלו ממש אחרי שלנו דרסה את הסטטוס. בודקים שוב אחרי כמה שניות ומחזירים אותו.
+function ensureListingStatusKept(key, status, checkedAt, attempt = 0) {
+  const delays = [2500, 6000, 12000];
+  if (attempt >= delays.length) return;
+  setTimeout(async () => {
+    try {
+      if (writing) return ensureListingStatusKept(key, status, checkedAt, attempt);
+      const latest = await storageGet();
+      const current = latest[key];
+      if (!current) return;
+      const kept = current.listingStatus === status && current.listingStatusCheckedAt >= checkedAt;
+      if (!kept && !(current.listingStatusCheckedAt > checkedAt)) {
+        latest[key] = { ...current, listingStatus: status, listingStatusCheckedAt: checkedAt };
+        writing = true;
+        try {
+          await storageSet({ [CACHE_KEY]: latest });
+        } finally {
+          writing = false;
+        }
+        cache = latest;
+        renderRows();
+      }
+      ensureListingStatusKept(key, status, checkedAt, attempt + 1);
+    } catch (error) {
+      console.warn("[lightrail-ext] could not verify listing status", error);
+    }
+  }, delays[attempt]);
+}
+
+function checkCurrentListingStatus(tabId, key, record, retries = 8) {
   const expectedId = key.slice(key.indexOf(":") + 1);
   const url = refreshableListingUrl(key, record);
   let urlId;
