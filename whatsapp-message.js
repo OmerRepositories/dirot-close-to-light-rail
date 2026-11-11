@@ -77,7 +77,10 @@ var LRWhatsAppMessage = (() => {
     const value = (item) => (item === null || item === undefined || item === "" ? "לא זוהה" : item);
     const created = createdDate(data.listingCreatedAt);
     const lines = [
-      `כתובת: ${value(data.address)}`,
+      // מספר בית שהאתר שיער (המוכר פרסם רק רחוב/שכונה) – מסומן כמשוער
+      data.addressApprox && data.address
+        ? `כתובת משוערת: ${data.address} (המוכר פרסם רק רחוב – מספר הבית לפי מיקום הסיכה במפה)`
+        : `כתובת: ${value(data.address)}`,
       `מחיר: ${value(data.price)}`,
       `מ"ר: ${value(data.sqm)}`,
       `חדרים: ${value(data.rooms)}`,

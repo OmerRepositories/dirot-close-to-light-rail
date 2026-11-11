@@ -616,6 +616,7 @@ var LRCacheExport = (() => {
     const floor = Number.isFinite(record.floor) ? (record.floor === 0 ? "קרקע" : String(record.floor)) : null;
     return LRWhatsAppMessage.format({
       address: fullAddress || null,
+      addressApprox: record.addressApprox === true,
       price: Number.isFinite(record.price) && record.price > 0 ? fmtShekels(record.price) : null,
       sqm: Number.isFinite(record.sqm) ? record.sqm : null,
       rooms: Number.isFinite(record.rooms) ? record.rooms : null,
@@ -697,7 +698,7 @@ var LRCacheExport = (() => {
 
   // CSV מלא אחד: כל סוגי המידע באותו קובץ, עם עמודה אחת ("סוג רשומה") שמפרידה ביניהם
   const FULL_COLUMNS = [
-    "סוג רשומה", "מפתח", "אתר", "מזהה", "קישור", "כותרת", "עיר", "שכונה", "כתובת", "רחוב", "מספר בית",
+    "סוג רשומה", "מפתח", "אתר", "מזהה", "קישור", "כותרת", "עיר", "שכונה", "כתובת", "כתובת משוערת", "רחוב", "מספר בית",
     "תאריך", "מחיר", "מחיר קודם", "מחיר חדש", "שינוי (₪)", "שינוי (%)", "שטח (מ״ר)", "מחיר למ״ר",
     "חדרים", "קומה", "קומות בבניין", "שנת בנייה", "מרחק מהרכבת (מ׳)", "תחנה", "תיווך", "סטטוס",
     "גיל המודעה (ימים)", "תאריך עדכון במודעה", "נראתה לראשונה בתוסף", "עודכנה לאחרונה בתוסף",
@@ -781,6 +782,8 @@ var LRCacheExport = (() => {
         "עיר": record.city,
         "שכונה": record.neighborhood,
         "כתובת": record.address,
+        // המוכר פרסם רק רחוב/שכונה – מספר הבית הוא מיקום הסיכה של האתר
+        "כתובת משוערת": record.addressApprox ? "כן (מספר הבית משוער)" : "",
         "תאריך": isoDate(record.listingCreatedAt),
         "מחיר": record.price,
         "שטח (מ״ר)": record.sqm,

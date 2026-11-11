@@ -155,3 +155,10 @@ test("Madlan overview reads the value child next to the explicit floor label", (
     "קומה 16"
   );
 });
+
+test("an approximate address (seller published only the street) is labeled in the copied text", () => {
+  const approx = LRWhatsAppMessage.format({ address: "שרגא רפאלי 27, פתח תקווה", addressApprox: true });
+  assert.ok(approx.startsWith("כתובת משוערת: שרגא רפאלי 27, פתח תקווה (המוכר פרסם רק רחוב"));
+  assert.ok(LRWhatsAppMessage.format({ address: "בלוי 28, פתח תקווה" }).startsWith("כתובת: בלוי 28"));
+  assert.ok(LRWhatsAppMessage.format({ addressApprox: true }).startsWith("כתובת: לא זוהה"));
+});

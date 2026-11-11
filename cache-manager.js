@@ -1150,7 +1150,8 @@ function renderRows() {
       } else if (column.key === "title") {
         td.className = "record-name";
         const title = record.title || key;
-        const address = [record.address, record.city].filter(Boolean).join(", ");
+        const address = [record.address, record.city].filter(Boolean).join(", ") +
+          (record.addressApprox ? " (מספר בית משוער)" : "");
         const listingUrl = listingPageUrl(key, record);
         if (listingUrl) {
           for (const [label, className] of [

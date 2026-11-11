@@ -298,7 +298,14 @@ var LRMadlan = (() => {
       city: text(address.city),
       street: text(address.streetName),
       number: text(address.streetNumber),
+      resolution: text(address.resolutionPreferences),
     };
+  }
+
+  // resolutionPreferences (נבדק 2026-11-11): "accurate" = כתובת מלאה שפורסמה; "street" = המוכר הציג רק
+  // רחוב, ומספר הבית הוא מיקום הסיכה שמדלן שיערה; "neighborhood" = רק שכונה (גם הרחוב משוער); null = לא ידוע
+  function approxResolution(resolution) {
+    return resolution === "street" || resolution === "neighborhood";
   }
 
   function scanListingData(id) {
@@ -316,11 +323,13 @@ var LRMadlan = (() => {
         const address = addressTail.match(
           /["']addressDetails["']\s*:\s*\{[\s\S]{0,3000}?["']city["']\s*:\s*"((?:\\.|[^"\\])*)"[\s\S]{0,1000}?["']streetName["']\s*:\s*"((?:\\.|[^"\\])*)"[\s\S]{0,500}?["']streetNumber["']\s*:\s*"((?:\\.|[^"\\])*)"/
         );
+        const resolution = addressTail.slice(0, 3000).match(/["']resolutionPreferences["']\s*:\s*"([^"]*)"/);
         return {
           coordinates: { lat: Number(directPoint[1]), lon: Number(directPoint[2]) },
           city: address ? decodeJsonString(address[1]) : null,
           street: address ? decodeJsonString(address[2]) : null,
           number: address ? decodeJsonString(address[3]) : null,
+          resolution: resolution ? resolution[1] : null,
         };
       }
       const marker = new RegExp(`["']id["']\\s*:\\s*["']${escapedId}["']`, "g");
@@ -337,11 +346,13 @@ var LRMadlan = (() => {
         const address = tail.match(
           /["']addressDetails["']\s*:\s*\{[\s\S]{0,3000}?["']city["']\s*:\s*"((?:\\.|[^"\\])*)"[\s\S]{0,1000}?["']streetName["']\s*:\s*"((?:\\.|[^"\\])*)"[\s\S]{0,500}?["']streetNumber["']\s*:\s*"((?:\\.|[^"\\])*)"/
         );
+        const resolution = tail.match(/["']resolutionPreferences["']\s*:\s*"([^"]*)"/);
         return {
           coordinates: { lat: Number(point[1]), lon: Number(point[2]) },
           city: address ? decodeJsonString(address[1]) : null,
           street: address ? decodeJsonString(address[2]) : null,
           number: address ? decodeJsonString(address[3]) : null,
+          resolution: resolution ? resolution[1] : null,
         };
       }
     }
@@ -408,7 +419,7 @@ var LRMadlan = (() => {
         `${data.street} ${data.number}, ${data.city}`,
         ctxCity
       );
-      return { ...structured, coordinates: data.coordinates };
+      return { ...structured, coordinates: data.coordinates, approx: approxResolution(data.resolution) };
     }
     return { ...parsed, coordinates: data.coordinates };
   }

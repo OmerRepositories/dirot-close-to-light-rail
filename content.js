@@ -874,6 +874,7 @@
         : null;
     return {
       address: parts.join(", "),
+      addressApprox: address.approx === true || (address.approx === undefined && Boolean(listingRecord && listingRecord.addressApprox)),
       price: Number.isFinite(stats.price) ? `₪${fmtNum(stats.price)}` : null,
       sqm: Number.isFinite(stats.sqm) ? stats.sqm : null,
       rooms: Number.isFinite(metadata.rooms) ? metadata.rooms : null,
@@ -1821,6 +1822,10 @@
       title: (listingHeading && listingHeading.innerText.trim()) || previous.title || "",
       // כתובת שלא נקראה הפעם לא מוחקת כתובת שכבר נשמרה
       address: [address.street, address.city].filter(Boolean).join(", ") || previous.address || "",
+      // מדלן: מספר הבית הוא מיקום משוער (המוכר פרסם רק רחוב/שכונה). כרטיס בלי המידע הזה לא מוחק סימון קיים
+      addressApprox: address.street
+        ? (address.approx ? true : address.approx === false ? undefined : previous.addressApprox)
+        : previous.addressApprox,
       city: address.city || previous.city || "",
       neighborhood: address.hood || previous.neighborhood || "",
       url: parser.listingUrl(root) || previous.url || "",
