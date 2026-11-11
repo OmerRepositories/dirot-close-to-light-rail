@@ -2963,10 +2963,13 @@ async function saveListingStatus(key, status, attemptId, index) {
       return;
     }
     const checkedAt = Date.now();
+    // updatedAt חייב להתעדכן: הסנכרון מכריע לפיו, ובלי זה הגרסה שבענן (בלי הסטטוס) "ניצחה" וחזרה
+    // לכאן בסבב הבא. ביד2 זה עבד במקרה כי עמוד המודעה שומר אותה באותו רגע; מודעת מדלן שהוסרה – לא.
     latest[key] = {
       ...latest[key],
       listingStatus: status,
       listingStatusCheckedAt: checkedAt,
+      updatedAt: checkedAt,
     };
     writing = true;
     await storageSet({ [CACHE_KEY]: latest });
@@ -2999,7 +3002,7 @@ function ensureListingStatusKept(key, status, checkedAt, attempt = 0) {
       if (!current) return;
       const kept = current.listingStatus === status && current.listingStatusCheckedAt >= checkedAt;
       if (!kept && !(current.listingStatusCheckedAt > checkedAt)) {
-        latest[key] = { ...current, listingStatus: status, listingStatusCheckedAt: checkedAt };
+        latest[key] = { ...current, listingStatus: status, listingStatusCheckedAt: checkedAt, updatedAt: Date.now() };
         writing = true;
         try {
           await storageSet({ [CACHE_KEY]: latest });
