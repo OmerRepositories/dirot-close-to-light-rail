@@ -1311,6 +1311,15 @@ function renderRows() {
           deals.title = "חיפוש עסקאות אמת בכתובת הזו";
           actions.append(deals);
         }
+        if (recordType(record) === "listing") {
+          const copy = document.createElement("button");
+          copy.type = "button";
+          copy.dataset.action = "copy";
+          copy.className = "copy-action";
+          copy.textContent = "📋 העתקה";
+          copy.title = "מעתיק את טקסט המודעה (מחיר, שטח, קומה, מרחק מהרכבת, מול עסקאות אמת וקישור) – כמו הכפתור באתר";
+          actions.append(copy);
+        }
         actions.append(edit, remove);
         td.appendChild(actions);
       }
@@ -1980,6 +1989,30 @@ function openDealsForRecord(record) {
     query: option || !cityOfRecord ? query : `${query} ${cityOfRecord}`.trim(),
     neighborhood,
   });
+}
+
+// טקסט המודעה ללוח (אותו טקסט כמו כפתור ההעתקה באתר / עמודת הטקסט ב-Excel)
+function listingCopyText(key, record) {
+  const { site, listingId } = LRCacheExport.parseCacheKey(key);
+  const url = LRCacheExport.recordUrl(site, listingId, record);
+  const ppsm = LRCacheData.pricePerSqm(record);
+  return LRCacheExport.whatsappMessage({ ...record, pricePerSqm: ppsm }, url, dealsIndex);
+}
+
+async function copyListingText(key, button) {
+  const record = cache[key];
+  if (!record) return;
+  const original = button.textContent;
+  try {
+    const text = listingCopyText(key, record);
+    if (!text) throw new Error("אין טקסט למודעה הזו.");
+    await navigator.clipboard.writeText(text);
+    button.textContent = "✓ הועתק";
+  } catch (error) {
+    console.warn("[lightrail-ext] copy failed", error);
+    button.textContent = "ההעתקה נכשלה";
+  }
+  setTimeout(() => { button.textContent = original; }, 1500);
 }
 
 // הפעם הראשונה שהתוסף ראה מחיר למודעה (לא נקודות מהאתר, שיכולות להיות ישנות בהרבה)
@@ -4850,6 +4883,9 @@ rows.addEventListener("click", (event) => {
   } else if (button && button.dataset.action === "deals") {
     event.stopPropagation();
     openDealsForRecord(cache[row.dataset.key]);
+  } else if (button && button.dataset.action === "copy") {
+    event.stopPropagation();
+    copyListingText(row.dataset.key, button);
   } else {
     openRecord(row.dataset.key);
   }

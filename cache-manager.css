@@ -970,3 +970,4 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 #addressExportStatus[data-error="true"] { color: var(--danger); }
 .address-similar-title { font-size: 12px; margin-top: 4px; opacity: .8; }
 .address-similar { margin: 2px 0 0; padding-inline-start: 18px; font-size: 12px; opacity: .85; }
+.row-actions .copy-action { white-space: nowrap; }
