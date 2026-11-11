@@ -429,8 +429,7 @@
       <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
       <span id="recordCount" class="record-count" aria-live="polite"></span>
     </section>
-      <details id="listingAdvancedFilters" class="advanced-filters" open>
-      <summary>מסננים מתקדמים <span>אפשר לשלב כמה טווחים יחד, למשל מרחק מהרכבת ומחיר למ״ר</span></summary>
+      <div id="listingAdvancedFilters" class="advanced-filters" role="group" aria-label="טווחים">
       <div class="filter-grid">
         <label class="range-filter">
           <span>מחיר (₪)</span>
@@ -469,7 +468,7 @@
         </label>
         <button id="clearAdvancedFilters" type="button">ניקוי טווחים</button>
       </div>
-    </details>
+    </div>
       </aside>
       <div class="side-main" id="listingsMain">
       <div class="table-wrap">

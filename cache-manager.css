@@ -1132,3 +1132,4 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 .sub-tab .tab-count { margin: 0; }
 /* האחוז של גודל הטקסט – רק במעבר עכבר */
 #fontScaleValue { display: none; }
+.side-filters .advanced-filters .filter-grid { margin-top: 0; }
