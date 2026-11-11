@@ -439,6 +439,87 @@ function queueSync(task) {
   return run;
 }
 
+// ---------- התקדמות הסבב (שקיפות) ----------
+// כל שלב בסבב נרשם כאן: מה הוא עושה, כמה מתוך כמה, ומה נמצא. העמוד מציג את זה בזמן אמת
+// (דרך chrome.storage.local), כך שרואים שסבב ארוך מתקדם ולא "נתקע".
+const SYNC_PROGRESS_KEY = "lightrailSyncProgress";
+const SYNC_STEPS = [
+  ["session", "התחברות לשרת"],
+  ["pullListings", "הורדת מודעות שהשתנו במחשבים אחרים"],
+  ["pushListings", "שליחת מודעות שהשתנו במחשב הזה"],
+  ["settings", "הגדרות והחרגות"],
+  ["pullDeals", "הורדת עסקאות אמת חדשות"],
+  ["pushDeals", "שליחת עסקאות אמת שנאספו כאן"],
+];
+let syncProgress = null;
+let syncProgressTimer = null;
+
+function writeSyncProgress() {
+  clearTimeout(syncProgressTimer);
+  syncProgressTimer = null;
+  if (syncProgress) chrome.storage.local.set({ [SYNC_PROGRESS_KEY]: syncProgress }).catch(() => {});
+}
+
+// נכתב לכל היותר פעמיים בשנייה (מלבד תחילת שלב / סיום, שנכתבים מיד)
+function touchSyncProgress(immediate = false) {
+  if (!syncProgress) return;
+  syncProgress.updatedAt = Date.now();
+  if (immediate) writeSyncProgress();
+  else if (!syncProgressTimer) syncProgressTimer = setTimeout(writeSyncProgress, 500);
+}
+
+function startSyncProgress(reason) {
+  syncProgress = {
+    runId: Date.now(),
+    reason,
+    running: true,
+    startedAt: Date.now(),
+    updatedAt: Date.now(),
+    steps: SYNC_STEPS.map(([id, label]) => ({ id, label, status: "waiting", done: 0, total: null, detail: "" })),
+  };
+  touchSyncProgress(true);
+}
+
+function syncStep(id, patch, immediate = false) {
+  const step = syncProgress && syncProgress.steps.find((item) => item.id === id);
+  if (!step) return;
+  const starting = patch.status === "running" && step.status !== "running";
+  if (starting) step.startedAt = Date.now();
+  if (patch.status === "done" || patch.status === "failed" || patch.status === "skipped") step.finishedAt = Date.now();
+  Object.assign(step, patch);
+  syncProgress.current = id;
+  touchSyncProgress(immediate || starting || Boolean(step.finishedAt && patch.status));
+}
+
+function finishSyncProgress(ok, error = "") {
+  if (!syncProgress) return;
+  for (const step of syncProgress.steps) {
+    if (step.status === "running") Object.assign(step, { status: ok ? "done" : "failed", finishedAt: Date.now() });
+    else if (step.status === "waiting") step.status = ok ? "skipped" : "notRun";
+  }
+  Object.assign(syncProgress, { running: false, finishedAt: Date.now(), ok, error });
+  touchSyncProgress(true);
+}
+
+const sinceText = (iso) => {
+  const at = Date.parse(iso);
+  return !at || at < 86_400_000 ? "מההתחלה (משיכה מלאה)" : `מאז ${new Date(at).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })}`;
+};
+const countText = (value) => Number(value || 0).toLocaleString("he-IL");
+
+// עמוד שלא חוזר בזמן (הרבה מודעות עם היסטוריית מחירים ארוכה) – מנסים שוב עם עמוד קטן יותר
+async function fetchPageAdaptive(fetchPage, since, state, stepId) {
+  for (;;) {
+    try {
+      return await fetchPage(since, state.pageSize);
+    } catch (error) {
+      if (!error.timedOut || state.pageSize <= 100) throw error;
+      state.pageSize = Math.max(100, Math.floor(state.pageSize / 2));
+      syncStep(stepId, { detail: `השרת איטי – מנסה שוב בעמודים קטנים יותר (${state.pageSize} בכל בקשה)…` }, true);
+    }
+  }
+}
+
 async function ensureSyncSession(settings) {
   if (!settings || !settings.refreshToken) {
     throw Object.assign(new Error("יש להתחבר מחדש במסך סנכרון אונליין."), { needsLogin: true });
@@ -462,8 +543,18 @@ async function syncPush(settings) {
   const hashes = { ...(stored[LRSync.HASHES_KEY] || {}) };
   const tombstones = Array.isArray(stored[LRSync.TOMBSTONES_KEY]) ? stored[LRSync.TOMBSTONES_KEY] : [];
   const keys = LRSync.changedKeys(cache, hashes);
+  // מחיקות שהמשתמש ביצע (רק אם הרשומה עדיין לא קיימת מקומית)
+  const deletions = tombstones.filter((item) => item && item.key && !cache[item.key]);
+  const total = keys.length + deletions.length;
+  syncStep("pushListings", {
+    status: "running",
+    total,
+    detail: total
+      ? `${countText(keys.length)} מודעות שהשתנו כאן${deletions.length ? ` ו-${countText(deletions.length)} מחיקות` : ""} – נשלחות במנות של ${LRSync.PUSH_CHUNK}`
+      : "אין שינויים מקומיים לשלוח",
+  });
   let pushed = 0;
-  for (const part of LRSync.chunk(keys, LRSync.PUSH_CHUNK)) {
+  const upsertListings = async (part) => {
     await LRSync.upsertRows(settings, part.map((key) => ({
       user_id: settings.userId,
       key,
@@ -471,12 +562,23 @@ async function syncPush(settings) {
       deleted: false,
       client_updated_at: Number.isFinite(cache[key].updatedAt) ? Math.round(cache[key].updatedAt) : Date.now(),
     })));
+  };
+  for (const part of LRSync.chunk(keys, LRSync.PUSH_CHUNK)) {
+    try {
+      await upsertListings(part);
+    } catch (error) {
+      // מנה כבדה שלא נשלחה בזמן – שולחים אותה בשני חצאים
+      if (!error.timedOut || part.length < 2) throw error;
+      syncStep("pushListings", { detail: "השרת איטי – שולח את המנה בחלקים קטנים יותר…" }, true);
+      const half = Math.ceil(part.length / 2);
+      await upsertListings(part.slice(0, half));
+      await upsertListings(part.slice(half));
+    }
     for (const key of part) hashes[key] = LRSync.hashRecord(cache[key]);
     pushed += part.length;
     await chrome.storage.local.set({ [LRSync.HASHES_KEY]: hashes });
+    syncStep("pushListings", { done: pushed, detail: `נשלחו ${countText(pushed)} מתוך ${countText(total)}` });
   }
-  // מחיקות שהמשתמש ביצע (רק אם הרשומה עדיין לא קיימת מקומית)
-  const deletions = tombstones.filter((item) => item && item.key && !cache[item.key]);
   for (const part of LRSync.chunk(deletions, LRSync.PUSH_CHUNK)) {
     await LRSync.upsertRows(settings, part.map((item) => ({
       user_id: settings.userId,
@@ -487,8 +589,14 @@ async function syncPush(settings) {
     })));
     for (const item of part) delete hashes[item.key];
     pushed += part.length;
+    syncStep("pushListings", { done: pushed, detail: `נשלחו ${countText(pushed)} מתוך ${countText(total)}` });
   }
   await chrome.storage.local.set({ [LRSync.HASHES_KEY]: hashes, [LRSync.TOMBSTONES_KEY]: [] });
+  syncStep("pushListings", {
+    status: "done",
+    done: pushed,
+    detail: pushed ? `נשלחו ${countText(pushed)} (${countText(keys.length)} מודעות${deletions.length ? `, ${countText(deletions.length)} מחיקות` : ""})` : "לא היה מה לשלוח",
+  });
   return pushed;
 }
 
@@ -505,9 +613,26 @@ async function syncPull(settings) {
     ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
     : "1970-01-01T00:00:00Z";
   let applied = 0;
+  let received = 0;
+  let removed = 0;
+  let pages = 0;
+  syncStep("pullListings", { status: "running", detail: `בודק כמה מודעות השתנו בשרת ${sinceText(since)}…` });
+  const total = await LRSync.countChangesSince(settings, since);
+  syncStep("pullListings", {
+    total,
+    detail: total === 0 ? "אין שינויים חדשים בשרת" : `${total === null ? "" : `${countText(total)} שינויים בשרת `}${sinceText(since)} – מוריד בעמודים של ${LRSync.PULL_PAGE}`,
+  }, true);
+  const pageState = { pageSize: LRSync.PULL_PAGE };
   for (;;) {
-    const rows = await LRSync.fetchChangesSince(settings, since);
+    if (total === 0) break;
+    const rows = await fetchPageAdaptive((from, limit) => LRSync.fetchChangesSince(settings, from, limit), since, pageState, "pullListings");
     if (!rows.length) break;
+    pages++;
+    received += rows.length;
+    syncStep("pullListings", {
+      done: received,
+      detail: `עמוד ${pages}: התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} – משווה למידע שבמחשב…`,
+    }, true);
     const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
     // מודעה שהמשתמש מחק כאן ומחיקתה עוד ממתינה לשליחה – לא מחזירים אותה מהשרת
     // (אלא אם מחשב אחר עדכן אותה אחרי המחיקה)
@@ -534,12 +659,23 @@ async function syncPull(settings) {
       await chrome.storage.local.set({ [LRSync.CACHE_KEY]: merge.cache });
     }
     applied += merge.applied;
+    removed += relevantRows.filter((row) => row.deleted).length;
     const last = rows[rows.length - 1].updated_at;
     if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
     since = last;
     await saveSyncSettings(fullPull ? { listingsFullPullCursor: cursor } : { cursor });
-    if (rows.length < LRSync.PULL_PAGE) break;
+    syncStep("pullListings", {
+      detail: `התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} · ${countText(applied)} עדכנו את המחשב הזה (השאר כבר היו מעודכנים)`,
+    });
+    if (rows.length < pageState.pageSize) break;
   }
+  syncStep("pullListings", {
+    status: "done",
+    done: received,
+    detail: received
+      ? `התקבלו ${countText(received)} שינויים · ${countText(applied)} עודכנו במחשב הזה${removed ? ` (כולל ${countText(removed)} מחיקות)` : ""} · ${countText(received - applied)} כבר היו מעודכנים`
+      : "אין שינויים חדשים בשרת",
+  });
   await saveSyncSettings({
     ...(cursor ? { cursor } : {}),
     ...(fullPull ? { listingsFullPull: LISTINGS_FULL_PULL_VERSION, listingsFullPullCursor: null } : {}),
@@ -599,6 +735,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // כך שסדר הכתיבות בין המחשבים לא משנה. אין מחיקות.
 async function syncDeals(settings) {
   if (!(await LRSync.checkDealsTable(settings))) {
+    syncStep("pullDeals", { status: "skipped", detail: "טבלת העסקאות עוד לא הוקמה בפרויקט" });
+    syncStep("pushDeals", { status: "skipped", detail: "טבלת העסקאות עוד לא הוקמה בפרויקט" });
     await saveSyncSettings({ dealsNeedsSetup: true });
     return { pulled: 0, pushed: 0, needsSetup: true };
   }
@@ -613,9 +751,20 @@ async function syncDeals(settings) {
     ? new Date(Math.max(0, Date.parse(cursor) - LRSync.PULL_OVERLAP_MS)).toISOString()
     : "1970-01-01T00:00:00Z";
   let pulled = 0;
+  let received = 0;
+  syncStep("pullDeals", { status: "running", detail: `בודק כמה עסקאות נוספו בשרת ${sinceText(since)}…` });
+  const total = await LRSync.countChangesSince(settings, since, true);
+  syncStep("pullDeals", {
+    total,
+    detail: total === 0 ? "אין עסקאות חדשות בשרת" : `${total === null ? "" : `${countText(total)} עסקאות `}${sinceText(since)} – מוריד…`,
+  }, true);
+  const pageState = { pageSize: LRSync.PULL_PAGE };
   for (;;) {
-    const rows = await LRSync.fetchDealChangesSince(settings, since);
+    if (total === 0) break;
+    const rows = await fetchPageAdaptive((from, limit) => LRSync.fetchDealChangesSince(settings, from, limit), since, pageState, "pullDeals");
     if (!rows.length) break;
+    received += rows.length;
+    syncStep("pullDeals", { done: received, detail: `התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} – ממזג עם העסקאות שבמחשב…` }, true);
     const items = rows.map(LRSync.rowToDeal).filter(Boolean);
     // נשמר רק בערים של העסקאות שהגיעו
     const merged = await LRDeals.saveItems(chrome.storage.local, items);
@@ -635,21 +784,31 @@ async function syncDeals(settings) {
     since = last;
     // התקדמות נשמרת אחרי כל עמוד (אלפי עסקאות), כדי שסבב שנקטע ימשיך מאותה נקודה
     await saveSyncSettings({ dealsCursor: cursor });
-    if (rows.length < LRSync.PULL_PAGE) break;
+    syncStep("pullDeals", { detail: `התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} · ${countText(pulled)} חדשות או מעודכנות במחשב הזה` });
+    if (rows.length < pageState.pageSize) break;
   }
+  syncStep("pullDeals", {
+    status: "done",
+    done: received,
+    detail: received ? `התקבלו ${countText(received)} · ${countText(pulled)} חדשות או השלימו מידע · ${countText(received - pulled)} כבר היו` : "אין עסקאות חדשות בשרת",
+  });
 
   // שליחה: רק עסקאות שהשתנו מאז הסנכרון האחרון
+  syncStep("pushDeals", { status: "running", detail: "משווה את העסקאות שבמחשב למה שכבר נשלח…" });
   const deals = await LRDeals.loadAll(chrome.storage.local);
   const stored = await chrome.storage.local.get(LRSync.DEAL_HASHES_KEY);
   const hashes = { ...(stored[LRSync.DEAL_HASHES_KEY] || {}) };
   const keys = LRSync.changedKeys(deals, hashes);
+  syncStep("pushDeals", { total: keys.length, detail: keys.length ? `${countText(keys.length)} עסקאות חדשות או מעודכנות לשליחה` : "אין עסקאות חדשות לשלוח" }, true);
   let pushed = 0;
   for (const part of LRSync.chunk(keys, LRSync.PUSH_CHUNK)) {
     await LRSync.upsertDealRows(settings, part.map((key) => LRSync.dealToRow(key, deals[key], settings.userId)));
     for (const key of part) hashes[key] = LRSync.hashRecord(deals[key]);
     pushed += part.length;
     await chrome.storage.local.set({ [LRSync.DEAL_HASHES_KEY]: hashes });
+    syncStep("pushDeals", { done: pushed, detail: `נשלחו ${countText(pushed)} מתוך ${countText(keys.length)}` });
   }
+  syncStep("pushDeals", { status: "done", done: pushed, detail: pushed ? `נשלחו ${countText(pushed)} עסקאות` : "לא היה מה לשלוח" });
   return { pulled, pushed, needsSetup: false };
 }
 
@@ -657,11 +816,21 @@ function runSync(reason) {
   return queueSync(async () => {
     let settings = await syncSettings();
     if (!settings || !settings.enabled) return { ok: true, skipped: true };
+    startSyncProgress(reason);
     try {
+      syncStep("session", { status: "running", detail: "בודק שהכניסה עדיין בתוקף…" });
       settings = await ensureSyncSession(settings);
-      const pulled = reason === "push" ? 0 : await syncPull(settings);
+      syncStep("session", { status: "done", detail: `מחובר כ-${settings.email || "משתמש"}` });
+      let pulled = 0;
+      if (reason === "push") {
+        syncStep("pullListings", { status: "skipped", detail: "סבב שליחה בלבד (אחרי שינוי הגדרות)" });
+      } else {
+        pulled = await syncPull(settings);
+      }
       const pushed = await syncPush(settings);
+      syncStep("settings", { status: "running", detail: "בודק אם ההגדרות השתנו מאז השליחה האחרונה…" });
       const settingsPushed = await pushSettings(settings);
+      syncStep("settings", { status: "done", detail: settingsPushed ? "ההגדרות שהשתנו כאן נשלחו" : "ההגדרות כבר מעודכנות בשרת" });
       const deals = await syncDeals(await syncSettings());
       await saveSyncSettings({
         lastDealsPulled: deals.pulled,
@@ -673,9 +842,16 @@ function runSync(reason) {
         ...(pulled ? { lastPulled: pulled } : {}),
         ...(pushed ? { lastPushed: pushed, lastPushAt: Date.now() } : {}),
       });
+      finishSyncProgress(true);
       return { ok: true, pulled, pushed };
     } catch (error) {
       console.warn("[lightrail-ext] online sync failed", error);
+      // השלב שרץ מסומן כנכשל עם הסיבה; ההתקדמות שכבר נשמרה (עמודים שהורדו/נשלחו) לא הולכת לאיבוד
+      if (syncProgress && syncProgress.current) {
+        const step = syncProgress.steps.find((item) => item.id === syncProgress.current);
+        if (step && step.status === "running") syncStep(step.id, { status: "failed", detail: `${step.detail ? `${step.detail} · ` : ""}נכשל: ${error.message || "שגיאה"}` });
+      }
+      finishSyncProgress(false, error.message || "הסנכרון נכשל.");
       await saveSyncSettings({ lastError: error.message || "הסנכרון נכשל.", lastErrorAt: Date.now() });
       return { ok: false, error: error.message || "הסנכרון נכשל.", needsLogin: Boolean(error.needsLogin) };
     }
@@ -817,7 +993,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handlers = {
     "lightrail:sync-connect": () => connectSync(msg),
     "lightrail:sync-disconnect": () => disconnectSync(),
-    "lightrail:sync-now": () => runSync("manual"),
+    "lightrail:sync-now": () => runSync(msg.reason === "open" ? "open" : "manual"),
     "lightrail:sync-status": () => syncStatus(),
     "lightrail:sync-deleted": () => recordSyncDeletions(Array.isArray(msg.keys) ? msg.keys : []),
     "lightrail:sync-interval": () => setSyncInterval(msg.minutes),

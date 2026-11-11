@@ -5355,8 +5355,103 @@ async function connectOnlineSync() {
   }
 }
 
-// סבב סנכרון שלא מסתיים לא נועל את הכפתור: אחרי 2 דקות הכפתור חוזר והמשתמש יכול לנסות שוב
-const SYNC_UI_TIMEOUT_MS = 120_000;
+// ---------- התקדמות סבב הסנכרון ----------
+// background.js כותב כל שלב (מה הוא עושה, כמה מתוך כמה) ל-lightrailSyncProgress; כאן הוא מוצג בזמן אמת.
+const SYNC_PROGRESS_KEY = "lightrailSyncProgress";
+// סבב ארוך הוא לא תקלה: רק אם אין שום התקדמות 3 דקות – הכפתור משתחרר (הסבב עצמו ממשיך ברקע)
+const SYNC_STALL_MS = 180_000;
+const SYNC_STEP_ICONS = { waiting: "○", running: "⏳", done: "✓", skipped: "–", failed: "✗", notRun: "○" };
+const SYNC_STEP_STATUS = { waiting: "ממתין", running: "רץ עכשיו", done: "הושלם", skipped: "דולג", failed: "נכשל", notRun: "לא הגיע לשלב" };
+const SYNC_DIRECTION = { pullListings: "⬇", pullDeals: "⬇", pushListings: "⬆", pushDeals: "⬆", settings: "⇅", session: "🔑" };
+let syncProgressState = null;
+
+function durationText(ms) {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  return seconds < 60 ? `${seconds} שנ׳` : `${Math.floor(seconds / 60)} דק׳ ${seconds % 60} שנ׳`;
+}
+
+function renderSyncProgress(progress = syncProgressState) {
+  syncProgressState = progress || null;
+  const box = $("syncProgressBox");
+  if (!progress || !Array.isArray(progress.steps)) {
+    box.hidden = true;
+    renderSyncTabBadge();
+    return;
+  }
+  box.hidden = false;
+  box.dataset.state = progress.running ? "running" : progress.ok ? "done" : "failed";
+  const reasons = { alarm: "סבב אוטומטי", manual: "סנכרון עכשיו", push: "שליחת הגדרות", open: "בפתיחת העמוד" };
+  const started = new Date(progress.startedAt).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  $("syncProgressTitle").textContent = progress.running
+    ? `סבב סנכרון רץ (${reasons[progress.reason] || "סבב"}, התחיל ב-${started})`
+    : progress.ok
+      ? `הסבב האחרון הושלם (${started})`
+      : `הסבב האחרון נכשל (${started})`;
+  const end = progress.running ? Date.now() : progress.finishedAt || progress.updatedAt;
+  const quietFor = Date.now() - (progress.updatedAt || progress.startedAt);
+  $("syncProgressTime").textContent = `משך: ${durationText(end - progress.startedAt)}` +
+    (progress.running && quietFor > 20_000 ? ` · ממתין לתשובת השרת ${durationText(quietFor)}` : "");
+  $("syncSteps").replaceChildren(...progress.steps.map((step) => {
+    const item = el("li", "sync-step");
+    item.dataset.status = step.status;
+    const head = el("div", "sync-step-head");
+    head.append(
+      el("span", "sync-step-icon", SYNC_STEP_ICONS[step.status] || "○"),
+      el("span", "sync-step-label", `${SYNC_DIRECTION[step.id] || ""} ${step.label}`.trim()),
+      el("span", "sync-step-status", SYNC_STEP_STATUS[step.status] || "")
+    );
+    item.append(head);
+    if (step.detail) item.append(el("div", "sync-step-detail", step.detail));
+    if (step.status === "running" && step.total > 0) {
+      const bar = el("div", "sync-step-bar");
+      const fill = el("span");
+      fill.style.width = `${Math.min(100, Math.round((step.done / step.total) * 100))}%`;
+      bar.append(fill);
+      item.append(bar);
+    }
+    return item;
+  }));
+  renderSyncTabBadge();
+}
+
+async function loadSyncProgress() {
+  const stored = await chrome.storage.local.get(SYNC_PROGRESS_KEY);
+  renderSyncProgress(stored[SYNC_PROGRESS_KEY] || null);
+}
+
+// "משך" מתעדכן כל שנייה בזמן שסבב רץ
+setInterval(() => {
+  if (syncProgressState && syncProgressState.running) renderSyncProgress();
+}, 1000);
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes[SYNC_PROGRESS_KEY]) renderSyncProgress(changes[SYNC_PROGRESS_KEY].newValue || null);
+});
+
+// מחכה לסוף הסבב לפי ההתקדמות שנרשמת – לא לפי זמן קבוע. משתחרר רק אם אין התקדמות SYNC_STALL_MS.
+function waitForSyncEnd(request) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(watch);
+      resolve(value);
+    };
+    request.then(done);
+    const watch = setInterval(() => {
+      const progress = syncProgressState;
+      const lastActivity = progress && progress.running ? progress.updatedAt : 0;
+      if (lastActivity && Date.now() - lastActivity > SYNC_STALL_MS) {
+        done({
+          ok: false,
+          stalled: true,
+          error: `אין התקדמות כבר ${durationText(Date.now() - lastActivity)} בשלב „${(progress.steps.find((step) => step.id === progress.current) || {}).label || ""}”. הסבב ממשיך ברקע, וכל מה שכבר הורד או נשלח נשמר – הסבב הבא ימשיך מאותה נקודה.`,
+        });
+      }
+    }, 5000);
+  });
+}
 
 async function runOnlineSyncNow(quiet = false) {
   const button = $("syncNow");
@@ -5364,15 +5459,11 @@ async function runOnlineSyncNow(quiet = false) {
   button.disabled = true;
   button.textContent = "מסנכרן…";
   // גם בסנכרון האוטומטי בפתיחת העמוד מראים שהוא רץ – אחרת השגיאה הישנה נשארת והכפתור נראה תקוע
-  setSyncStatus("syncConnectedStatus", quiet ? "מסנכרן ברקע…" : "מסנכרן…");
+  setSyncStatus("syncConnectedStatus", syncProgressState && syncProgressState.running
+    ? "סבב קודם עדיין רץ – הסבב הזה יתחיל מיד אחריו. ההתקדמות מוצגת למטה."
+    : "");
   try {
-    const result = await Promise.race([
-      sendSyncMessage("lightrail:sync-now"),
-      new Promise((resolve) => setTimeout(() => resolve({
-        ok: false,
-        error: "הסנכרון לוקח יותר מדי זמן. אפשר לנסות שוב – אם השרת עדיין לא עונה, הסבב יופסק אוטומטית.",
-      }), SYNC_UI_TIMEOUT_MS)),
-    ]);
+    const result = await waitForSyncEnd(sendSyncMessage("lightrail:sync-now", { reason: quiet ? "open" : "manual" }));
     if (result.skipped) {
       setSyncStatus("syncConnectedStatus", "");
       return;
@@ -5384,7 +5475,9 @@ async function runOnlineSyncNow(quiet = false) {
       "syncConnectedStatus",
       result.ok
         ? quiet ? "" : `הסנכרון הושלם · ${syncSummary(result)}`
-        : `הסנכרון נכשל: ${result.error} אפשר ללחוץ שוב על „סנכרון עכשיו”.`,
+        : result.stalled
+          ? result.error
+          : `הסנכרון נכשל: ${result.error} מה שכבר הורד או נשלח נשמר. אפשר ללחוץ שוב על „סנכרון עכשיו” – הסבב ימשיך מאותה נקודה.`,
       !result.ok
     );
   } finally {
@@ -5494,14 +5587,8 @@ function refreshCloudIndicators() {
     line.hidden = true;
     return;
   }
-  tabState.hidden = false;
-  const waiting = pending + (cloudSync.pendingDeletes || 0);
-  tabState.textContent = cloudSync.lastError ? "!" : waiting ? waiting.toLocaleString("he-IL") : "✓";
-  tabState.title = cloudSync.lastError
-    ? `שגיאת סנכרון: ${cloudSync.lastError}`
-    : waiting
-      ? `${waiting.toLocaleString("he-IL")} שינויים ברשימת הממתינות – יישלחו ${nextSyncText()}`
-      : "כל המודעות שמורות בענן";
+  cloudSync.waiting = pending + (cloudSync.pendingDeletes || 0);
+  renderSyncTabBadge();
   line.hidden = false;
   line.dataset.state = cloudSync.lastError ? "error" : pending ? "pending" : "synced";
   const lastPush = cloudSync.lastPushAt ? ` · שליחה אחרונה: ${cloudTime(cloudSync.lastPushAt)}` : "";
@@ -5515,6 +5602,35 @@ function refreshCloudIndicators() {
       : `ענן: כל המודעות נשמרו במסד הנתונים ✓${lastPush}`;
   // אותו מצב גם במסך הסנכרון
   $("syncQueueText").textContent = line.textContent.replace(/^ענן: /, "");
+}
+
+// התג ליד "סנכרון אונליין": בזמן סבב – מה קורה עכשיו (⬇ הורדה / ⬆ העלאה ואחוז); אחרת – ⬆ כמה מחכים להעלאה
+function renderSyncTabBadge() {
+  const tabState = $("syncTabState");
+  if (!cloudSync.enabled) return;
+  tabState.hidden = false;
+  const progress = syncProgressState;
+  const step = progress && progress.running ? progress.steps.find((item) => item.id === progress.current) : null;
+  delete tabState.dataset.state;
+  if (step) {
+    const pct = step.total > 0 ? ` ${Math.min(100, Math.round((step.done / step.total) * 100))}%` : "";
+    tabState.textContent = `${SYNC_DIRECTION[step.id] || "⇅"}${pct}`;
+    tabState.dataset.state = "running";
+    tabState.title = `סנכרון רץ עכשיו: ${step.label}${step.detail ? ` – ${step.detail}` : ""}`;
+    return;
+  }
+  const waiting = cloudSync.waiting || 0;
+  if (cloudSync.lastError) {
+    tabState.textContent = "!";
+    tabState.dataset.state = "error";
+    tabState.title = `הסנכרון האחרון נכשל: ${cloudSync.lastError}`;
+  } else if (waiting) {
+    tabState.textContent = `⬆ ${waiting.toLocaleString("he-IL")}`;
+    tabState.title = `${waiting.toLocaleString("he-IL")} שינויים מהמחשב הזה מחכים להעלאה לענן – יישלחו ${nextSyncText()}`;
+  } else {
+    tabState.textContent = "✓";
+    tabState.title = "הכול מסונכרן: כל המודעות מהמחשב הזה שמורות בענן";
+  }
 }
 
 let cloudIndicatorTimer = null;
@@ -5534,6 +5650,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 loadCloudSync().then(refreshCloudIndicators).catch(() => {});
+loadSyncProgress().catch(() => {});
 
 // בפתיחת העמוד: אם הסנכרון פעיל – מושכים מיד שינויים ממחשבים אחרים
 renderSyncPanel().then(() => {

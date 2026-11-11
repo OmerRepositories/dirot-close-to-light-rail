@@ -353,7 +353,8 @@ test("an interrupted large deals pull resumes where it stopped instead of starti
   const originalFetch = server.fetch;
   server.fetch = async (url, options = {}) => {
     const parsed = new URL(url);
-    if (parsed.pathname === "/rest/v1/lightrail_deals" && (options.method || "GET") === "GET" && parsed.searchParams.get("updated_at")) {
+    // (בקשת הספירה "כמה השתנו" – limit=1 – לא נחשבת עמוד)
+    if (parsed.pathname === "/rest/v1/lightrail_deals" && (options.method || "GET") === "GET" && parsed.searchParams.get("updated_at") && parsed.searchParams.get("limit") !== "1") {
       dealGets.push(parsed.searchParams.get("updated_at"));
       if (--failNext === 0) throw new TypeError("Failed to fetch");
     }

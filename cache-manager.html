@@ -802,6 +802,13 @@
             <button id="syncDisconnect" type="button">ניתוק</button>
           </div>
           <span id="syncConnectedStatus" role="status" aria-live="polite"></span>
+          <div id="syncProgressBox" class="sync-progress" hidden>
+            <div class="sync-progress-head">
+              <strong id="syncProgressTitle">סבב סנכרון</strong>
+              <span id="syncProgressTime"></span>
+            </div>
+            <ol id="syncSteps" class="sync-steps"></ol>
+          </div>
           <p class="backup-note">מודעות שהשתנו במחשב הזה נאספות לרשימת ממתינות ונשלחות יחד בכל סבב, ובאותו סבב מגיעים גם השינויים ממחשבים אחרים – כך אין עבודת סנכרון בזמן הדפדוף. „סנכרון עכשיו” ופתיחת העמוד הזה מסנכרנים מיד. מחיקה שאתה מבצע (מהטבלה או ממסך המחיקה) נמחקת גם בשאר המחשבים. „ניקוי המידע השמור” בחלון הקופץ מנקה רק את המחשב הזה. גם ההגדרות מסונכרנות (כתובות מוחרגות, ערים לאינדוקס, ספי מחיר ומרחק, מאפיינים נדרשים וכו'): שינוי נשלח כמה שניות אחרי שנשמר, והשינוי האחרון מבין המחשבים מנצח. פרטי ההתחברות לסנכרון לא נשלחים.</p>
         </section>
         <section id="syncSetupCard" class="tool-card" data-tone="slate">

@@ -849,6 +849,27 @@ td.real-deals.above { color: var(--danger); }
 .sync-fields > label { display: grid; gap: 4px; flex: 1 1 220px; }
 .sync-fields span { color: var(--muted); font-size: 13px; }
 #syncLoginStatus[data-error="true"], #syncConnectedStatus[data-error="true"] { color: var(--danger); }
+/* התקדמות סבב הסנכרון – שלב אחרי שלב */
+.sync-progress { margin-top: 12px; border: 1px solid var(--line, #d9e2e8); border-radius: 10px; padding: 10px 12px; background: color-mix(in srgb, currentColor 3%, transparent); }
+.sync-progress[data-state="failed"] { border-color: color-mix(in srgb, var(--danger, #c0392b) 45%, transparent); }
+.sync-progress-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 13px; margin-bottom: 6px; }
+.sync-progress-head span { opacity: .75; }
+.sync-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sync-step { padding: 6px 8px; border-radius: 8px; }
+.sync-step[data-status="running"] { background: color-mix(in srgb, #2b7de9 10%, transparent); }
+.sync-step[data-status="failed"] { background: color-mix(in srgb, var(--danger, #c0392b) 10%, transparent); }
+.sync-step[data-status="waiting"], .sync-step[data-status="notRun"], .sync-step[data-status="skipped"] { opacity: .6; }
+.sync-step-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.sync-step-icon { width: 18px; text-align: center; }
+.sync-step[data-status="done"] .sync-step-icon { color: #1e8e3e; }
+.sync-step[data-status="failed"] .sync-step-icon { color: var(--danger, #c0392b); }
+.sync-step-label { flex: 1; }
+.sync-step-status { font-size: 12px; font-weight: 500; opacity: .75; }
+.sync-step-detail { font-size: 12px; margin: 2px 26px 0 0; opacity: .85; overflow-wrap: anywhere; }
+.sync-step-bar { height: 5px; margin: 5px 26px 0 0; border-radius: 3px; background: color-mix(in srgb, currentColor 12%, transparent); overflow: hidden; }
+.sync-step-bar span { display: block; height: 100%; background: #2b7de9; transition: width .3s; }
+#syncTabState[data-state="running"] { background: #2b7de9; color: #fff; }
+#syncTabState[data-state="error"] { background: var(--danger, #c0392b); color: #fff; }
 #syncBadge[data-state="on"] { color: var(--ok); }
 #syncBadge[data-state="error"] { color: var(--danger); }
 

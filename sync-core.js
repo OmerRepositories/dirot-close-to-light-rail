@@ -329,11 +329,12 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
     }
   }
 
-  async function call(settings, path, { method = "GET", body, token, headers = {} } = {}) {
+  async function call(settings, path, { method = "GET", body, token, headers = {}, timeoutMs, withTotal = false } = {}) {
     let response;
     let text;
     const controller = typeof AbortController === "function" ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), settings.requestTimeoutMs || REQUEST_TIMEOUT_MS) : null;
+    const limitMs = timeoutMs || settings.requestTimeoutMs || REQUEST_TIMEOUT_MS;
+    const timer = controller ? setTimeout(() => controller.abort(), limitMs) : null;
     try {
       response = await fetch(`${settings.url}${path}`, {
         method,
@@ -353,7 +354,7 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
       const reachable = timedOut ? null : await serverReachable(settings.url);
       throw Object.assign(
         new Error(timedOut
-          ? "שרת הסנכרון לא ענה בזמן (30 שניות). ננסה שוב בסבב הבא."
+          ? `שרת הסנכרון לא ענה בזמן (${Math.round(limitMs / 1000)} שניות). ננסה שוב בסבב הבא.`
           : reachable
             // השרת עונה, אבל בלי הרשאת CORS – כך נראית שגיאה של Supabase עצמה (למשל פרויקט מושהה)
             ? "השרת של Supabase עונה אבל מחזיר שגיאה – כנראה שהפרויקט מושהה או לא זמין. היכנסו ללוח הבקרה של Supabase והפעילו אותו (Restore project)."
@@ -372,6 +373,12 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
         (data && (data.error_description || data.msg || data.message || data.error)) ||
         `שגיאה ${response.status}`;
       throw Object.assign(new Error(String(message)), { status: response.status, code: data && data.code });
+    }
+    if (withTotal) {
+      // Prefer: count=exact → Content-Range: 0-0/5400
+      const range = response.headers && typeof response.headers.get === "function" ? response.headers.get("content-range") : "";
+      const match = String(range || "").match(/\/(\d+)$/);
+      return { data, total: match ? Number(match[1]) : null };
     }
     return data;
   }
@@ -446,18 +453,35 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
     });
   }
 
-  async function fetchDealChangesSince(settings, sinceIso) {
+  async function fetchDealChangesSince(settings, sinceIso, limit = PULL_PAGE) {
     const query =
       `select=deal_key,city,street,house,sale_date,price,sqm,rooms,floor,total_floors,build_year,neighborhood,property_type,sources,updated_at` +
-      `&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc&limit=${PULL_PAGE}`;
+      `&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc&limit=${limit}`;
     return (await call(settings, `/rest/v1/${DEALS_TABLE}?${query}`, { token: settings.accessToken })) || [];
   }
 
-  async function fetchChangesSince(settings, sinceIso) {
+  async function fetchChangesSince(settings, sinceIso, limit = PULL_PAGE) {
     const query =
       `select=key,data,deleted,client_updated_at,updated_at` +
-      `&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc&limit=${PULL_PAGE}`;
+      `&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc&limit=${limit}`;
     return (await call(settings, `/rest/v1/${TABLE}?${query}`, { token: settings.accessToken })) || [];
+  }
+
+  // כמה שורות השתנו בשרת מאז – רק כדי להציג "x מתוך y". כישלון → null (הסנכרון ממשיך בלי סך הכל)
+  async function countChangesSince(settings, sinceIso, deals = false) {
+    const table = deals ? DEALS_TABLE : TABLE;
+    const column = deals ? "deal_key" : "key";
+    try {
+      const result = await call(settings, `/rest/v1/${table}?select=${column}&updated_at=gt.${encodeURIComponent(sinceIso)}&limit=1`, {
+        token: settings.accessToken,
+        headers: { Prefer: "count=exact" },
+        timeoutMs: 15_000,
+        withTotal: true,
+      });
+      return result && Number.isFinite(result.total) ? result.total : null;
+    } catch {
+      return null;
+    }
   }
 
   return {
@@ -494,6 +518,7 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
     checkTable,
     upsertRows,
     fetchChangesSince,
+    countChangesSince,
   };
 })();
 
