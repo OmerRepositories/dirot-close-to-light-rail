@@ -23,60 +23,44 @@
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="9" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="15.5" width="7" height="5" rx="1.5"/></svg></span>
         <span class="nav-text"><span class="nav-label">לוח בקרה</span><span class="nav-hint">כל המספרים במבט אחד</span></span>
       </button>
-        <div class="nav-menu">
-          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">ניקוי וסינון<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
-          <div class="nav-menu-list">
-          <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
-            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
-            <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
-          </button>
-          <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
-            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
-            <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
-          </button>
-          </div>
-        </div>
+      <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
+        <span class="nav-text"><span class="nav-label">רענון</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
+      </button>
       <button id="priceChangesTab" class="view-tab" data-tone="amber" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel" tabindex="-1" title="שינויי מחירים">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
-        <span class="nav-text"><span class="nav-label">שינויי מחירים</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
+        <span class="nav-text"><span class="nav-label">שינוי מחיר</span><span class="nav-hint">עליות וירידות</span></span> <span id="priceChangesCount" class="tab-count">0</span>
       </button>
-        <div class="nav-menu">
-          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">חיפושי מידע<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
-          <div class="nav-menu-list">
-          <button id="listingsTab" class="view-tab active" data-tone="teal" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel" title="מודעות ופרויקטים">
-            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M9 9.5v10"/></svg></span>
-            <span class="nav-text"><span class="nav-label">מודעות ופרויקטים</span><span class="nav-hint">הטבלה המלאה</span></span> <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
-          </button>
-          <button id="listingSearchTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel" tabindex="-1" title="חיפוש מודעה">
-            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span>
-            <span class="nav-text"><span class="nav-label">חיפוש מודעה</span><span class="nav-hint">לפי טווחים ומאפיינים</span></span>
-          </button>
-          <button id="dealsTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="dealsPanel" tabindex="-1" title="חיפוש עסקאות">
-            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10l8-6 8 6v10"/><path d="M9.5 20v-5h5v5"/><path d="M16 4.5h3.5V8"/></svg></span>
-            <span class="nav-text"><span class="nav-label">חיפוש עסקאות</span><span class="nav-hint">עסקאות אמת שנמכרו</span></span> <span id="dealsCount" class="tab-count">0</span>
-          </button>
-          </div>
-        </div>
-        <div class="nav-menu">
-          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">ייצוא מידע<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
-          <div class="nav-menu-list">
-          <button id="addressExportTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="addressExportPanel" tabindex="-1" title="ייצוא לפי כתובות">
-            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
-            <span class="nav-text"><span class="nav-label">ייצוא לפי כתובות</span><span class="nav-hint">כל המידע על כתובות ל־CSV</span></span>
-          </button>
-          <button id="transferTab" class="view-tab" data-tone="slate" type="button" role="tab" aria-selected="false" aria-controls="transferPanel" tabindex="-1" title="גיבוי וייצוא">
-            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
-            <span class="nav-text"><span class="nav-label">גיבוי וייצוא</span><span class="nav-hint">Excel והעברה בין מחשבים</span></span>
-          </button>
-          </div>
-        </div>
+        <span class="nav-sep" aria-hidden="true"></span>
+      <button id="listingsTab" class="view-tab active" data-tone="teal" type="button" role="tab" aria-selected="true" aria-controls="listingsPanel" title="מודעות ופרויקטים">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M9 9.5v10"/></svg></span>
+        <span class="nav-text"><span class="nav-label">מודעות</span><span class="nav-hint">הטבלה המלאה</span></span> <span id="listingsCount" class="tab-count" title="מספר המודעות השמורות">0</span>
+      </button>
+      <button id="listingSearchTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="listingSearchPanel" tabindex="-1" title="חיפוש מודעה">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></span>
+        <span class="nav-text"><span class="nav-label">חיפוש מודעה</span><span class="nav-hint">לפי טווחים ומאפיינים</span></span>
+      </button>
+      <button id="dealsTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="dealsPanel" tabindex="-1" title="חיפוש עסקאות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10l8-6 8 6v10"/><path d="M9.5 20v-5h5v5"/><path d="M16 4.5h3.5V8"/></svg></span>
+        <span class="nav-text"><span class="nav-label">עסקאות</span><span class="nav-hint">עסקאות אמת שנמכרו</span></span> <span id="dealsCount" class="tab-count">0</span>
+      </button>
+        <span class="nav-sep" aria-hidden="true"></span>
+      <button id="addressExportTab" class="view-tab" data-tone="blue" type="button" role="tab" aria-selected="false" aria-controls="addressExportPanel" tabindex="-1" title="ייצוא לפי כתובות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
+        <span class="nav-text"><span class="nav-label">ייצוא כתובות</span><span class="nav-hint">כל המידע על כתובות ל־CSV</span></span>
+      </button>
+      <button id="transferTab" class="view-tab" data-tone="slate" type="button" role="tab" aria-selected="false" aria-controls="transferPanel" tabindex="-1" title="גיבוי וייצוא">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4.5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2"/></svg></span>
+        <span class="nav-text"><span class="nav-label">גיבוי</span><span class="nav-hint">Excel והעברה בין מחשבים</span></span>
+      </button>
           <button id="syncTab" class="view-tab" data-tone="teal" type="button" role="tab" aria-selected="false" aria-controls="syncPanel" tabindex="-1" title="סנכרון אונליין">
             <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97"/><path d="M12 12v7M9.5 16.5 12 19l2.5-2.5"/></svg></span>
-            <span class="nav-text"><span class="nav-label">סנכרון אונליין</span><span class="nav-hint">כמה מחשבים, מידע אחד</span></span>
+            <span class="nav-text"><span class="nav-label">סנכרון</span><span class="nav-hint">כמה מחשבים, מידע אחד</span></span>
             <span id="syncTabState" class="tab-count" hidden></span>
           </button>
+        <span class="nav-sep" aria-hidden="true"></span>
         <div class="nav-menu">
-          <button class="nav-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">הגדרות<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          <button class="nav-menu-trigger" type="button" title="הגדרות"><span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span><span class="nav-text"><span class="nav-label">הגדרות</span></span></button>
           <div class="nav-menu-list">
           <button id="settings-calculationsTab" class="view-tab" data-tone="blue" data-settings="calculations" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="חישובים">
             <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8.5 7.5h7M8.5 12h1M12 12h1M8.5 16h1M12 16h1"/></svg></span>
@@ -98,6 +82,10 @@
             <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/></svg></span>
             <span class="nav-text"><span class="nav-label">אתרים פעילים</span><span class="nav-hint">יד2, מדלן, פייסבוק</span></span>
           </button>
+          <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
+            <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
+            <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
+          </button>
           </div>
         </div>
       </nav>
@@ -114,6 +102,7 @@
       <button id="refreshButton" class="icon-button" type="button" aria-label="רענון תצוגה" title="רענון תצוגה – טוען מחדש את המידע השמור"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></button>
     </div>
   </header>
+  <nav id="subNav" class="sub-nav" aria-label="עמודים בקטגוריה" hidden></nav>
 
   <div class="app">
 

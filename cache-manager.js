@@ -2395,30 +2395,44 @@ function setActiveTab(tab) {
   syncNavMenus();
 }
 
-// תפריט עליון: קטגוריה שהעמוד הפעיל בתוכה מודגשת; תפריט נפתח בלחיצה ונסגר בבחירה / בלחיצה בחוץ / Escape
-function syncNavMenus(openMenu = null) {
+// תפריט עליון: לחיצה על קטגוריה עוברת ישר לעמוד האחרון שפתחת בה (או לראשון), והעמודים של
+// הקטגוריה הפעילה מוצגים בשורה קבועה מתחת לכותרת – כך עוברים ביניהם בלי לפתוח שוב תפריט.
+function syncNavMenus() {
+  let activeMenu = null;
   for (const menu of document.querySelectorAll(".nav-menu")) {
-    const open = menu === openMenu;
-    menu.classList.toggle("open", open);
-    menu.classList.toggle("has-active", Boolean(menu.querySelector(".view-tab.active")));
-    const trigger = menu.querySelector(".nav-menu-trigger");
-    if (trigger) trigger.setAttribute("aria-expanded", String(open));
+    const activeTab = menu.querySelector(".view-tab.active");
+    menu.classList.toggle("has-active", Boolean(activeTab));
+    if (activeTab) {
+      menu.dataset.last = activeTab.id;
+      activeMenu = menu;
+    }
+  }
+  const subNav = $("subNav");
+  if (!subNav) return;
+  subNav.replaceChildren();
+  subNav.hidden = !activeMenu;
+  if (!activeMenu) return;
+  for (const tab of activeMenu.querySelectorAll(".view-tab")) {
+    const label = tab.querySelector(".nav-label");
+    const button = el("button", "sub-tab", label ? label.textContent : tab.title);
+    button.type = "button";
+    button.title = tab.title || "";
+    button.dataset.tone = tab.dataset.tone || "";
+    const active = tab.classList.contains("active");
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    const count = tab.querySelector(".tab-count");
+    if (count && !count.hidden && count.textContent.trim()) button.append(el("span", "tab-count", count.textContent));
+    button.addEventListener("click", () => tab.click());
+    subNav.append(button);
   }
 }
 document.querySelectorAll(".nav-menu-trigger").forEach((trigger) => {
-  trigger.addEventListener("click", (event) => {
-    event.stopPropagation();
+  trigger.addEventListener("click", () => {
     const menu = trigger.closest(".nav-menu");
-    syncNavMenus(menu.classList.contains("open") ? null : menu);
+    const target = (menu.dataset.last && $(menu.dataset.last)) || menu.querySelector(".view-tab");
+    if (target) target.click();
   });
-});
-document.addEventListener("click", (event) => {
-  if (!event.target.closest || !event.target.closest(".nav-menu-trigger")) {
-    if (document.querySelector(".nav-menu.open")) syncNavMenus();
-  }
-});
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && document.querySelector(".nav-menu.open")) syncNavMenus();
 });
 
 function handleTabKeydown(event) {
@@ -3126,6 +3140,11 @@ function applyFontScale(value) {
   fontScale = Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, Math.round(value * 10) / 10));
   document.body.style.zoom = String(fontScale);
   $("fontScaleValue").textContent = `${Math.round(fontScale * 100)}%`;
+  // האחוז לא מוצג בכותרת (חוסך מקום) – מופיע במעבר עכבר
+  const scaleText = `גודל הטקסט: ${Math.round(fontScale * 100)}%`;
+  $("fontScaleValue").closest(".font-controls").title = scaleText;
+  $("decreaseFont").title = `הקטנת הטקסט (${scaleText})`;
+  $("increaseFont").title = `הגדלת הטקסט (${scaleText})`;
   $("decreaseFont").disabled = fontScale <= MIN_FONT_SCALE;
   $("increaseFont").disabled = fontScale >= MAX_FONT_SCALE;
 }

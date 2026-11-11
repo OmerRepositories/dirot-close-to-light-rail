@@ -1096,3 +1096,39 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 .brand > div { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .side-filters .toolbar input, .side-filters .toolbar select, .side-filters .toolbar button { width: 100%; }
 #listingsPanel .side-filters .toolbar { align-items: stretch; padding: 14px; border: 1px solid var(--line); background: var(--surface-alt); }
+
+/* ---- כותרת בסגנון אפליקציה (1.44.0): כל עמוד פריט משלו, אייקון מעל השם, בלי תפריטים נפתחים ---- */
+.page-header { padding-block: 6px; }
+.top-nav.view-tabs { gap: 2px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.top-nav > .view-tab, .top-nav .nav-menu-trigger {
+  position: relative;
+  min-width: 64px;
+  min-height: 58px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  line-height: 1.15;
+}
+.top-nav > .view-tab .nav-tile, .top-nav .nav-menu-trigger .nav-tile { width: 30px; height: 30px; flex: 0 0 30px; border-radius: 9px; color: var(--tone, var(--muted)); background: var(--tone-soft, var(--surface-alt)); }
+.top-nav .nav-menu-trigger .nav-tile { --tone: var(--muted); }
+.top-nav > .view-tab .nav-icon, .top-nav .nav-menu-trigger .nav-icon { width: 18px; height: 18px; }
+.top-nav .nav-text { display: block; flex: none; text-align: center; }
+.top-nav > .view-tab.active .nav-tile, .top-nav .nav-menu.has-active .nav-tile { color: #fff; background: var(--tone, var(--action)); }
+:root[data-theme="dark"] .top-nav > .view-tab.active .nav-tile, :root[data-theme="dark"] .top-nav .nav-menu.has-active .nav-tile { color: #111614; }
+.top-nav .nav-menu.has-active .nav-tile { background: var(--action); }
+/* מונה (מודעות, עסקאות, סנכרון) כתג קטן בפינת האייקון */
+.top-nav > .view-tab .tab-count { position: absolute; top: 2px; inset-inline-start: calc(50% + 6px); min-width: 18px; height: 17px; margin: 0; padding: 0 5px; font-size: 11px; }
+.nav-sep { width: 1px; height: 38px; flex: 0 0 1px; margin-inline: 6px; background: var(--line); }
+.nav-menu-list, .nav-menu.open > .nav-menu-list { display: none; }
+.nav-caret { display: none; }
+
+/* שורת עמודי המשנה (הגדרות) – תמיד פתוחה כשאתה בהגדרות */
+.sub-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--surface-alt); }
+.sub-nav[hidden] { display: none; }
+.sub-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 14px; border-radius: 999px; font-size: 13.5px; font-weight: 600; }
+.sub-tab.active { border-color: var(--action); color: var(--action); background: var(--action-soft); }
+.sub-tab .tab-count { margin: 0; }
+/* האחוז של גודל הטקסט – רק במעבר עכבר */
+#fontScaleValue { display: none; }
