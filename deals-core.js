@@ -556,21 +556,35 @@ var LRDeals = (() => {
 
   // ערכים חסרים תמיד בסוף, בלי קשר לכיוון המיון. הערך של כל עסקה מחושב פעם אחת (לא בכל השוואה),
   // ותאריכים (YYYY-MM-DD) מושווים כמחרוזות רגילות – מהיר בהרבה מהשוואה לפי שפה
+  // מיון לפי כמה עמודות (כמו ORDER BY a, b, c): key יכול להיות מערך [{ key, direction }, ...] –
+  // השנייה מכריעה רק כשהראשונה שווה, וכן הלאה. ערכים חסרים בסוף בכל רמה.
   function sortDeals(list, key = "date", direction = -1) {
-    const value = SORT_VALUES[key] || SORT_VALUES.date;
-    const plain = key === "date" || !SORT_VALUES[key];
-    const rows = list.map((entry) => {
-      const sortValue = value(entry[1]);
-      return { entry, sortValue, missing: sortValue === null || sortValue === undefined || sortValue === "" || Number.isNaN(sortValue) };
-    });
+    const sorts = (Array.isArray(key) ? key : [{ key, direction }])
+      .filter((sort) => sort && sort.key)
+      .map((sort) => ({
+        value: SORT_VALUES[sort.key] || SORT_VALUES.date,
+        plain: sort.key === "date" || !SORT_VALUES[sort.key],
+        direction: sort.direction < 0 ? -1 : 1,
+      }));
+    if (!sorts.length) sorts.push({ value: SORT_VALUES.date, plain: true, direction: -1 });
+    const isMissing = (v) => v === null || v === undefined || v === "" || Number.isNaN(v);
+    const rows = list.map((entry) => ({ entry, values: sorts.map((sort) => sort.value(entry[1])) }));
     rows.sort((a, b) => {
-      if (a.missing || b.missing) return a.missing === b.missing ? 0 : a.missing ? 1 : -1;
-      const left = a.sortValue;
-      const right = b.sortValue;
-      const comparison = typeof left === "string"
-        ? (plain ? (left < right ? -1 : left > right ? 1 : 0) : hebrewCollator.compare(left, right))
-        : left - right;
-      return comparison * direction;
+      for (let i = 0; i < sorts.length; i++) {
+        const left = a.values[i];
+        const right = b.values[i];
+        const leftMissing = isMissing(left);
+        const rightMissing = isMissing(right);
+        if (leftMissing || rightMissing) {
+          if (leftMissing === rightMissing) continue;
+          return leftMissing ? 1 : -1;
+        }
+        const comparison = typeof left === "string"
+          ? (sorts[i].plain ? (left < right ? -1 : left > right ? 1 : 0) : hebrewCollator.compare(left, right))
+          : left - right;
+        if (comparison) return comparison * sorts[i].direction;
+      }
+      return 0;
     });
     return rows.map((row) => row.entry);
   }

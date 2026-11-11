@@ -3757,7 +3757,26 @@ function realDealsTitle(result) {
 
 // ---------- מסך "חיפוש עסקאות" ----------
 const DEALS_PAGE_SIZE = 200;
-let dealsSort = { key: "date", direction: -1 };
+// מיון לפי עד 3 עמודות, לפי סדר הלחיצה (כמו ORDER BY). ריק = ברירת המחדל: תאריך, החדש קודם.
+// לחיצה על עמודה: מוסיפה אותה → הופכת כיוון → מסירה אותה.
+const DEALS_SORT_MAX = 3;
+const DEALS_SORT_DEFAULT = [{ key: "date", direction: -1 }];
+let dealsSort = [];
+const dealsSortOrder = () => (dealsSort.length ? dealsSort : DEALS_SORT_DEFAULT);
+function toggleDealsSort(key) {
+  const index = dealsSort.findIndex((sort) => sort.key === key);
+  const initial = key === "address" ? 1 : -1;
+  // במיון ברירת המחדל (תאריך) – לחיצה על תאריך הופכת אותו, כמו קודם
+  if (!dealsSort.length && key === "date") {
+    dealsSort = [{ key, direction: 1 }];
+  } else if (index < 0) {
+    dealsSort = [...dealsSort, { key, direction: initial }].slice(-DEALS_SORT_MAX);
+  } else if (dealsSort[index].direction === initial) {
+    dealsSort = dealsSort.map((sort, i) => (i === index ? { key, direction: -initial } : sort));
+  } else {
+    dealsSort = dealsSort.filter((_, i) => i !== index);
+  }
+}
 let dealsLimit = DEALS_PAGE_SIZE;
 let listingPlacesMemo = { cache: null, size: -1, places: new Map() };
 
@@ -3858,9 +3877,9 @@ function renderDeals() {
   fillDealsCities();
   fillDealsHoods();
   // סינון, מיון וסיכום נשמרים לפי המסננים: חזרה ללשונית או "הצג עוד" לא מחשבים הכל מחדש
-  const listKey = `${dealsVersion}|${JSON.stringify(readDealsFilters())}|${dealsSort.key}|${dealsSort.direction}`;
+  const listKey = `${dealsVersion}|${JSON.stringify(readDealsFilters())}|${JSON.stringify(dealsSortOrder())}`;
   if (dealsListMemo.key !== listKey) {
-    const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSort.key, dealsSort.direction);
+    const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSortOrder());
     dealsListMemo = { key: listKey, list, summary: LRDeals.summarizeDeals(list) };
   }
   const { list, summary } = dealsListMemo;
@@ -3879,10 +3898,20 @@ function renderDeals() {
         : ""
     );
   }
+  const order = dealsSortOrder();
   for (const button of document.querySelectorAll("[data-deals-sort]")) {
-    const active = button.dataset.dealsSort === dealsSort.key;
+    const index = order.findIndex((sort) => sort.key === button.dataset.dealsSort);
+    const active = index >= 0;
     button.dataset.active = String(active);
-    button.textContent = button.textContent.replace(/ [▲▼]$/, "") + (active ? (dealsSort.direction < 0 ? " ▼" : " ▲") : "");
+    const arrow = active ? (order[index].direction < 0 ? "▼" : "▲") : "";
+    // כשממיינים לפי כמה עמודות – גם המספר (1, 2, 3) של כל עמודה בסדר המיון
+    const rank = active && order.length > 1 ? `${index + 1}` : "";
+    button.textContent = button.textContent.replace(/ \d?[▲▼]$/, "") + (active ? ` ${rank}${arrow}` : "");
+    const initial = button.dataset.dealsSort === "address" ? 1 : -1;
+    const next = !dealsSort.length || order[index]?.direction === initial ? "הפיכת כיוון" : "הסרה מהמיון";
+    button.title = active
+      ? `${order.length > 1 ? `מיון ${index + 1} מתוך ${order.length} · ` : ""}לחיצה: ${next}`
+      : `לחיצה: הוספה למיון (עד ${DEALS_SORT_MAX} עמודות, לפי סדר הלחיצה)`;
   }
   const places = listingPlaces();
   const rowsHost = $("dealsRows");
@@ -4715,7 +4744,7 @@ function exportSearchResultsCsv() {
 }
 
 function exportDealsResultsCsv() {
-  const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSort.key, dealsSort.direction);
+  const list = LRDeals.sortDeals(LRDeals.filterDeals(dealsStore, readDealsFilters()), dealsSortOrder());
   if (!list.length) {
     alert("אין עסקאות לייצוא לפי המסננים הנוכחיים.");
     return;
@@ -5084,10 +5113,7 @@ document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) 
 });
 document.querySelectorAll("[data-deals-sort]").forEach((button) => {
   button.addEventListener("click", () => {
-    const key = button.dataset.dealsSort;
-    dealsSort = dealsSort.key === key
-      ? { key, direction: -dealsSort.direction }
-      : { key, direction: key === "address" ? 1 : -1 };
+    toggleDealsSort(button.dataset.dealsSort);
     renderDeals();
   });
 });
@@ -5097,6 +5123,7 @@ $("clearDealsSearch").addEventListener("click", () => {
   $("dealsHood").value = "";
   $("dealsSource").value = "";
   document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => { input.value = ""; });
+  dealsSort = []; // גם המיונים חוזרים לברירת המחדל
   scheduleDealsRender();
 });
 $("dealsMore").lastChild.addEventListener("click", () => {

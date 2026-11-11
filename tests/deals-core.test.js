@@ -257,6 +257,17 @@ test("deal search filters by text, city, source and ranges, sorts with missing v
   assert.equal(Deals.filterDeals(store, { ppsm: { max: 25_000 } }).length, 1, "a deal without area has no price per m2");
   const byPpsm = Deals.sortDeals(Deals.filterDeals(store), "ppsm", -1).map(([, deal]) => deal.house);
   assert.deepEqual(byPpsm, ["2", "1", "3"]);
+  // ORDER BY sqm DESC, price ASC: שתי עסקאות של 100 מ"ר – הזולה קודם; בלי שטח – בסוף
+  const multi = Deals.sortDeals(Deals.filterDeals(store), [
+    { key: "sqm", direction: -1 },
+    { key: "price", direction: 1 },
+  ]).map(([, deal]) => deal.house);
+  assert.deepEqual(multi, ["1", "2", "3"]);
+  const multiDesc = Deals.sortDeals(Deals.filterDeals(store), [
+    { key: "sqm", direction: -1 },
+    { key: "price", direction: -1 },
+  ]).map(([, deal]) => deal.house);
+  assert.deepEqual(multiDesc, ["2", "1", "3"]);
   const summary = Deals.summarizeDeals(Deals.filterDeals(store));
   assert.equal(summary.count, 3);
   assert.equal(summary.medianPpsm, 25_000);
