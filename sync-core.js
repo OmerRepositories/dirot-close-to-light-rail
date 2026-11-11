@@ -484,7 +484,46 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
     }
   }
 
+  // רשומות שלשוניות יד2/מדלן שולחות (רק מה שהשתנה) – מתמזגות למטמון השמור בכתיבה אחת.
+  // puts: [{key, record, existed}] – existed = הרשומה הייתה במטמון כשהלשונית קראה אותו.
+  //   רשומה שהייתה ונמחקה מאז (מחיקה במנהל המידע) – לא מוחזרת. רשומה שמורה חדשה יותר – נשארת.
+  // prunes: [[key, updatedAt]] – רשומות שפג תוקפן; נמחקות רק אם לא עודכנו מאז.
+  function applyCachePatch(cache, puts = [], prunes = []) {
+    const source = cache && typeof cache === "object" && !Array.isArray(cache) ? cache : {};
+    const next = { ...source };
+    const deleted = [];
+    const newer = {};
+    let changed = false;
+    for (const put of puts) {
+      if (!put || typeof put.key !== "string" || !put.record || typeof put.record !== "object") continue;
+      const stored = next[put.key];
+      if (!stored) {
+        if (put.existed) {
+          deleted.push(put.key);
+          continue;
+        }
+      } else if ((Number(stored.updatedAt) || 0) > (Number(put.record.updatedAt) || 0)) {
+        newer[put.key] = stored;
+        continue;
+      }
+      next[put.key] = put.record;
+      changed = true;
+    }
+    for (const prune of prunes) {
+      if (!Array.isArray(prune)) continue;
+      const [key, at] = prune;
+      const stored = next[key];
+      if (!(key in next)) continue;
+      const storedAt = stored && typeof stored === "object" ? stored.updatedAt : undefined;
+      if (storedAt !== at && !(storedAt == null && at == null)) continue;
+      delete next[key];
+      changed = true;
+    }
+    return { cache: changed ? next : source, changed, deleted, newer };
+  }
+
   return {
+    applyCachePatch,
     SETTINGS_KEY,
     HASHES_KEY,
     TOMBSTONES_KEY,

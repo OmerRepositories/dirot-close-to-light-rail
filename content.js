@@ -65,6 +65,27 @@
   let cacheWriteRetryTimer = null;
   let cacheWriteFailureCount = 0;
   let cacheWriteErrorLogged = false;
+  // נשלחות לרקע רק הרשומות שהשתנו (לא כל המטמון). knownStoredKeys = מה שהיה שמור בקריאה האחרונה
+  const dirtyCacheKeys = new Set();
+  const inflightCacheKeys = new Set();
+  const cachePruneQueue = new Map();
+  let knownStoredKeys = new Set();
+  let lastCacheReadAt = 0;
+  const CACHE_RELOAD_MS = 60 * 1000;
+  function putCacheRecord(key, record) {
+    listingCache[key] = record;
+    dirtyCacheKeys.add(key);
+  }
+  // מטמון שנקרא מהאחסון; רשומות שהעמוד שינה ועוד לא נשמרו נשארות בגרסה של העמוד
+  function adoptStoredCache(storedCache) {
+    const next = trimListingCache(storedCache, Date.now(), Infinity);
+    for (const key of [...dirtyCacheKeys, ...inflightCacheKeys]) {
+      if (listingCache[key]) next[key] = listingCache[key];
+    }
+    knownStoredKeys = new Set(Object.keys(storedCache));
+    listingCache = next;
+    lastCacheReadAt = Date.now();
+  }
   const cacheWriteSuppressedIds = new Set();
 
   // קישורים שמזהים מודעה בודדת
@@ -1253,34 +1274,33 @@
         return;
       }
       pendingCacheSave = false;
+      const puts = [];
+      for (const key of dirtyCacheKeys) {
+        if (listingCache[key]) puts.push({ key, record: listingCache[key], existed: knownStoredKeys.has(key) });
+      }
+      dirtyCacheKeys.clear();
+      const prunes = [...cachePruneQueue];
+      cachePruneQueue.clear();
+      if (!puts.length && !prunes.length) return;
       cacheWriteInProgress = true;
-      const maxBytes = LISTING_CACHE_MAX_BYTES;
-      writeListingCache(
-        trimListingCache(listingCache, Date.now(), maxBytes),
-        0,
-        maxBytes
-      );
+      writeListingCache(puts, prunes);
     }, 500);
   }
 
-  function writeListingCache(snapshot, attempt, maxBytes) {
+  // הרקע ממזג את הרשומות למטמון השמור בכתיבה אחת (גם מכמה לשוניות יחד)
+  function writeListingCache(puts, prunes) {
+    for (const put of puts) inflightCacheKeys.add(put.key);
     const handleWriteError = (error) => {
       const errorMessage = error && error.message ? error.message : String(error || "");
-      const quotaError = /quota|exceed|bytes/i.test(errorMessage);
-      if (quotaError && attempt < 16 && Object.keys(snapshot).length > 0) {
-        const reducedBytes = Math.max(2, Math.floor(maxBytes / 2));
-        const reduced = trimListingCache(snapshot, Date.now(), reducedBytes);
-        if (Object.keys(reduced).length > 0) {
-          writeListingCache(reduced, attempt + 1, reducedBytes);
-          return;
-        }
+      for (const put of puts) {
+        inflightCacheKeys.delete(put.key);
+        dirtyCacheKeys.add(put.key);
       }
+      for (const [key, at] of prunes) if (!cachePruneQueue.has(key)) cachePruneQueue.set(key, at);
       if (!cacheWriteErrorLogged) {
         console.error("[lightrail-ext] failed to save listing cache", {
           message: errorMessage || "Unknown storage error",
-          attempt: attempt + 1,
-          recordCount: Object.keys(snapshot).length,
-          byteLimit: maxBytes,
+          recordCount: puts.length,
         });
         cacheWriteErrorLogged = true;
       }
@@ -1297,18 +1317,33 @@
     };
 
     try {
-      chrome.storage.local.set({ [LISTING_CACHE_KEY]: snapshot }, () => {
+      chrome.runtime.sendMessage({ type: "lightrail:cache-patch", puts, prunes }, (response) => {
         const error = chrome.runtime.lastError;
-        if (error) {
-          handleWriteError(error);
+        if (error || !response || !response.ok) {
+          handleWriteError(error || new Error((response && response.error) || "no response"));
         } else {
-          listingCache = snapshot;
+          for (const put of puts) {
+            inflightCacheKeys.delete(put.key);
+            knownStoredKeys.add(put.key);
+          }
+          for (const [key] of prunes) knownStoredKeys.delete(key);
+          // נמחקה בינתיים במנהל המידע – לא מחזירים אותה, וגם לא שומרים אותה שוב מהעמוד הזה
+          for (const key of response.deleted || []) {
+            knownStoredKeys.delete(key);
+            dirtyCacheKeys.delete(key);
+            delete listingCache[key];
+            cacheWriteSuppressedIds.add(key);
+          }
+          // גרסה חדשה יותר נשמרה ממקום אחר (סנכרון / לשונית אחרת) – מאמצים אותה
+          for (const [key, record] of Object.entries(response.newer || {})) {
+            if (!dirtyCacheKeys.has(key)) listingCache[key] = record;
+          }
           cacheWriteInProgress = false;
           cacheWriteFailureCount = 0;
           cacheWriteErrorLogged = false;
           clearTimeout(cacheWriteRetryTimer);
           cacheWriteRetryTimer = null;
-          if (pendingCacheSave) {
+          if (pendingCacheSave || dirtyCacheKeys.size || cachePruneQueue.size) {
             pendingCacheSave = false;
             saveListingCache();
           }
@@ -1403,17 +1438,17 @@
       statsUnchanged
     ) {
       if (refreshTimestamp || Date.now() - existing.updatedAt >= 24 * 60 * 60 * 1000) {
-        listingCache[key] = {
+        putCacheRecord(key, {
           ...existing,
           ...(savedCoordinates ? { coordinates: savedCoordinates } : {}),
           ...(listingUrl ? { url: listingUrl } : {}),
           updatedAt: Date.now(),
-        };
+        });
         saveListingCache();
       }
       return;
     }
-    listingCache[key] = {
+    putCacheRecord(key, {
       ...existing,
       amenities: savedAmenities,
       ...(savedCoordinates ? { coordinates: savedCoordinates } : {}),
@@ -1423,7 +1458,7 @@
       ...(listingUrl ? { url: listingUrl } : existing && existing.url ? { url: existing.url } : {}),
       ...stats,
       updatedAt: Date.now(),
-    };
+    });
     saveListingCache();
   }
 
@@ -1469,7 +1504,7 @@
     }, existing);
     if (recordUnchanged(record, existing)) return;
     record.updatedAt = Date.now();
-    listingCache[key] = record;
+    putCacheRecord(key, record);
     saveListingCache();
   }
 
@@ -1874,7 +1909,7 @@
     }, previous);
     if (recordUnchanged(record, previous)) return;
     record.updatedAt = Date.now();
-    listingCache[key] = record;
+    putCacheRecord(key, record);
     saveListingCache();
   }
 
@@ -2547,7 +2582,7 @@
     if (!previous || previous.listingStatus === "removed") return true;
     const now = Date.now();
     // updatedAt חדש – אחרת הסנכרון מחזיר את הגרסה הקודמת מהענן
-    listingCache[key] = { ...previous, listingStatus: "removed", listingStatusCheckedAt: now, updatedAt: now };
+    putCacheRecord(key, { ...previous, listingStatus: "removed", listingStatusCheckedAt: now, updatedAt: now });
     saveListingCache();
     return true;
   }
@@ -2591,12 +2626,16 @@
         scheduleRefresh();
       } else {
         const storedCache = (r && r[LISTING_CACHE_KEY]) || {};
-        listingCache = trimListingCache({ ...storedCache, ...listingCache });
-        listingCacheLoaded = true;
-        if (Object.keys(listingCache).length !== Object.keys(storedCache).length) {
-          saveListingCache();
+        adoptStoredCache(storedCache);
+        // רשומות שפג תוקפן נמחקות דרך הרקע (רק הן – בלי לכתוב מחדש את כל המטמון)
+        for (const key of Object.keys(storedCache)) {
+          if (!(key in listingCache)) {
+            const stale = storedCache[key];
+            cachePruneQueue.set(key, stale && typeof stale === "object" ? stale.updatedAt : undefined);
+          }
         }
-        if (pendingCacheSave) saveListingCache();
+        listingCacheLoaded = true;
+        if (pendingCacheSave || dirtyCacheKeys.size || cachePruneQueue.size) saveListingCache();
         scheduleRefresh();
       }
     });
@@ -2605,23 +2644,21 @@
       updateSiteState();
       syncCalculationState({ ppsmChanged: true, railChanged: true });
     });
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === "local" && changes[LISTING_CACHE_KEY]) {
-        if (!changes[LISTING_CACHE_KEY].newValue) {
-          for (const entry of entries.values()) {
-            if (entry.listingId) cacheWriteSuppressedIds.add(cacheKeyForListing(entry.listingId));
-          }
-          if (main && !main.entry.listingId) {
-            const id = (IS_YAD2 ? LRYad2 : LRMadlan).listingId(document);
-            if (id) cacheWriteSuppressedIds.add(cacheKeyForListing(id));
-          }
-        }
-        // הכותב כבר אכף את מגבלת הגודל, אין צורך למדוד שוב בכל כרטיסייה
-        listingCache = trimListingCache(changes[LISTING_CACHE_KEY].newValue, Date.now(), Infinity);
-        scheduleRefresh();
-        return;
-      }
-      if (area !== "sync") return;
+    // מטמון המודעות לא מגיע כאן בכל שינוי (זה היה עותק של כמה MB לכל לשונית בכל כתיבה):
+    // כשחוזרים ללשונית אחרי דקה ויותר – קוראים אותו מחדש פעם אחת.
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden || !listingCacheLoaded || Date.now() - lastCacheReadAt < CACHE_RELOAD_MS) return;
+      lastCacheReadAt = Date.now();
+      try {
+        chrome.storage.local.get(LISTING_CACHE_KEY, (r) => {
+          if (chrome.runtime.lastError) return;
+          adoptStoredCache((r && r[LISTING_CACHE_KEY]) || {});
+          scheduleRefresh();
+        });
+      } catch {}
+    });
+    // רק אזור sync (הגדרות) – מאזין כללי היה מקבל גם כל כתיבה גדולה לאחסון המקומי
+    chrome.storage.sync.onChanged.addListener((changes) => {
       const next = {};
       for (const [k, v] of Object.entries(changes)) next[k] = v.newValue;
       applySettings(next);

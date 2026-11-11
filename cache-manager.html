@@ -40,6 +40,15 @@
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="9" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="15.5" width="7" height="5" rx="1.5"/></svg></span>
         <span class="nav-text"><span class="nav-label">לוח בקרה</span><span class="nav-hint">כל המספרים במבט אחד</span></span>
       </button>
+      <p class="nav-group">ניקוי וסינון</p>
+      <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
+        <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
+      </button>
+      <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
+        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
+        <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
+      </button>
       <p class="nav-group">סטטיסטיקות</p>
       <button id="priceChangesTab" class="view-tab" data-tone="amber" type="button" role="tab" aria-selected="false" aria-controls="priceChangesPanel" tabindex="-1" title="שינויי מחירים">
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5 9 12l3.5 3.5 8-8"/><path d="M15 7.5h5.5V13"/></svg></span>
@@ -71,15 +80,6 @@
         <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97"/><path d="M12 12v7M9.5 16.5 12 19l2.5-2.5"/></svg></span>
         <span class="nav-text"><span class="nav-label">סנכרון אונליין</span><span class="nav-hint">כמה מחשבים, מידע אחד</span></span>
         <span id="syncTabState" class="tab-count" hidden></span>
-      </button>
-      <p class="nav-group">ניקוי וסינון</p>
-      <button id="refreshTab" class="view-tab" data-tone="green" type="button" role="tab" aria-selected="false" aria-controls="refreshPanel" tabindex="-1" title="רענון מודעות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg></span>
-        <span class="nav-text"><span class="nav-label">רענון מודעות</span><span class="nav-hint">מחיר וסטטוס עדכניים</span></span>
-      </button>
-      <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
-        <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
-        <span class="nav-text"><span class="nav-label">מחיקת מודעות</span><span class="nav-hint">לפי מסננים, עם תצוגה מקדימה</span></span>
       </button>
       <p class="nav-group">הגדרות</p>
       <button id="settings-calculationsTab" class="view-tab" data-tone="blue" data-settings="calculations" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="חישובים">

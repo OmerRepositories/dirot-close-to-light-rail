@@ -42,8 +42,8 @@
     chrome.storage.sync.get({ theme: choice }, (settings) => {
       if (!chrome.runtime.lastError && settings) set(settings.theme, false);
     });
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === "sync" && changes.theme) set(changes.theme.newValue, false);
+    chrome.storage.sync.onChanged.addListener((changes) => {
+      if (changes.theme) set(changes.theme.newValue, false);
     });
   }
 

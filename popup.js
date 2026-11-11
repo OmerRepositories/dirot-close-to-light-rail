@@ -476,8 +476,8 @@ $("clearListingCache").addEventListener("click", () => {
   });
 });
 
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes[LISTING_CACHE_KEY]) updateCacheStatus();
+chrome.storage.local.onChanged.addListener((changes) => {
+  if (changes[LISTING_CACHE_KEY]) updateCacheStatus();
 });
 
 updateCacheStatus();

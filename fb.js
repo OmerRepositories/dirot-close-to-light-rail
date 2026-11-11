@@ -497,8 +497,8 @@
       settingsLoaded = true;
       syncPageState();
     });
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== "sync") return;
+    // רק אזור sync – מאזין כללי היה מקבל גם עותק מלא של כל כתיבה גדולה לאחסון המקומי
+    chrome.storage.sync.onChanged.addListener((changes) => {
       const next = {};
       for (const [k, v] of Object.entries(changes)) next[k] = v.newValue;
       applySettings(next);

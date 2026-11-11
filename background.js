@@ -342,7 +342,62 @@ async function lookup(queries, bias, coordinates) {
   return { ok: false, reason: "not-found" };
 }
 
+// ---------- כתיבות למטמון המודעות מלשוניות יד2/מדלן ----------
+// כל לשונית שולחת רק את הרשומות שהשתנו, וכאן הן מתמזגות לכתיבה אחת. פעם כל לשונית כתבה את
+// כל המטמון (כמה MB) בכל שינוי, ו-Chrome העביר עותק מלא שלו לכל לשונית פתוחה – זה האט את המחשב.
+const CACHE_FLUSH_MS = 1500;
+let listingCacheLock = Promise.resolve();
+function withListingCacheLock(fn) {
+  const run = listingCacheLock.then(fn, fn);
+  listingCacheLock = run.catch(() => {});
+  return run;
+}
+let cachePatchQueue = [];
+let cacheFlushTimer = null;
+
+function queueCachePatch(msg) {
+  return new Promise((resolve) => {
+    cachePatchQueue.push({
+      puts: Array.isArray(msg.puts) ? msg.puts : [],
+      prunes: Array.isArray(msg.prunes) ? msg.prunes : [],
+      resolve,
+    });
+    if (!cacheFlushTimer) cacheFlushTimer = setTimeout(flushCachePatches, CACHE_FLUSH_MS);
+  });
+}
+
+async function flushCachePatches() {
+  cacheFlushTimer = null;
+  const batch = cachePatchQueue;
+  cachePatchQueue = [];
+  if (!batch.length) return;
+  try {
+    await withListingCacheLock(async () => {
+      const stored = (await chrome.storage.local.get(LRSync.CACHE_KEY))[LRSync.CACHE_KEY] || {};
+      let cache = stored;
+      const results = [];
+      for (const item of batch) {
+        const result = LRSync.applyCachePatch(cache, item.puts, item.prunes);
+        cache = result.cache;
+        results.push(result);
+      }
+      if (cache !== stored) await chrome.storage.local.set({ [LRSync.CACHE_KEY]: cache });
+      batch.forEach((item, index) => {
+        const { deleted, newer } = results[index];
+        item.resolve({ ok: true, deleted, newer });
+      });
+    });
+  } catch (error) {
+    for (const item of batch) item.resolve({ ok: false, error: String((error && error.message) || error) });
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === "lightrail:cache-patch") {
+    if (_sender.id !== chrome.runtime.id) return false;
+    queueCachePatch(msg).then(sendResponse);
+    return true;
+  }
   if (msg && msg.type === "lookup" && Array.isArray(msg.queries)) {
     lookup(msg.queries, msg.bias || null, msg.coordinates || null)
       .then(sendResponse)
@@ -633,6 +688,8 @@ async function syncPull(settings) {
       done: received,
       detail: `עמוד ${pages}: התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} – משווה למידע שבמחשב…`,
     }, true);
+    // באותו מנעול של כתיבות הלשוניות – כדי שמיזוג מהשרת וכתיבה מלשונית לא ידרסו זה את זה
+    const { merge, relevantRows } = await withListingCacheLock(async () => {
     const stored = await chrome.storage.local.get([LRSync.CACHE_KEY, LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
     // מודעה שהמשתמש מחק כאן ומחיקתה עוד ממתינה לשליחה – לא מחזירים אותה מהשרת
     // (אלא אם מחשב אחר עדכן אותה אחרי המחיקה)
@@ -658,6 +715,8 @@ async function syncPull(settings) {
     if (merge.cache !== stored[LRSync.CACHE_KEY]) {
       await chrome.storage.local.set({ [LRSync.CACHE_KEY]: merge.cache });
     }
+    return { merge, relevantRows };
+    });
     applied += merge.applied;
     removed += relevantRows.filter((row) => row.deleted).length;
     const last = rows[rows.length - 1].updated_at;
@@ -715,8 +774,8 @@ async function pushSettings(settings) {
 }
 
 let settingsPushTimer = null;
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "sync") return;
+// רק אזור sync: מאזין כללי היה מקבל גם עותק מלא של כל כתיבה גדולה לאחסון המקומי
+chrome.storage.sync.onChanged.addListener(() => {
   (async () => {
     const meta = await settingsMeta();
     const hash = LRSync.settingsHash(await chrome.storage.sync.get(null));

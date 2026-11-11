@@ -190,6 +190,7 @@ function fakeSupabase({ withDeals = false } = {}) {
 function computer(server, initialCache) {
   const store = { yad2AmenityCache_v1: initialCache };
   const changeListeners = [];
+  const syncChangeListeners = [];
   const messageListeners = [];
   const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
   const local = {
@@ -226,7 +227,9 @@ function computer(server, initialCache) {
         syncStore[key] = clone(value);
       }
       for (const listener of changeListeners) listener(changes, "sync");
+      for (const listener of syncChangeListeners) listener(changes);
     },
+    onChanged: { addListener: (fn) => syncChangeListeners.push(fn) },
   };
   const noopEvent = { addListener() {} };
   const chrome = {
