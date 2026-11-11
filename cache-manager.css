@@ -1134,3 +1134,14 @@ td.price-tax-col { color: var(--muted); font-weight: 700; font-variant-numeric: 
 #fontScaleValue { display: none; }
 .side-filters .advanced-filters .filter-grid { margin-top: 0; }
 #togglePriceHistory { flex-shrink: 0; white-space: nowrap; }
+/* חיפוש מודעה וחיפוש עסקאות: אזור התוצאות ממלא את כל הגובה, והטבלה/העמודה בצד גוללות כל אחת בעצמה */
+#listingSearchPanel:not([hidden]), #dealsPanel:not([hidden]) { overflow: hidden; }
+#listingSearchPanel .side-layout, #dealsPanel .side-layout { align-items: stretch; }
+#listingSearchPanel .side-filters, #dealsPanel .side-filters { position: static; max-height: none; }
+#listingSearchPanel .side-main, #dealsPanel .side-main { min-height: 0; overflow: auto; }
+#listingSearchPanel #searchResultsHost { flex: 1 1 auto; min-height: 260px; }
+#dealsPanel .deals-table-wrap { flex: 1 0 auto; min-height: 320px; }
+.side-main .search-filter-hint, .side-main .search-preset-chip { flex: none; }
+/* מיון לפי כמה עמודות: מספר העמודה בסדר המיון ליד החץ */
+.sort-button[data-rank][aria-sort="ascending"]::after { content: attr(data-rank) "↑"; }
+.sort-button[data-rank][aria-sort="descending"]::after { content: attr(data-rank) "↓"; }

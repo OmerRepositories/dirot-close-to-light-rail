@@ -39,6 +39,28 @@ let selectedKey = null;
 let dirtyFields = new Set();
 let writing = false;
 let sort = { key: "updatedAt", direction: -1 };
+// מיון לפי עד 3 עמודות בטבלת המודעות (כמו ORDER BY), לפי סדר הלחיצה על הכותרות:
+// לחיצה מוסיפה עמודה → הופכת כיוון → מסירה. ריק = המיון הבסיסי (sort, מתיבת "מיון מהיר").
+const RECORD_SORT_MAX = 3;
+let recordSorts = [];
+const recordSortOrder = () => (recordSorts.length ? recordSorts : [sort]);
+function recordSortInitialDirection(key) {
+  return ["title", "site", "recordType", "rooms", "price", "pricePerSqm", "railMeters"].includes(key) ? 1 : -1;
+}
+function toggleRecordSort(key) {
+  const initial = recordSortInitialDirection(key);
+  const index = recordSorts.findIndex((item) => item.key === key);
+  if (!recordSorts.length) {
+    // לחיצה על עמודת המיון הבסיסית הופכת אותה (כמו קודם); עמודה אחרת מתחילה מיון חדש
+    recordSorts = [{ key, direction: sort.key === key ? -sort.direction : initial }];
+  } else if (index < 0) {
+    recordSorts = [...recordSorts, { key, direction: initial }].slice(-RECORD_SORT_MAX);
+  } else if (recordSorts[index].direction === initial) {
+    recordSorts = recordSorts.map((item, i) => (i === index ? { key, direction: -initial } : item));
+  } else {
+    recordSorts = recordSorts.filter((_, i) => i !== index);
+  }
+}
 let refreshQueue = [];
 let refreshIndex = 0;
 let refreshItemStartedAt = 0;
@@ -404,17 +426,17 @@ const columns = [
   { key: "priceWithTax", label: "כולל מס רכישה", sortKey: "priceWithTax", className: "price-tax-col", title: "כמה הדירה תעלה בפועל: המחיר ועוד מס רכישה לפי המדרגות שבהגדרות (חישובים ← מס רכישה). המדרגות נכונות לשנת 2026 – כדאי לוודא שהן עדיין מעודכנות." },
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
   { key: "sqm", label: "מ״ר", sortKey: "sqm" },
+  // החשובים קרוב להתחלה (מימין): חדרים, קומה ומרחק מהרכבת
+  { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
+  { key: "floor", label: "קומה", sortKey: "floor", title: "קומת הדירה מתוך מספר הקומות בבניין (מנתוני יד2)" },
+  { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
-  { key: "type", label: "סוג", sortKey: "recordType" },
   { key: "site", label: "אתר", sortKey: "site" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
-  { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
-  { key: "floor", label: "קומה", sortKey: "floor", title: "קומת הדירה מתוך מספר הקומות בבניין (מנתוני יד2)" },
   { key: "shelterMeters", label: "מקלט ציבורי (מ׳)", sortKey: "shelterMeters", title: "מרחק למקלט הציבורי הקרוב, כפי שיד2 מציגה בעמוד המודעה" },
   { key: "listingAgeDays", label: "גיל מודעה (ימים)", sortKey: "listingAgeDays", title: "כמה ימים המודעה באוויר; מחושב ונשמר בכל שמירה או רענון של המודעה" },
   { key: "sellerPressure", label: "לחץ למכור", sortKey: "sellerPressure", title: "מדד 0–100: ימים באוויר (עד 60 נק׳), ירידת מחיר מהשיא (עד 30) ומספר הורדות (עד 10)" },
-  { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "brokerage", label: "תיווך", boolean: true, title: "כן / לא / לא ידוע" },
   ...["building", "street", "neighborhood", "city"].map((level) => ({
     key: `realDeals:${level}`,
@@ -431,6 +453,7 @@ const columns = [
     boolean: true,
     title: "מאפיין הנכס: כן / לא / לא ידוע",
   })),
+  { key: "type", label: "סוג", sortKey: "recordType" },
   { key: "updatedAt", label: "עדכון אחרון", sortKey: "updatedAt" },
   { key: "priceHistory", label: "היסטוריית מחיר", sortKey: "priceHistory", title: "מספר נקודות היסטוריית מחיר" },
   { key: "actions", label: "פעולות" },
@@ -738,23 +761,9 @@ function appendHeaderCell(row, column) {
     label.type = "button";
     label.className = "sort-button";
     label.dataset.sort = column.sortKey;
-    label.setAttribute(
-      "aria-sort",
-      sort.key === column.sortKey
-        ? sort.direction > 0
-          ? "ascending"
-          : "descending"
-        : "none"
-    );
+    label.title = `${column.title ? column.title + " · " : ""}לחיצה: הוספה למיון (עד ${RECORD_SORT_MAX} עמודות, לפי סדר הלחיצה), לחיצה נוספת הופכת כיוון ושלישית מסירה`;
     label.addEventListener("click", () => {
-      if (sort.key === column.sortKey) sort.direction *= -1;
-      else {
-        sort.key = column.sortKey;
-        sort.direction = ["title", "site", "recordType"].includes(sort.key) ? 1 : -1;
-        if (["rooms", "price", "pricePerSqm", "railMeters"].includes(sort.key)) {
-          sort.direction = 1;
-        }
-      }
+      toggleRecordSort(column.sortKey);
       renderRows();
     });
   }
@@ -822,30 +831,30 @@ function floorText(record) {
     : floor;
 }
 
-function rowSortValue(key, record, priceRanks) {
-  if (sort.key === "recordType") return recordType(record);
-  if (sort.key === "site") return recordSite(key);
-  if (sort.key === "pricePerSqm") return LRCacheData.pricePerSqm(record);
-  if (sort.key === "priceWithTax") {
+function rowSortValue(key, record, priceRanks, sortKey = sort.key) {
+  if (sortKey === "recordType") return recordType(record);
+  if (sortKey === "site") return recordSite(key);
+  if (sortKey === "pricePerSqm") return LRCacheData.pricePerSqm(record);
+  if (sortKey === "priceWithTax") {
     const tax = LRCacheData.purchaseTax(record.price, purchaseTaxSettings);
     return tax ? tax.total : null;
   }
-  if (sort.key === "dealScore") {
+  if (sortKey === "dealScore") {
     return LRCacheData.dealScore(record, priceRanks.get(key) ?? 0.5, realDealsFor(record)?.diffPct);
   }
-  if (sort.key.startsWith("realDeals:")) {
-    const result = realDealsAllFor(record)[sort.key.slice("realDeals:".length)];
+  if (sortKey.startsWith("realDeals:")) {
+    const result = realDealsAllFor(record)[sortKey.slice("realDeals:".length)];
     return result && Number.isFinite(result.diffPct) ? result.diffPct : null;
   }
-  if (sort.key === "priceHistory") {
+  if (sortKey === "priceHistory") {
     return validPriceHistory(record).length;
   }
-  if (sort.key === "sellerPressure") {
+  if (sortKey === "sellerPressure") {
     const pressure = sellerPressure(record);
     return pressure ? pressure.score : null;
   }
-  if (sort.key === "cloud") return cloudState(key, record) || null;
-  return record[sort.key];
+  if (sortKey === "cloud") return cloudState(key, record) || null;
+  return record[sortKey];
 }
 
 function matchesBooleanFilter(record, filterKey, filterValue) {
@@ -1070,21 +1079,31 @@ function filterRecordsFor(searchMode) {
           .includes(value)
       );
     })
+  // ORDER BY לפי סדר העמודות שנבחרו; ערך כל עמודה מחושב פעם אחת לשורה. ערכים חסרים בסוף בכל רמה.
+  const order = recordSortOrder();
+  const isMissing = (v) => v === null || v === undefined || v === "" || Number.isNaN(v);
+  const sorted = list
+    .map((entry) => ({ entry, values: order.map((item) => rowSortValue(entry[0], entry[1], priceRanks, item.key)) }))
     .sort((left, right) => {
-      const a = rowSortValue(left[0], left[1], priceRanks);
-      const b = rowSortValue(right[0], right[1], priceRanks);
-      const aMissing = a === null || a === undefined || a === "";
-      const bMissing = b === null || b === undefined || b === "";
-      if (aMissing && bMissing) return 0;
-      if (aMissing) return 1;
-      if (bMissing) return -1;
-      const comparison =
-        typeof a === "number" && typeof b === "number"
-          ? a - b
-          : collator.compare(String(a), String(b));
-      return comparison * sort.direction;
-    });
-  return { list, waiting, priceRanks };
+      for (let i = 0; i < order.length; i++) {
+        const a = left.values[i];
+        const b = right.values[i];
+        const aMissing = isMissing(a);
+        const bMissing = isMissing(b);
+        if (aMissing || bMissing) {
+          if (aMissing === bMissing) continue;
+          return aMissing ? 1 : -1;
+        }
+        const comparison =
+          typeof a === "number" && typeof b === "number"
+            ? a - b
+            : collator.compare(String(a), String(b));
+        if (comparison) return comparison * (order[i].direction < 0 ? -1 : 1);
+      }
+      return 0;
+    })
+    .map((row) => row.entry);
+  return { list: sorted, waiting, priceRanks };
 }
 
 function renderRows() {
@@ -1788,6 +1807,7 @@ function sellerPressure(record) {
 function sortByPressure() {
   sort.key = "sellerPressure";
   sort.direction = -1;
+  recordSorts = [];
   renderRows();
 }
 
@@ -2457,12 +2477,16 @@ function handleTabKeydown(event) {
 }
 
 function renderHeaderSortState() {
-  for (const button of document.querySelectorAll(".sort-button")) {
-    const active = button.dataset.sort === sort.key;
+  const order = recordSortOrder();
+  for (const button of document.querySelectorAll(".sort-button[data-sort]")) {
+    const index = order.findIndex((item) => item.key === button.dataset.sort);
     button.setAttribute(
       "aria-sort",
-      active ? sort.direction > 0 ? "ascending" : "descending" : "none"
+      index < 0 ? "none" : order[index].direction > 0 ? "ascending" : "descending"
     );
+    // מספר העמודה בסדר המיון – רק כשממיינים לפי יותר מעמודה אחת
+    if (index >= 0 && order.length > 1) button.dataset.rank = String(index + 1);
+    else delete button.dataset.rank;
   }
 }
 
@@ -5135,6 +5159,7 @@ $("clearSearchPreset").addEventListener("click", () => {
 });
 $("clearListingSearch").addEventListener("click", () => {
   searchPreset = null;
+  recordSorts = []; // גם המיונים חוזרים לברירת המחדל
   $("listingSearchQuery").value = "";
   $("listingSearchSite").value = "";
   $("listingSearchCity").value = "";
@@ -5371,6 +5396,7 @@ $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;
   sort.direction = ["updatedAt", "dealScore", "listingAgeDays", "sellerPressure"].includes(sort.key) ? -1 : 1;
+  recordSorts = [];
   renderRows();
 });
 form.addEventListener("input", (event) => {
