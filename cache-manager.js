@@ -1930,14 +1930,17 @@ async function renderDashboard() {
 }
 
 // פותח את חיפוש העסקאות מסונן לעיר (ולשכונה) – לחיצה על שורה בלוח הבקרה
-function openDealsWith({ city = "", query = "" } = {}) {
-  $("dealsQuery").value = query;
+// שכונה: נבחרת בשדה השכונה; אם אין עסקאות עם השכונה הזו בשדה – נשארת חיפוש טקסט חופשי
+function openDealsWith({ city = "", query = "", neighborhood = "" } = {}) {
   $("dealsSource").value = "";
   document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => { input.value = ""; });
   const years = LRDeals.dealsByArea({}, { years: 3 }).years;
   document.querySelector('[data-deals-min="year"]').value = String(years[0]);
   setActiveTab("deals");
+  fillDealsCities();
   $("dealsCity").value = city;
+  const picked = setDealsHood(neighborhood);
+  $("dealsQuery").value = picked || !neighborhood ? query : `${query} ${neighborhood}`.trim();
   renderDeals();
 }
 
@@ -1947,11 +1950,17 @@ function openDealsForRecord(record) {
   if (!record) return;
   const first = String(record.address || "").split(",")[0].trim();
   const cityOfRecord = String(record.city || "").trim();
-  const query = first && LRDeals.normCity(first) !== LRDeals.normCity(cityOfRecord) ? first : String(record.neighborhood || "").trim();
+  const hasStreet = first && LRDeals.normCity(first) !== LRDeals.normCity(cityOfRecord);
+  const query = hasStreet ? first : "";
+  const neighborhood = hasStreet ? "" : String(record.neighborhood || "").trim();
   fillDealsCities();
   const wanted = LRDeals.normCity(cityOfRecord);
   const option = wanted ? [...$("dealsCity").options].find((item) => item.value && LRDeals.normCity(item.value) === wanted) : null;
-  openDealsWith({ city: option ? option.value : "", query: option || !cityOfRecord ? query : `${query} ${cityOfRecord}`.trim() });
+  openDealsWith({
+    city: option ? option.value : "",
+    query: option || !cityOfRecord ? query : `${query} ${cityOfRecord}`.trim(),
+    neighborhood,
+  });
 }
 
 // הפעם הראשונה שהתוסף ראה מחיר למודעה (לא נקודות מהאתר, שיכולות להיות ישנות בהרבה)
@@ -2257,7 +2266,7 @@ function drawDashboard(stats, cities) {
       dealHoods.appendChild(
         dealsTable(["שכונה", "עסקאות", ...yearHeaders, "₪ למ״ר חציוני"], areas.neighborhoods.slice(0, 10),
           (item) => `${item.neighborhood} · ${item.city}`,
-          (item) => openDealsWith({ city: item.city, query: item.neighborhood }))
+          (item) => openDealsWith({ city: item.city, neighborhood: item.neighborhood }))
       );
     }
   }
@@ -3652,6 +3661,7 @@ function readDealsFilters() {
   const filters = {
     query: $("dealsQuery").value,
     city: $("dealsCity").value,
+    neighborhood: $("dealsHood").value,
     source: $("dealsSource").value,
   };
   for (const input of document.querySelectorAll("[data-deals-min], [data-deals-max]")) {
@@ -3678,9 +3688,54 @@ function fillDealsCities() {
   select.value = cities.includes(current) ? current : "";
 }
 
+// שכונות לבחירה: של העיר שנבחרה (או של כל הערים, עם שם העיר). שכונה שנכתבה בכמה צורות מופיעה פעם אחת.
+let dealsHoodsKey = "";
+function fillDealsHoods() {
+  const select = $("dealsHood");
+  const cityValue = $("dealsCity").value;
+  const key = `${dealsVersion}|${cityValue}`;
+  if (dealsHoodsKey === key) return;
+  dealsHoodsKey = key;
+  const city = cityValue ? LRDeals.normCity(cityValue) : "";
+  const hoods = new Map();
+  for (const deal of Object.values(dealsStore)) {
+    if (!deal || !deal.neighborhood) continue;
+    const dealCity = LRDeals.normCity(deal.city);
+    if (city && dealCity !== city) continue;
+    const id = `${dealCity}|${LRDeals.normHood(deal.neighborhood)}`;
+    const item = hoods.get(id) || { name: String(deal.neighborhood).trim(), city: deal.city, count: 0 };
+    item.count++;
+    hoods.set(id, item);
+  }
+  const current = select.value;
+  const currentNorm = current ? LRDeals.normHood(current) : "";
+  const items = [...hoods.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, "he") || String(a.city).localeCompare(String(b.city), "he"));
+  select.replaceChildren(new Option("כל השכונות", ""), ...items.map((item) => {
+    const option = new Option(`${item.name}${city ? "" : ` · ${item.city}`} (${item.count.toLocaleString("he-IL")})`, item.name);
+    option.dataset.city = item.city || "";
+    return option;
+  }));
+  const keep = currentNorm && items.find((item) => LRDeals.normHood(item.name) === currentNorm);
+  select.value = keep ? keep.name : "";
+}
+
+// בוחר שכונה (ואת העיר שלה, אם לא נבחרה עיר)
+function setDealsHood(name, city = "") {
+  if (city && !$("dealsCity").value) {
+    $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === city) ? city : "";
+  }
+  fillDealsHoods();
+  const wanted = name ? LRDeals.normHood(name) : "";
+  const option = wanted ? [...$("dealsHood").options].find((item) => item.value && LRDeals.normHood(item.value) === wanted) : null;
+  $("dealsHood").value = option ? option.value : "";
+  return Boolean(option);
+}
+
 function renderDeals() {
   if (activeTab !== "deals") return;
   fillDealsCities();
+  fillDealsHoods();
   // סינון, מיון וסיכום נשמרים לפי המסננים: חזרה ללשונית או "הצג עוד" לא מחשבים הכל מחדש
   const listKey = `${dealsVersion}|${JSON.stringify(readDealsFilters())}|${dealsSort.key}|${dealsSort.direction}`;
   if (dealsListMemo.key !== listKey) {
@@ -4346,9 +4401,10 @@ function renderDealsStats(list) {
       { label: "שטח", value: (row) => (Number.isFinite(row.medianSqm) ? row.medianSqm : null) },
       { label: "עסקה אחרונה", value: (row) => (row.lastDate ? dealDateText(row.lastDate) : null) },
     ];
-    const filterTo = (city, query) => {
+    const filterTo = (city, query, neighborhood = "") => {
       $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === city) ? city : "";
       $("dealsQuery").value = query;
+      setDealsHood(neighborhood);
       scheduleDealsRender();
     };
     if (periodStats.byCity.length > 1) {
@@ -4370,7 +4426,7 @@ function renderDealsStats(list) {
       box.append(dealsStatsTable(
         groupColumns("שכונה", (row) => (multiCity ? `${row.neighborhood} · ${row.city}` : row.neighborhood)),
         rows,
-        (row) => filterTo(row.city, row.neighborhood),
+        (row) => filterTo(row.city, "", row.neighborhood),
         { limit: multiCity ? 40 : 25 }
       ));
       sections.push(box);
@@ -4413,6 +4469,7 @@ function renderDealsStats(list) {
       ], periodStats.byBuilding, (row) => {
         $("dealsQuery").value = `${row.street} ${row.house}`;
         $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === row.city) ? row.city : "";
+        setDealsHood("");
         scheduleDealsRender();
       }, { limit: 12 }));
       sections.push(box);
@@ -4892,6 +4949,12 @@ $("dealsTab").addEventListener("click", () => setActiveTab("deals"));
 $("dealsTab").addEventListener("keydown", handleTabKeydown);
 $("dealsQuery").addEventListener("input", scheduleDealsRender);
 for (const id of ["dealsCity", "dealsSource"]) $(id).addEventListener("change", scheduleDealsRender);
+$("dealsHood").addEventListener("change", () => {
+  // שכונה מרשימת "כל הערים" בוחרת גם את העיר שלה (אותו שם שכונה יכול להיות בכמה ערים)
+  const option = $("dealsHood").selectedOptions[0];
+  if (option && option.value && option.dataset.city && !$("dealsCity").value) setDealsHood(option.value, option.dataset.city);
+  scheduleDealsRender();
+});
 document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => {
   input.addEventListener("input", scheduleDealsRender);
 });
@@ -4907,6 +4970,7 @@ document.querySelectorAll("[data-deals-sort]").forEach((button) => {
 $("clearDealsSearch").addEventListener("click", () => {
   $("dealsQuery").value = "";
   $("dealsCity").value = "";
+  $("dealsHood").value = "";
   $("dealsSource").value = "";
   document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => { input.value = ""; });
   scheduleDealsRender();

@@ -507,16 +507,18 @@ var LRDeals = (() => {
     return match ? Number(match[1]) : null;
   };
 
-  // filters: { query, city, source ("yad2" | "madlan" | "both"), rooms/sqm/floor/price/ppsm/year/house: { min, max } }
-  // (קומה: קרקע = 0; עסקה בלי קומה ידועה לא עוברת סינון קומה)
+  // filters: { query, city, neighborhood, source ("yad2" | "madlan" | "both"), rooms/sqm/floor/price/ppsm/year/house: { min, max } }
+  // (קומה: קרקע = 0; עסקה בלי קומה ידועה לא עוברת סינון קומה; שכונה: רק עסקאות שהשכונה שלהן ידועה)
   function filterDeals(store, filters = {}) {
     const { words, numbers, houseRange } = parseDealsQuery(filters.query);
     const city = filters.city ? normCity(filters.city) : "";
+    const hood = filters.neighborhood ? normHood(filters.neighborhood) : "";
     const range = (name) => filters[name] || {};
     const out = [];
     for (const [key, deal] of Object.entries(store || {})) {
       if (!deal || typeof deal !== "object") continue;
       if (city && normCity(deal.city) !== city) continue;
+      if (hood && normHood(deal.neighborhood) !== hood) continue;
       const sources = deal.sources || [];
       if (filters.source === "both" ? sources.length < 2 : filters.source && !sources.includes(filters.source)) continue;
       if (words.length) {
@@ -877,6 +879,7 @@ var LRDeals = (() => {
     compareListingAll,
     normStreet,
     normCity,
+    normHood,
     normHouse,
     dealKey,
     fromYad2,

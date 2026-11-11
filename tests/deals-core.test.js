@@ -172,6 +172,19 @@ test("deal search filters by floor range, ground floor is 0, unknown floor is le
   assert.equal(Deals.filterDeals(store, {}).length, 5);
 });
 
+test("deal search filters by neighborhood as its own field (spelling-insensitive, unknown neighborhood left out)", () => {
+  const store = {
+    a: { city: "פתח תקווה", street: "הרצל", house: "1", neighborhood: "עין גנים", price: 1, sqm: 1, date: "2025-01-01" },
+    b: { city: "פתח תקווה", street: "בלוי", house: "2", neighborhood: "שכונת עין גנים", price: 1, sqm: 1, date: "2025-01-01" },
+    c: { city: "פתח תקווה", street: "עין גנים", house: "3", price: 1, sqm: 1, date: "2025-01-01" },
+    d: { city: "פתח תקווה", street: "הרצל", house: "4", neighborhood: "כפר גנים", price: 1, sqm: 1, date: "2025-01-01" },
+  };
+  const keys = (filters) => Deals.filterDeals(store, filters).map(([key]) => key).sort();
+  assert.deepEqual(keys({ neighborhood: "עין גנים" }), ["a", "b"]);
+  assert.deepEqual(keys({ neighborhood: "עין גנים", query: "הרצל" }), ["a"]);
+  assert.deepEqual(keys({ neighborhood: "עין גנים", city: "פתח תקווה" }), ["a", "b"]);
+});
+
 test("deal analysis breaks down by city, neighborhood, street, size, type and quarter with yearly change", () => {
   const make = (city, hood, street, house, price, sqm, date, type) => Deals.fromYad2({
     ...yad2Result,
