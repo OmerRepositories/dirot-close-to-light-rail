@@ -2489,13 +2489,12 @@
     return false;
   });
 
-  if (IS_YAD2) {
-    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      if (!message || message.type !== "lightrail:get-yad2-listing-status") return false;
-      sendResponse(LRYad2.listingPageStatus());
-      return false;
-    });
-  }
+  // סטטוס המודעה בעמוד הפתוח (פעילה / הוסרה) – לרענון מודעות, ביד2 ובמדלן
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || (message.type !== "lightrail:get-listing-status" && message.type !== "lightrail:get-yad2-listing-status")) return false;
+    sendResponse((IS_YAD2 ? LRYad2 : LRMadlan).listingPageStatus());
+    return false;
+  });
 
   // דפדוף בעמודי חיפוש (ממנהל המידע): גלילה איטית עד סוף העמוד, כדי שכל הכרטיסים ייטענו וייאספו
   let walkerScroll = null;

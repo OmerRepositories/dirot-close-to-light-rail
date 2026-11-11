@@ -1125,7 +1125,7 @@ function renderRows() {
           status.className = "listing-status irrelevant";
           status.textContent = "לא רלוונטית";
           td.title = irrelevantTitle(relevance);
-        } else if (site !== "yad2" || recordType(record) !== "listing") {
+        } else if (!["yad2", "madlan"].includes(site) || recordType(record) !== "listing") {
           status.className = "listing-status unknown";
           status.textContent = searchOnly ? "מהחיפוש בלבד" : "—";
           if (searchOnly) td.title = SEARCH_ONLY_TITLE;
@@ -2138,7 +2138,7 @@ function drawDashboard(stats, cities) {
   // סטטוס ורענון
   const status = el("div", "stat-row compact");
   status.append(
-    tile("פעילות", number(stats.active), "נבדקו ברענון יד2", () => openSearchWith({ status: "active" }), "green", "✅"),
+    tile("פעילות", number(stats.active), "נבדקו ברענון (יד2 ומדלן)", () => openSearchWith({ status: "active" }), "green", "✅"),
     tile("הוסרו", number(stats.removed), "כבר לא באתר", () => openSearchWith({ status: "removed" }), "slate", "🗑️"),
     tile("לא נבדקו", number(stats.unchecked), `${number(stats.searchOnly)} מהן מהחיפוש בלבד`, () => openSearchWith({ status: "unchecked" }), "amber", "❔"),
     tile("רועננו היום", number(stats.refreshedToday), `${number(stats.refreshedWeek)} בשבוע האחרון · ${number(stats.neverRefreshed)} אף פעם`, show("רועננו היום", stats.keys.refreshedToday), "blue", "🔄"),
@@ -2960,7 +2960,7 @@ async function saveYad2ListingStatus(key, status, attemptId, index) {
       refreshAttemptId !== attemptId ||
       refreshIndex !== index ||
       !latest[key] ||
-      recordSite(key) !== "yad2"
+      !["yad2", "madlan"].includes(recordSite(key))
     ) {
       return;
     }
@@ -2988,7 +2988,9 @@ function checkCurrentYad2ListingStatus(tabId, key, record, retries = 4) {
   let urlId;
   try {
     const parsedUrl = new URL(url);
-    const match = parsedUrl.pathname.match(/^\/realestate\/item\/[^/]+\/([^/]+)/);
+    const match = recordSite(key) === "madlan"
+      ? parsedUrl.pathname.match(/\/(?:listings|bulletin)\/([^/]+)/)
+      : parsedUrl.pathname.match(/^\/realestate\/item\/[^/]+\/([^/]+)/);
     urlId = match && match[1];
   } catch {
     return;
@@ -2997,7 +2999,7 @@ function checkCurrentYad2ListingStatus(tabId, key, record, retries = 4) {
 
   const attemptId = refreshAttemptId;
   const index = refreshIndex;
-  chrome.tabs.sendMessage(tabId, { type: "lightrail:get-yad2-listing-status" }, (result) => {
+  chrome.tabs.sendMessage(tabId, { type: "lightrail:get-listing-status" }, (result) => {
     const error = chrome.runtime.lastError;
     if (error) {
       if (
@@ -3161,7 +3163,7 @@ function onRefreshTabUpdated(tabId, changeInfo, tab) {
   }
   const [key, record] = refreshQueue[refreshIndex];
   logListingRefreshed(key);
-  if (recordSite(key) === "yad2") {
+  if (["yad2", "madlan"].includes(recordSite(key))) {
     checkCurrentYad2ListingStatus(tabId, key, record);
   }
   if (refreshPaused) {
@@ -3272,7 +3274,7 @@ async function startRefresh(options = {}) {
       !refreshableListingUrl(key, record) ||
       (site !== "all" && recordSite(key) !== site) ||
       (uncheckedOnly &&
-        (recordSite(key) !== "yad2" || ["active", "removed"].includes(record.listingStatus)))
+        (!["yad2", "madlan"].includes(recordSite(key)) || ["active", "removed"].includes(record.listingStatus)))
     ) return false;
     if (listingRelevance(record).irrelevant) {
       irrelevantSkipped++;
@@ -3303,10 +3305,8 @@ async function startRefresh(options = {}) {
     ? ` ${irrelevantSkipped.toLocaleString("he-IL")} מודעות לא רלוונטיות לא ירועננו.`
     : "";
   if (!refreshQueue.length) {
-    const message = (uncheckedOnly && site === "madlan"
-      ? "„לא נבדקה” קיים רק במודעות יד2 – אין מה לרענן במדלן בבחירה הזו."
-      : uncheckedOnly
-        ? "אין מודעות יד2 בסטטוס „לא נבדקה” עם קישור תקין."
+    const message = (uncheckedOnly
+        ? `אין מודעות${siteName ? ` ${siteName}` : ""} בסטטוס „לא נבדקה” עם קישור תקין.`
         : `אין בתוצאות המסוננות מודעות${siteName ? ` ${siteName}` : ""} עם קישור תקין.`) + irrelevantNote;
     setRefreshStatus(message, true);
     refreshStarting = false;

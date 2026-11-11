@@ -191,3 +191,17 @@ test("Madlan address and coordinates come from the page data index", () => {
   assert.equal(address.city, "פתח תקווה");
   assert.deepEqual({ ...address.coordinates }, { lat: 32.09, lon: 34.87 });
 });
+
+test("Madlan listing page status: 'המודעה הוסרה' page is removed, a page with listing details is active", () => {
+  const { LRMadlan, document } = madlanPage([], "/listings/19uo0YZAQgG");
+  document.body = { innerText: "המודעה הוסרה המודעה שחיפשת אינה זמינה יותר בלוח הדירות, אבל לא לדאוג, יש עוד הרבה מודעות אחרות." };
+  assert.deepEqual(JSON.parse(JSON.stringify(LRMadlan.listingPageStatus(document))), { id: "19uo0YZAQgG", status: "removed" });
+  document.body = { innerText: "בלוי 1, שיפר, פתח תקווה ₪2,740,000" };
+  document.querySelector = (selector) => (selector === '[data-auto="area"]' ? {} : null);
+  assert.deepEqual(JSON.parse(JSON.stringify(LRMadlan.listingPageStatus(document))), { id: "19uo0YZAQgG", status: "active" });
+  document.querySelector = () => null;
+  assert.equal(LRMadlan.listingPageStatus(document), null, "page not loaded yet = unknown");
+  const CacheData = require("../cache-data.js");
+  assert.equal(CacheData.listingStatusKey("madlan", { listingStatus: "removed" }, false), "removed");
+  assert.equal(CacheData.listingStatusKey("madlan", {}, false), "unchecked");
+});

@@ -517,7 +517,21 @@ var LRMadlan = (() => {
     return result;
   }
 
+  // עמוד מודעה במדלן: "המודעה הוסרה … אינה זמינה יותר" = הוסרה; עמוד עם פרטי נכס (שטח/מחיר) = פעילה
+  function listingPageStatus(root = document) {
+    const match = location.pathname.match(/\/(?:listings|bulletin)\/([^/?#]+)/);
+    if (!match) return null;
+    const id = match[1];
+    const text = String((root.body && (root.body.innerText || root.body.textContent)) || "").replace(/\s+/g, " ");
+    if (text.includes("המודעה הוסרה") && text.includes("אינה זמינה יותר")) return { id, status: "removed" };
+    if (root.querySelector('[data-auto="area"]') || root.querySelector('[data-auto="current-price"]')) {
+      return { id, status: "active" };
+    }
+    return null;
+  }
+
   return {
+    listingPageStatus,
     listingId,
     listingUrl,
     readAddress,

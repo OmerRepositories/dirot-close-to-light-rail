@@ -412,9 +412,10 @@ var LRCacheData = (() => {
   // כך "פעילה" לא כוללת מודעות לא רלוונטיות. "" = אין סטטוס (פרויקט, או מודעת מדלן רלוונטית).
   function listingStatusKey(site, record, irrelevant) {
     if (!record || record.recordType === "project") return "";
-    if (site === "yad2" && record.listingStatus === "removed") return "removed";
+    const checkable = site === "yad2" || site === "madlan";
+    if (checkable && record.listingStatus === "removed") return "removed";
     if (irrelevant) return "irrelevant";
-    if (site !== "yad2") return "";
+    if (!checkable) return "";
     return record.listingStatus === "active" ? "active" : "unchecked";
   }
 
