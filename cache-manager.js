@@ -2943,7 +2943,7 @@ async function logListingRefreshed(key) {
   }
 }
 
-async function saveYad2ListingStatus(key, status, attemptId, index) {
+async function saveListingStatus(key, status, attemptId, index) {
   if (!["active", "removed"].includes(status)) return;
   if (
     !refreshQueue.length ||
@@ -2975,14 +2975,14 @@ async function saveYad2ListingStatus(key, status, attemptId, index) {
     renderRows();
     renderListingDeletionPreview();
   } catch (error) {
-    console.error("[lightrail-ext] failed to save Yad2 listing status", error);
+    console.error("[lightrail-ext] failed to save listing status", error);
     setRefreshStatus(`הדף נטען, אך סטטוס המודעה לא נשמר: ${error.message}`, true);
   } finally {
     writing = false;
   }
 }
 
-function checkCurrentYad2ListingStatus(tabId, key, record, retries = 4) {
+function checkCurrentListingStatus(tabId, key, record, retries = 4) {
   const expectedId = key.slice(key.indexOf(":") + 1);
   const url = refreshableListingUrl(key, record);
   let urlId;
@@ -3009,22 +3009,22 @@ function checkCurrentYad2ListingStatus(tabId, key, record, retries = 4) {
         refreshIndex === index
       ) {
         setTimeout(() => {
-          checkCurrentYad2ListingStatus(tabId, key, record, retries - 1);
+          checkCurrentListingStatus(tabId, key, record, retries - 1);
         }, 250);
         return;
       }
-      console.warn("[lightrail-ext] could not check Yad2 listing status", error.message);
+      console.warn("[lightrail-ext] could not check listing status", error.message);
       return;
     }
     // עוד אין סטטוס (העמוד עדיין נטען, או מדלן עוד לא סיימה לנתב) – בודקים שוב בעוד רגע
     if (!result && retries > 0 && refreshQueue.length && refreshAttemptId === attemptId && refreshIndex === index) {
-      setTimeout(() => checkCurrentYad2ListingStatus(tabId, key, record, retries - 1), 1500);
+      setTimeout(() => checkCurrentListingStatus(tabId, key, record, retries - 1), 1500);
       return;
     }
     // מדלן מנתבת מודעה שהוסרה לעמוד חיפוש – התוצאה מגיעה בלי מזהה, מהלשונית שבה פתחנו את המודעה הזו
     const redirectedRemoval = result && result.redirected && result.status === "removed" && recordSite(key) === "madlan";
     if (!result || (result.id !== expectedId && !redirectedRemoval)) return;
-    saveYad2ListingStatus(key, result.status, attemptId, index);
+    saveListingStatus(key, result.status, attemptId, index);
   });
 }
 
@@ -3171,7 +3171,7 @@ function onRefreshTabUpdated(tabId, changeInfo, tab) {
   const [key, record] = refreshQueue[refreshIndex];
   logListingRefreshed(key);
   if (["yad2", "madlan"].includes(recordSite(key))) {
-    checkCurrentYad2ListingStatus(tabId, key, record);
+    checkCurrentListingStatus(tabId, key, record);
   }
   if (refreshPaused) {
     setRefreshStatus(`הדף ${refreshIndex + 1}/${refreshQueue.length} נטען; הרענון מושהה.`);

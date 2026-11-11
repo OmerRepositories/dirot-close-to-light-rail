@@ -2491,7 +2491,7 @@
 
   // סטטוס המודעה בעמוד הפתוח (פעילה / הוסרה) – לרענון מודעות, ביד2 ובמדלן
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (!message || (message.type !== "lightrail:get-listing-status" && message.type !== "lightrail:get-yad2-listing-status")) return false;
+    if (!message || message.type !== "lightrail:get-listing-status") return false;
     sendResponse((IS_YAD2 ? LRYad2 : LRMadlan).listingPageStatus());
     return false;
   });
