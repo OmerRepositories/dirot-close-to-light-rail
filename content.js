@@ -2496,6 +2496,29 @@
     return false;
   });
 
+  // מדלן: מודעה שהוסרה מנתבת מהר מאוד לעמוד חיפוש עם הודעת "המודעה הוסרה". העמוד מדווח בעצמו
+  // ברגע שההודעה מופיעה (בודק כל שנייה, 20 שניות) – מנהל הרענון משייך את הדיווח למודעה שפתח בלשונית.
+  if (!IS_YAD2) {
+    let removedNoticeSent = false;
+    let removedChecks = 0;
+    const removedTimer = setInterval(() => {
+      removedChecks++;
+      let status = null;
+      try {
+        status = LRMadlan.listingPageStatus();
+      } catch {}
+      if (status && status.status === "removed" && !removedNoticeSent) {
+        removedNoticeSent = true;
+        try {
+          chrome.runtime.sendMessage({ type: "lightrail:listing-status-notice", status: "removed", id: status.id || null }, () => {
+            void chrome.runtime.lastError; // אין מאזין (אין רענון פתוח) – לא שגיאה
+          });
+        } catch {}
+      }
+      if (removedNoticeSent || removedChecks >= 20) clearInterval(removedTimer);
+    }, 1000);
+  }
+
   // דפדוף בעמודי חיפוש (ממנהל המידע): גלילה איטית עד סוף העמוד, כדי שכל הכרטיסים ייטענו וייאספו
   let walkerScroll = null;
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

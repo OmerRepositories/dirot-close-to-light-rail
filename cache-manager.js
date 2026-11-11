@@ -2974,6 +2974,10 @@ async function saveListingStatus(key, status, attemptId, index) {
     renderRows();
     renderListingDeletionPreview();
     ensureListingStatusKept(key, status, checkedAt);
+    // שקיפות: מה נמצא במודעה שנפתחה
+    const statusLine = $("refreshStatus");
+    const note = status === "removed" ? " · המודעה הוסרה מהאתר ✓ (סומנה „הוסרה”)" : " · המודעה פעילה ✓";
+    if (statusLine && !statusLine.textContent.includes(note)) statusLine.textContent += note;
   } catch (error) {
     console.error("[lightrail-ext] failed to save listing status", error);
     setRefreshStatus(`הדף נטען, אך סטטוס המודעה לא נשמר: ${error.message}`, true);
@@ -3011,6 +3015,18 @@ function ensureListingStatusKept(key, status, checkedAt, attempt = 0) {
     }
   }, delays[attempt]);
 }
+
+// דיווח "המודעה הוסרה" שהעמוד שולח בעצמו (מדלן מנתבת מהר מאוד לעמוד חיפוש) – רק מלשונית הרענון,
+// ומשויך למודעה שנפתחה בה עכשיו
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (!message || message.type !== "lightrail:listing-status-notice" || message.status !== "removed") return;
+  if (!refreshQueue.length || !sender.tab || sender.tab.id !== refreshTabId) return;
+  const [key] = refreshQueue[refreshIndex] || [];
+  if (!key || recordSite(key) !== "madlan") return;
+  const expectedId = key.slice(key.indexOf(":") + 1);
+  if (message.id && message.id !== expectedId) return;
+  saveListingStatus(key, "removed", refreshAttemptId, refreshIndex);
+});
 
 function checkCurrentListingStatus(tabId, key, record, retries = 8) {
   const expectedId = key.slice(key.indexOf(":") + 1);
