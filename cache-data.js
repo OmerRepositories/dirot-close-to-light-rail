@@ -236,11 +236,53 @@ var LRCacheData = (() => {
         };
       }
     }
-    const result = recordPriceObservationUnchecked(previous, price, timestamp, source);
-    return { accepted: true, ...result, suspectPrice: undefined, suspectCount: undefined };
+    // כרטיס חיפוש שמראה מחיר אחר מהשמור: נרשם רק אחרי שאותו מחיר נראה שוב בכרטיס (אחרי 20 דקות לפחות,
+    // בלי מחיר אחר באמצע). כרטיסים מתחלפים בגלילה, ותצפית בודדת הייתה לפעמים המחיר של מודעה אחרת.
+    // עמוד המודעה עצמו מתקבל מיד.
+    let confirmed = false;
+    if (source === "search" && Number.isFinite(price)) {
+      const last = lastKnownPrice(previous);
+      // המחיר הקודם המחוק באותו כרטיס (src: "card") הוא מהאתר עצמו – המחיר החדש לצידו אמין
+      const storedHistory = Array.isArray(previous && previous.priceHistory) ? previous.priceHistory : [];
+      const vouchedByCard = storedHistory.length > 0 && storedHistory[storedHistory.length - 1].src === "card";
+      if (Number.isFinite(last) && last !== price && !vouchedByCard) {
+        const samePending = previous && previous.searchPendingPrice === price && Number.isFinite(previous.searchPendingAt);
+        if (!samePending || timestamp - previous.searchPendingAt < SEARCH_CONFIRM_MS) {
+          return {
+            accepted: false,
+            observedPrice: Number.isFinite(previous && previous.observedPrice) ? previous.observedPrice : null,
+            priceHistory: Array.isArray(previous && previous.priceHistory) ? previous.priceHistory : [],
+            suspectPrice: previous && previous.suspectPrice,
+            suspectCount: previous && previous.suspectCount,
+            searchPendingPrice: price,
+            searchPendingAt: samePending ? previous.searchPendingAt : timestamp,
+          };
+        }
+        confirmed = true;
+      }
+    }
+    const result = recordPriceObservationUnchecked(previous, price, timestamp, source, confirmed);
+    return {
+      accepted: true,
+      ...result,
+      suspectPrice: undefined,
+      suspectCount: undefined,
+      searchPendingPrice: undefined,
+      searchPendingAt: undefined,
+    };
   }
 
-  function recordPriceObservationUnchecked(previous, price, timestamp, source) {
+  const SEARCH_CONFIRM_MS = 20 * 60 * 1000;
+  function lastKnownPrice(previous) {
+    const history = Array.isArray(previous && previous.priceHistory)
+      ? previous.priceHistory.filter((item) => item && Number.isFinite(item.price))
+      : [];
+    if (history.length) return history[history.length - 1].price;
+    if (Number.isFinite(previous && previous.observedPrice)) return previous.observedPrice;
+    return Number.isFinite(previous && previous.price) ? previous.price : null;
+  }
+
+  function recordPriceObservationUnchecked(previous, price, timestamp, source, confirmed = false) {
     if (!Number.isFinite(price)) {
       return {
         observedPrice: Number.isFinite(previous && previous.observedPrice)
@@ -279,6 +321,7 @@ var LRCacheData = (() => {
         price,
         at: timestamp,
         src: source, // מאיפה הגיע המחיר: עמוד המודעה או כרטיס חיפוש (לאבחון תקלות)
+        ...(confirmed ? { confirmed: true } : {}),
         ...(!history.length ? { baselineKnown: true } : {}),
       });
     }
@@ -532,9 +575,38 @@ var LRCacheData = (() => {
   // מחירים זהים A → B → A והחזיק עד maxDays ימים הוא לא שינוי אמיתי – B והחזרה ל-A מוסרים.
   // ההיסטוריה השמורה לא משתנה; זה רק לניתוח ולתצוגה. חוזר עד שאין עוד קפיצות כאלה.
   const PRICE_BOUNCE_MAX_DAYS = 14;
-  function withoutPriceBounces(history, maxDays = PRICE_BOUNCE_MAX_DAYS) {
-    let points = Array.isArray(history) ? history.filter((point) => point && Number.isFinite(point.price)) : [];
+  // "רעש" מכרטיסי חיפוש: מחיר מכרטיס שעמוד המודעה (או האתר עצמו) סותר בתוך יומיים, או שהתחלף שוב
+  // בתוך יומיים, הוא לא שינוי מחיר אמיתי. כך נראו למשל 2.77 → 3.15 → 2.75 → 2.94 תוך דקות, כשעמוד
+  // המודעה הראה כל הזמן 2.77. תצפית חיפוש שאושרה פעמיים (confirmed) לא נחשבת רעש.
+  const SEARCH_NOISE_MS = 2 * 86400000;
+  function withoutSearchNoise(points) {
+    const trusted = points.filter((point) => point.src !== "search" && Number.isFinite(point.at));
     let removed = 0;
+    const kept = points.filter((point, index) => {
+      if (point.src !== "search" || point.confirmed || !Number.isFinite(point.at)) return true;
+      const contradictedByPage = trusted.some(
+        (other) => other.price !== point.price && Math.abs(other.at - point.at) <= SEARCH_NOISE_MS
+      );
+      const next = points[index + 1];
+      const flippedQuickly = Boolean(
+        next && Number.isFinite(next.at) && next.price !== point.price && next.at - point.at <= SEARCH_NOISE_MS
+      );
+      if (contradictedByPage || flippedQuickly) {
+        removed++;
+        return false;
+      }
+      return true;
+    });
+    // אחרי ההסרה: אותו מחיר פעמיים ברצף = לא שינוי
+    const merged = kept.filter((point, index) => index === 0 || point.price !== kept[index - 1].price);
+    return { points: merged, removed };
+  }
+
+  function withoutPriceBounces(history, maxDays = PRICE_BOUNCE_MAX_DAYS) {
+    const finite = Array.isArray(history) ? history.filter((point) => point && Number.isFinite(point.price)) : [];
+    const noise = withoutSearchNoise(finite);
+    let points = noise.points;
+    let removed = noise.removed;
     for (let changed = true; changed;) {
       changed = false;
       for (let index = 1; index + 1 < points.length; index++) {

@@ -708,7 +708,8 @@ var LRCacheExport = (() => {
   // גיל, תאריכים ומחיר ראשון של מודעה – מהמידע שנשמר (בלי לשנות את הרשומה)
   function listingTimeline(record, now = Date.now()) {
     const created = listingDateMs(record.listingCreatedAt);
-    const points = (Array.isArray(record.priceHistory) ? record.priceHistory : [])
+    // בלי "רעש" מכרטיסי חיפוש ובלי משחקי מחירים – כמו במסך שינויי המחירים
+    const points = LRCacheData.withoutPriceBounces(validPriceHistory(record)).history
       .filter((point) => point && point.price > 0 && Number.isFinite(point.at))
       .sort((a, b) => a.at - b.at);
     const seenPoints = points.filter((point) => point.src !== "site");
