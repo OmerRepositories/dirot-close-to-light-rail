@@ -27,12 +27,21 @@
   // לא נמחקות מה-attribute לפני שסקריפט התוכן הספיק לשמור אותן
   let capturedFor = "";
   let captured = new Map();
+  // אותן שורות (אותו מערך של React) באותה מודעה – אין מה לחשב שוב. הסריקה רצה בכל גלילה ושינוי בדף,
+  // ובלי זה כל פעם הומרו לטקסט עד 1000 עסקאות
+  let lastRows = null;
+  let lastTable = null;
 
   function scan() {
     const table = document.querySelector('[data-auto="sold-listings-table"]');
     if (!table) return null;
     const rows = rowsFor(table);
     if (!rows) return null;
+    if (rows === lastRows && table === lastTable && capturedFor === location.pathname && table.hasAttribute("data-lr-deals")) {
+      return { table, rows };
+    }
+    lastRows = rows;
+    lastTable = table;
     if (capturedFor !== location.pathname) {
       capturedFor = location.pathname;
       captured = new Map();
