@@ -557,6 +557,12 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
       if (value !== undefined && value !== null && value !== "") merged[field] = value;
     }
     merged.priceHistory = priceHistory;
+    // אותה דירה שפורסמה שוב בפוסט חדש: נשמרים כל הקישורים, והתאריך שבו נראתה לראשונה
+    if (Array.isArray(stored.postUrls) || Array.isArray(record.postUrls)) {
+      merged.postUrls = [...new Set([...(stored.postUrls || []), ...(record.postUrls || [])])].slice(-20);
+      merged.repostCount = merged.postUrls.length;
+    }
+    if (stored.firstSeenAt) merged.firstSeenAt = stored.firstSeenAt;
     return merged;
   }
   function sameExceptTime(a, b) {

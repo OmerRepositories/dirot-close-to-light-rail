@@ -53,6 +53,20 @@ test("applyCachePatch merge (Facebook): keeps notes and history, adds a new pric
   assert.deepEqual(merged.priceHistory.map((point) => point.price), [2_000_000, 1_900_000]);
 });
 
+test("a Facebook repost of the same apartment updates the same listing: new link, price point, first-seen kept", () => {
+  const stored = { "facebook:apt-x": { updatedAt: 5, firstSeenAt: 5, price: 2_300_000, postUrls: ["https://www.facebook.com/groups/g/posts/1/"], priceHistory: [{ price: 2_300_000, at: 5, src: "page" }] } };
+  const repost = LRSync.applyCachePatch(stored, [{
+    key: "facebook:apt-x",
+    record: { updatedAt: 90, firstSeenAt: 90, price: 2_150_000, url: "https://www.facebook.com/groups/g/posts/2/", postUrls: ["https://www.facebook.com/groups/g/posts/2/"] },
+    existed: false,
+    merge: true,
+  }]).cache["facebook:apt-x"];
+  assert.equal(repost.firstSeenAt, 5);
+  assert.equal(repost.repostCount, 2);
+  assert.equal(repost.url, "https://www.facebook.com/groups/g/posts/2/");
+  assert.deepEqual(repost.priceHistory.map((point) => point.price), [2_300_000, 2_150_000]);
+});
+
 test("applyCachePatch prunes only records that were not updated since", () => {
   const cache = { "yad2:old": { updatedAt: 1 }, "yad2:touched": { updatedAt: 9 } };
   const result = LRSync.applyCachePatch(cache, [], [["yad2:old", 1], ["yad2:touched", 3], ["yad2:none", 1]]);

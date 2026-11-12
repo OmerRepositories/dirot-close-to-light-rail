@@ -166,15 +166,34 @@
       updatedAt: Date.now(),
     };
     record.priceHistory = Number.isFinite(record.price) ? [{ price: record.price, at: record.updatedAt, src: "page" }] : [];
-    const signature = JSON.stringify({ ...record, updatedAt: 0, priceHistory: 0 });
+    record.postUrls = [link.url];
+    record.firstSeenAt = record.updatedAt;
+    const signature = JSON.stringify({ ...record, updatedAt: 0, priceHistory: 0, firstSeenAt: 0 });
     if (entry.savedSignature === signature) return;
     entry.savedSignature = signature;
     try {
       chrome.runtime.sendMessage(
-        { type: "lightrail:cache-patch", puts: [{ key: `facebook:${link.id}`, record, existed: false, merge: true }], prunes: [] },
+        { type: "lightrail:cache-patch", puts: [{ key: facebookListingKey(record, address, link), record, existed: false, merge: true }], prunes: [] },
         () => void chrome.runtime.lastError
       );
     } catch {}
+  }
+
+  // בפייסבוק לא עורכים פוסט ישן – מפרסמים פוסט חדש. כדי שאותה דירה תהיה מודעה אחת (והשינוי במחיר
+  // יופיע בהיסטוריה), המפתח הוא "טביעת אצבע" של הדירה: עיר + רחוב ומספר בית + שטח (או חדרים) –
+  // ולא מזהה הפוסט. בלי מספר בית אי אפשר לזהות בוודאות, ואז כל פוסט נשמר בנפרד.
+  function facebookListingKey(record, address, link) {
+    const norm = (value) => String(value || "").replace(/["'״׳`]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+    const street = norm(address.street);
+    const size = Number.isFinite(record.sqm) ? `${Math.round(record.sqm)}מר` : Number.isFinite(record.rooms) ? `${record.rooms}חד` : "";
+    if (!/\d/.test(street) || !record.city || !size) return `facebook:${link.id}`;
+    const fingerprint = `${norm(record.city)}|${street}|${size}|${Number.isFinite(record.floor) ? record.floor : ""}`;
+    let hash = 2166136261;
+    for (let i = 0; i < fingerprint.length; i++) {
+      hash ^= fingerprint.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `facebook:apt-${(hash >>> 0).toString(36)}`;
   }
 
   // הסריקה רצה על כל שינוי בפיד; קריאת הטקסט וסיווג הפוסט חוזרים רק כשהתוכן שלו השתנה
