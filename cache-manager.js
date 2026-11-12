@@ -2502,6 +2502,7 @@ function setActiveTab(tab) {
   if (tab === "priceChanges" && timelineDirty) renderPriceTimeline();
   if (tab === "dashboard") renderDashboard();
   if (tab === "sync") renderSyncPanel();
+  if (tab === "refresh") renderRefreshPlan();
   syncNavMenus();
 }
 
@@ -3084,7 +3085,7 @@ async function loadRefreshSchedule() {
       );
       $("refreshDelay").value = String(refreshDelaySec);
     }
-    $("refreshScope").value = schedule && schedule.uncheckedOnly ? "unchecked" : "filtered";
+    $("refreshScope").value = schedule && schedule.uncheckedOnly ? "unchecked" : "all";
     if (schedule && schedule.enabled) $("refreshSite").value = normalizeRefreshSite(schedule.site);
     const nextRun = alarm && Number.isFinite(alarm.scheduledTime)
       ? new Date(alarm.scheduledTime).toLocaleString("he-IL")
@@ -3548,6 +3549,61 @@ function openNextListing() {
   });
 }
 
+// אילו מודעות ייכנסו לרענון, ולמה האחרות לא – כדי שיהיה ברור למה "רק 134 מתוך אלפים".
+// scope: "all" = כל המודעות השמורות, "filtered" = לפי המסננים בטבלת "מודעות", "unchecked" = רק "לא נבדקה".
+// מודעות "לא רלוונטיות" (חסרים מאפייני חובה) מדלגות, אלא אם סימנת לכלול אותן.
+function refreshPlan(options = {}) {
+  const scope = options.uncheckedOnly === true ? "unchecked" : options.scheduled === true ? "all" : $("refreshScope").value;
+  const uncheckedOnly = scope === "unchecked";
+  const includeIrrelevant = options.scheduled === true ? false : $("refreshIncludeIrrelevant").checked;
+  const site = normalizeRefreshSite(options.site || $("refreshSite").value);
+  const siteName = REFRESH_SITE_NAMES[site];
+  const allListings = Object.entries(cache).filter(([, record]) => recordType(record) === "listing");
+  // "לפי המסננים": תמיד מסנני טבלת המודעות (לא הטבלה האחרונה שצוירה – "חיפוש מודעה" בלי מסננים ריק)
+  const source = scope === "filtered" ? filterRecordsFor(false).list.filter(([, record]) => recordType(record) === "listing") : allListings;
+  const counts = {
+    total: allListings.length,
+    filteredOut: allListings.length - source.length,
+    otherSite: 0,
+    alreadyChecked: 0,
+    removed: 0,
+    noUrl: 0,
+    irrelevant: 0,
+  };
+  const queue = source.filter(([key, record]) => {
+    if (site !== "all" && recordSite(key) !== site) { counts.otherSite++; return false; }
+    if (uncheckedOnly && (!["yad2", "madlan"].includes(recordSite(key)) || ["active", "removed"].includes(record.listingStatus))) {
+      counts.alreadyChecked++;
+      return false;
+    }
+    // מודעה שכבר סומנה "הוסרה" לא נפתחת שוב (כל המודעות = פעילות ושעוד לא נבדקו)
+    if (record.listingStatus === "removed") { counts.removed++; return false; }
+    if (!refreshableListingUrl(key, record)) { counts.noUrl++; return false; }
+    if (!includeIrrelevant && listingRelevance(record).irrelevant) { counts.irrelevant++; return false; }
+    return true;
+  });
+  return { queue, counts, scope, uncheckedOnly, site, siteName };
+}
+
+function refreshPlanText(plan) {
+  const n = (value) => value.toLocaleString("he-IL");
+  const { counts } = plan;
+  const parts = [];
+  if (counts.filteredOut) parts.push(`${n(counts.filteredOut)} לא מוצגות עכשיו בעמוד "מודעות" (בגלל החיפוש/הסינון שם)`);
+  if (counts.otherSite) parts.push(`${n(counts.otherSite)} מאתר אחר`);
+  if (counts.alreadyChecked) parts.push(`${n(counts.alreadyChecked)} כבר נבדקו (פעילה / הוסרה)`);
+  if (counts.removed) parts.push(`${n(counts.removed)} כבר סומנו „הוסרה”`);
+  if (counts.noUrl) parts.push(`${n(counts.noUrl)} בלי קישור תקין`);
+  if (counts.irrelevant) parts.push(`${n(counts.irrelevant)} לא רלוונטיות (חסרים מאפייני חובה)`);
+  return `ירועננו ${n(plan.queue.length)} מתוך ${n(counts.total)} מודעות שמורות${parts.length ? ` · לא ירועננו: ${parts.join(" · ")}` : ""}`;
+}
+
+function renderRefreshPlan() {
+  const host = $("refreshPlan");
+  if (!host || refreshQueue.length) return;
+  host.textContent = refreshPlanText(refreshPlan());
+}
+
 async function startRefresh(options = {}) {
   if (refreshQueue.length || refreshStarting) return;
   refreshStarting = true;
@@ -3567,29 +3623,9 @@ async function startRefresh(options = {}) {
     updateRefreshButtons();
     return;
   }
-  const uncheckedOnly = options.uncheckedOnly === true || $("refreshScope").value === "unchecked";
-  const site = normalizeRefreshSite(options.site || $("refreshSite").value);
-  const siteName = REFRESH_SITE_NAMES[site];
-  // תמיד לפי מסנני טבלת המודעות (לא לפי הטבלה האחרונה שצוירה – מסך "חיפוש מודעה" בלי מסננים ריק)
-  const sourceRecords = options.scheduled === true
-    ? Object.entries(cache)
-    : filterRecordsFor(false).list;
-  // מודעות "לא רלוונטיות" (חסרים בהן מאפייני חובה) לא נפתחות שוב – חוסך אלפי טעינות דף
-  let irrelevantSkipped = 0;
-  refreshQueue = sourceRecords.filter(([key, record]) => {
-    if (
-      recordType(record) !== "listing" ||
-      !refreshableListingUrl(key, record) ||
-      (site !== "all" && recordSite(key) !== site) ||
-      (uncheckedOnly &&
-        (!["yad2", "madlan"].includes(recordSite(key)) || ["active", "removed"].includes(record.listingStatus)))
-    ) return false;
-    if (listingRelevance(record).irrelevant) {
-      irrelevantSkipped++;
-      return false;
-    }
-    return true;
-  });
+  const plan = refreshPlan(options);
+  const { uncheckedOnly, siteName } = plan;
+  refreshQueue = plan.queue;
   // קודם מודעות שלא רועננו אף פעם, אחר כך מהישנה לחדשה: עצירה והפעלה מחדש ממשיכות מאיפה שלא הגענו
   try {
     const storedLog = await storageGet(REFRESH_LOG_KEY);
@@ -3609,13 +3645,11 @@ async function startRefresh(options = {}) {
   refreshLoadCount = 0;
   refreshPaused = false;
   refreshRunScheduled = options.scheduled === true;
-  const irrelevantNote = irrelevantSkipped
-    ? ` ${irrelevantSkipped.toLocaleString("he-IL")} מודעות לא רלוונטיות לא ירועננו.`
-    : "";
+  const irrelevantNote = ` ${refreshPlanText(plan)}.`;
   if (!refreshQueue.length) {
     const message = (uncheckedOnly
         ? `אין מודעות${siteName ? ` ${siteName}` : ""} בסטטוס „לא נבדקה” עם קישור תקין.`
-        : `אין בתוצאות המסוננות מודעות${siteName ? ` ${siteName}` : ""} עם קישור תקין.`) + irrelevantNote;
+        : `אין מודעות${siteName ? ` ${siteName}` : ""} לרענון.`) + irrelevantNote;
     setRefreshStatus(message, true);
     refreshStarting = false;
     updateRefreshButtons();
@@ -3628,7 +3662,7 @@ async function startRefresh(options = {}) {
   refreshStarting = false;
   updateRefreshButtons();
   const scopeText = uncheckedOnly
-    ? "מודעות יד2 שלא נבדקו"
+    ? `מודעות${siteName ? ` ${siteName}` : ""} שלא נבדקו`
     : `מודעות${siteName ? ` ${siteName}` : ""}`;
   const todayNote = refreshedToday
     ? ` ${refreshedToday.toLocaleString("he-IL")} שכבר רועננו היום יגיעו בסוף.`
@@ -3924,6 +3958,7 @@ function applyCacheToViews() {
   renderRows();
   if (activeTab === "delete") renderListingDeletionPreview();
   if (activeTab === "dashboard") renderDashboard();
+  if (activeTab === "refresh") renderRefreshPlan();
   if (selectedKey && cache[selectedKey]) openRecord(selectedKey);
   else if (selectedKey) closeDetails();
 }
@@ -5768,7 +5803,7 @@ Promise.all([storageGet(), storageGet(REFRESH_DELAY_KEY), storageGet(FONT_SCALE_
       const uncheckedOnly = params.get("uncheckedOnly") === "1";
       history.replaceState(null, "", location.pathname);
       setActiveTab("refresh");
-      $("refreshScope").value = uncheckedOnly ? "unchecked" : "filtered";
+      $("refreshScope").value = uncheckedOnly ? "unchecked" : "all";
       const schedule = await storageGet(REFRESH_SCHEDULE_KEY);
       // האתר נלקח מהתזמון השמור (גם תזמון ישן בלי שדה site = כל האתרים)
       const site = normalizeRefreshSite(params.get("site") || (schedule && schedule.site));
@@ -6202,3 +6237,6 @@ loadSyncProgress().catch(() => {});
 renderSyncPanel().then(() => {
   if (syncPanelState && syncPanelState.enabled && !syncPanelState.needsLogin) runOnlineSyncNow(true);
 });
+
+// תצוגה מקדימה: כמה מודעות ירועננו ולמה האחרות לא
+for (const id of ["refreshScope", "refreshSite", "refreshIncludeIrrelevant"]) $(id).addEventListener("change", renderRefreshPlan);

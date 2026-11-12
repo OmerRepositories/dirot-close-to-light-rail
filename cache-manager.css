@@ -1196,3 +1196,6 @@ tbody tr:hover .favorite-street-toggle, .favorite-street-toggle:focus-visible { 
 .broker-cell { min-width: 120px; max-width: 220px; white-space: normal; line-height: 1.3; }
 .broker-office { display: block; font-weight: 600; }
 .broker-agent { display: block; color: var(--muted); font-size: 12px; }
+.refresh-include-irrelevant { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.refresh-plan { flex: 1 1 100%; margin: 0; padding: 8px 10px; border-radius: var(--r-sm); color: var(--ink); background: var(--surface-alt); font-size: 13px; }
+.refresh-plan:empty { display: none; }

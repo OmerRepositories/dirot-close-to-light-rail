@@ -706,7 +706,8 @@
             <label class="refresh-scope">
         <span>אילו מודעות לרענן?</span>
         <select id="refreshScope">
-          <option value="filtered">כל המודעות</option>
+          <option value="all">כל המודעות השמורות</option>
+          <option value="filtered">רק מה שמוצג עכשיו בעמוד „מודעות” (אחרי החיפוש והסינון שעשית שם)</option>
           <option value="unchecked">רק מודעות בסטטוס „לא נבדקה”</option>
         </select>
       </label>
@@ -718,6 +719,10 @@
           <option value="madlan">רק מדלן</option>
         </select>
       </label>
+      <label class="refresh-include-irrelevant" title="מודעות שחסר בהן מאפיין חובה מההגדרות. בדרך כלל אין צורך לפתוח אותן שוב – אבל אם שינית את מאפייני החובה, כדאי">
+        <input type="checkbox" id="refreshIncludeIrrelevant"> גם מודעות לא רלוונטיות
+      </label>
+      <p id="refreshPlan" class="refresh-plan" aria-live="polite"></p>
             <label class="delay-field">
         <span>המתנה אחרי טעינת דף (שניות, מינימום 5)</span>
         <input id="refreshDelay" type="number" min="5" max="600" step="5" value="30">
