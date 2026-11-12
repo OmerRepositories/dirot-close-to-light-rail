@@ -1,12 +1,39 @@
 // Scope Facebook listing analysis to a group's main feed, not profiles, pages, or individual posts –
 // and only to groups that look like real-estate groups (by the group's name), so the extension does not
 // scan every post in unrelated groups. A group can also be enabled by hand (stored per group id).
+// The groups feed (/groups/feed/, posts from all of the user's groups) is supported too: there each post
+// is judged by the group it came from.
 (() => {
-  const isGroupFeed = (pathname) => /^\/groups\/[^/]+\/?$/.test(String(pathname || ""));
+  // נתיבים תחת /groups/ שאינם קבוצה
+  const NOT_A_GROUP = /^(?:feed|joins|discover|create|notifications|search|requests|your_groups|invites|membership|saved)$/i;
   const groupId = (pathname) => {
     const match = String(pathname || "").match(/^\/groups\/([^/]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
+    if (!match) return null;
+    const id = decodeURIComponent(match[1]);
+    return NOT_A_GROUP.test(id) ? null : id;
   };
+  // הפיד הראשי של קבוצה אחת: /groups/<id>/
+  const isGroupFeed = (pathname) => /^\/groups\/[^/]+\/?$/.test(String(pathname || "")) && groupId(pathname) !== null;
+  // הפיד של כל הקבוצות: /groups/feed/
+  const isGroupsHomeFeed = (pathname) => /^\/groups\/feed\/?$/i.test(String(pathname || ""));
+
+  // הקבוצה של פוסט בפיד הקבוצות: הקישור לדף הראשי של הקבוצה (/groups/<id>/) עם שם.
+  // (קישורים לפוסט עצמו או למפרסם בתוך הקבוצה – /groups/<id>/posts/..., /groups/<id>/user/... – לא נחשבים)
+  function groupFromLinks(links) {
+    for (const link of links || []) {
+      let url;
+      try {
+        url = new URL(link.href, "https://www.facebook.com/");
+      } catch {
+        continue;
+      }
+      if (!/(?:^|\.)facebook\.com$/i.test(url.hostname) || !isGroupFeed(url.pathname)) continue;
+      const name = String(link.text || "").replace(/\s+/g, " ").trim();
+      if (name.length < 2) continue;
+      return { id: groupId(url.pathname), name };
+    }
+    return null;
+  }
 
   // מילים בשם הקבוצה שמעידות על קבוצת דירות / נדל"ן – כמה שיותר, בעברית ובאנגלית.
   // (מילה אחת מספיקה; הפוסטים עצמם עדיין נבדקים בנפרד אם הם מודעה, כך שקבוצה כללית מדי לא מזיקה)
@@ -39,6 +66,15 @@
     return REAL_ESTATE_NAME.test(String(name || ""));
   }
 
-  globalThis.LRFacebookPage = { isGroupFeed, groupId, isRealEstateGroupName };
-  if (typeof module !== "undefined") module.exports = { isGroupFeed, groupId, isRealEstateGroupName };
+  // עיר מתוך שם הקבוצה – רק כשהשם מציין עיר אחת. "דירות בקריית אונו, אור יהודה, יהוד" לא אומרת
+  // באיזו עיר הפוסט; עדיף בלי עיר מאשר עיר שגויה (מרחק שגוי מהרכבת שנראה מדויק).
+  function groupCityContext(name, findCities) {
+    if (!name || typeof findCities !== "function") return null;
+    const cities = findCities(String(name));
+    return cities.length === 1 ? cities[0] : null;
+  }
+
+  const api = { isGroupFeed, isGroupsHomeFeed, groupId, groupFromLinks, isRealEstateGroupName, groupCityContext };
+  globalThis.LRFacebookPage = api;
+  if (typeof module !== "undefined") module.exports = api;
 })();

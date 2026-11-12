@@ -24,14 +24,25 @@
   const fmtDistance = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + ' ק"מ' : m + " מ׳");
 
   // ---------- הקשר מהקבוצה (שם הקבוצה לעיתים כולל עיר) ----------
-  function groupContext() {
-    const h1 = document.querySelector("h1");
-    const sources = [h1 ? h1.textContent : "", document.title || ""];
-    for (const s of sources) {
-      const c = LR.findCity(s || "");
-      if (c) return c;
-    }
-    return null;
+  // בפיד של קבוצה – שם הקבוצה בראש הדף; בפיד הקבוצות (/groups/feed/) – הקבוצה של הפוסט עצמו.
+  // עיר רק כששם הקבוצה מציין עיר אחת ("דירות בפתח תקווה"); בקבוצה של כמה ערים אין ניחוש.
+  const onGroupsHomeFeed = () => LRFacebookPage.isGroupsHomeFeed(location.pathname);
+  function pageGroupName() {
+    const h1 = document.querySelector('[role="main"] h1') || document.querySelector("h1");
+    const title = String(document.title || "").replace(/^\(\d+\)\s*/, "").replace(/\s*\|\s*Facebook\s*$/i, "");
+    return (h1 && h1.textContent.trim()) || title;
+  }
+  function articleGroup(article) {
+    if (!article) return null;
+    if (article._lrGroup !== undefined) return article._lrGroup;
+    const links = [...article.querySelectorAll('a[href*="/groups/"]')].slice(0, 12).map((a) => ({ href: a.href, text: a.textContent }));
+    const group = LRFacebookPage.groupFromLinks(links);
+    if (group) article._lrGroup = group; // עוד לא נטען – ננסה שוב בסריקה הבאה
+    return group;
+  }
+  function groupContext(article) {
+    const name = onGroupsHomeFeed() ? (articleGroup(article) || {}).name : pageGroupName();
+    return LRFacebookPage.groupCityContext(name, LR.findCities);
   }
 
   // ---------- קריאת טקסט ----------
@@ -143,7 +154,8 @@
     const link = postLink(entry.article);
     if (!link) return; // הקישור לפוסט עוד לא נטען – ננסה שוב בפעם הבאה
     entry.savedInput = input;
-    const address = LR.parseFreeAddress(text, groupContext());
+    const context = groupContext(entry.article);
+    const address = LR.parseFreeAddress(text, context);
     const parsed = entry.parsed;
     const roomsFloor = LR.extractRoomsFloorFree(text);
     const res = entry.res && entry.res.ok ? entry.res : null;
@@ -153,7 +165,7 @@
       indexedFrom: "page",
       title: text.split("\n").map((line) => line.trim()).find((line) => line.length > 3) || "",
       address: [address.street, address.city].filter(Boolean).join(", "),
-      city: address.city || groupContext() || "",
+      city: address.city || context || "",
       neighborhood: address.hood || "",
       url: link.url,
       price: Number.isFinite(parsed.price) && !parsed.rent ? parsed.price : undefined,
@@ -369,14 +381,19 @@
     if (!isRunning || entry.started) return;
     entry.started = true;
     const text = postText(entry.article);
-    const parsed = LR.parseFreeAddress(text, groupContext());
+    const context = groupContext(entry.article);
+    const parsed = LR.parseFreeAddress(text, context);
     const { queries } = parsed;
     entry.mapsOrigin = queries[0] && queries[0].q;
-    if (!queries.length || !LR.hasExplicitFacebookAddress(text, parsed.street)) {
+    // בלי עיר (לא בפוסט, וגם שם הקבוצה לא מציין עיר אחת) "הרצל 5" יכול להיות בכל עיר – לא מנחשים
+    const noCity = !parsed.city && !context;
+    if (!queries.length || noCity || !LR.hasExplicitFacebookAddress(text, parsed.street)) {
       renderRail(entry, {
         ok: false,
         reason: "not-found",
-        message: "נדרש רחוב ומספר בית מפורשים כדי לחשב מרחק בפייסבוק.",
+        message: noCity && parsed.street
+          ? "לא צוינה עיר בפוסט, ושם הקבוצה לא מציין עיר אחת – אי אפשר לדעת איפה הרחוב."
+          : "נדרש רחוב ומספר בית מפורשים כדי לחשב מרחק בפייסבוק.",
       });
       scheduleRefresh();
       return;
@@ -513,6 +530,15 @@
     try {
       for (const art of findPosts()) {
         let entry = entries.get(art);
+        // פיד הקבוצות: פוסט מקבוצה שאינה קבוצת דירות לא נסרק בכלל (גם לא נפתח "עוד")
+        if (!entry) {
+          const relevantGroup = articleRelevantGroup(art);
+          if (relevantGroup === null) continue; // שם הקבוצה עוד לא נטען
+          if (relevantGroup === false) {
+            entries.set(art, { relevant: false, wrap: document.createElement("i") });
+            continue;
+          }
+        }
         // קודם פותחים את הטקסט המלא; הניתוח ירוץ בסריקה הבאה, אחרי שהטקסט הוחלף
         if (expandPost(art)) continue;
         const { text, classification } = classifiedPost(art);
@@ -577,7 +603,19 @@
     return result;
   }
   function shouldRunHere() {
-    return !CFG.disableFacebook && LRFacebookPage.isGroupFeed(location.pathname) && isRealEstateGroupHere() === true;
+    if (CFG.disableFacebook) return false;
+    // פיד הקבוצות: רץ תמיד, וכל פוסט נבדק לפי הקבוצה שלו (articleRelevantGroup)
+    if (onGroupsHomeFeed()) return true;
+    return LRFacebookPage.isGroupFeed(location.pathname) && isRealEstateGroupHere() === true;
+  }
+  // דף שבו התוסף עשוי לרוץ – רק בו שווה לעבור על שינויי ה-DOM
+  const onScannablePage = () => LRFacebookPage.isGroupFeed(location.pathname) || onGroupsHomeFeed();
+  // בפיד הקבוצות: true = קבוצת דירות (או שהמשתמש הפעיל אותה), false = לא, null = עוד לא ידוע
+  function articleRelevantGroup(article) {
+    if (!onGroupsHomeFeed()) return true;
+    const group = articleGroup(article);
+    if (!group) return null;
+    return forcedGroups.has(group.id) || LRFacebookPage.isRealEstateGroupName(group.name);
   }
 
   // קבוצה שלא זוהתה כקבוצת דירות: הודעה קטנה עם אפשרות להפעיל בכל זאת
@@ -644,7 +682,7 @@
   function onPageMutation() {
     if (!settingsLoaded) return;
     const shouldRun = shouldRunHere();
-    if (shouldRun !== isRunning || (!shouldRun && LRFacebookPage.isGroupFeed(location.pathname))) {
+    if (shouldRun !== isRunning || (!shouldRun && onScannablePage())) {
       syncPageState();
     } else if (isRunning) {
       scheduleScan();
@@ -673,7 +711,7 @@
 
   routeObserver = new MutationObserver((records) => {
     // מחוץ לפיד של קבוצה (רוב הזמן בפייסבוק) – בדיקה זולה של הכתובת בלבד, בלי לעבור על כל השינויים
-    if (!isRunning && !LRFacebookPage.isGroupFeed(location.pathname)) {
+    if (!isRunning && !onScannablePage()) {
       if (groupNotice) renderGroupNotice();
       return;
     }
