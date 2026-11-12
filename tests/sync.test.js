@@ -45,8 +45,28 @@ test("remote rows merge by newest updatedAt, tombstones delete older local copie
   assert.equal(result.applied, 3);
   assert.equal("keep" in result.hashUpdates, false, "local newer version will be pushed");
   assert.equal(result.hashUpdates.gone, null);
-  assert.equal(result.hashUpdates.same, LRSync.hashRecord(cache.same));
+  assert.equal(result.hashUpdates.same, LRSync.contentHash(cache.same));
   assert.equal(cache.take.title, "local older", "input is not mutated");
+});
+
+test("only real changes are pushed: a new timestamp or listing age alone is not, and old hashes still match", () => {
+  const record = { title: "x", price: 1, updatedAt: 1, listingAgeDays: 3, listingAgeAt: 10 };
+  const hashes = { a: LRSync.contentHash(record), legacy: LRSync.hashRecord(record) };
+  const touched = { ...record, updatedAt: 99, listingAgeDays: 4, listingAgeAt: 20 };
+  assert.deepEqual(LRSync.changedKeys({ a: touched }, hashes), []);
+  assert.deepEqual(LRSync.changedKeys({ legacy: record }, hashes), [], "hash from before 1.50 still counts");
+  assert.deepEqual(LRSync.changedKeys({ a: { ...touched, price: 2 } }, hashes), ["a"]);
+});
+
+test("pull downloads full data only for listings newer than this computer has", () => {
+  const cache = { mine: { updatedAt: 50 }, old: { updatedAt: 10 } };
+  const heads = [
+    { key: "mine", client_updated_at: 50, deleted: false }, // נשלחה מכאן – כבר יש
+    { key: "old", client_updated_at: 20, deleted: false }, // חדשה יותר בשרת
+    { key: "fresh", client_updated_at: 5, deleted: false }, // אין כאן בכלל
+    { key: "gone", client_updated_at: 60, deleted: true }, // מחיקה – בלי תוכן
+  ];
+  assert.deepEqual(LRSync.keysNeedingData(heads, cache), ["old", "fresh"]);
 });
 
 test("a request the server never answers times out instead of blocking every later sync", async () => {
@@ -97,6 +117,7 @@ test("the setup SQL creates one table with row level security and no fixed proje
 function fakeSupabase({ withDeals = false } = {}) {
   const rows = new Map(); // `${user}|${key}` -> row
   const dealRows = new Map(); // `${user}|${deal_key}` -> row
+  const egress = { bytes: 0, dataRows: 0, dealRows: 0 };
   let clock = Date.parse("2026-11-07T10:00:00Z");
   const users = { "me@example.test": { id: "user-1", password: "pw-1" } };
   const tokens = new Map();
@@ -135,11 +156,17 @@ function fakeSupabase({ withDeals = false } = {}) {
         const filter = parsed.searchParams.get("updated_at");
         const since = filter ? Date.parse(filter.replace(/^gt\./, "")) : -Infinity;
         const limit = Number(parsed.searchParams.get("limit")) || 1000;
-        return reply(200, [...dealRows.values()]
-          .filter((row) => row.user_id === userId && Date.parse(row.updated_at) > since)
+        const keyFilter = parsed.searchParams.get("deal_key");
+        const keys = keyFilter ? new Set(JSON.parse(`[${keyFilter.replace(/^in\.\(/, "").replace(/\)$/, "")}]`)) : null;
+        const select = parsed.searchParams.get("select");
+        const columns = select ? select.split(",") : null;
+        const list = [...dealRows.values()]
+          .filter((row) => row.user_id === userId && Date.parse(row.updated_at) > since && (!keys || keys.has(row.deal_key)))
           .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))
           .slice(0, limit)
-          .map(({ user_id, ...row }) => row));
+          .map(({ user_id, ...row }) => (columns ? Object.fromEntries(columns.map((column) => [column, row[column]])) : row));
+        if (columns && columns.includes("price")) egress.dealRows += list.length;
+        return reply(200, list);
       }
       for (const incoming of body) {
         if (incoming.user_id !== userId) return reply(403, { message: "row level security" });
@@ -166,12 +193,21 @@ function fakeSupabase({ withDeals = false } = {}) {
       const filter = parsed.searchParams.get("updated_at");
       const since = filter ? Date.parse(filter.replace(/^gt\./, "")) : -Infinity;
       const limit = Number(parsed.searchParams.get("limit"));
+      // key=in.("a","b") – כמו PostgREST
+      const keyFilter = parsed.searchParams.get("key");
+      const keys = keyFilter
+        ? new Set(JSON.parse(`[${keyFilter.replace(/^in\.\(/, "").replace(/\)$/, "")}]`))
+        : null;
+      const columns = (parsed.searchParams.get("select") || "key,data,deleted,client_updated_at,updated_at").split(",");
       const list = [...rows.values()]
-        .filter((row) => row.user_id === userId && Date.parse(row.updated_at) > since)
+        .filter((row) => row.user_id === userId && Date.parse(row.updated_at) > since && (!keys || keys.has(row.key)))
         .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))
         .slice(0, limit)
-        .map(({ key, data, deleted, client_updated_at, updated_at }) => ({ key, data, deleted, client_updated_at, updated_at }));
-      return reply(200, list);
+        .map((row) => Object.fromEntries(columns.map((column) => [column, row[column]])));
+      const response = reply(200, list);
+      egress.bytes += JSON.stringify(list).length;
+      if (columns.includes("data")) egress.dataRows += list.length;
+      return response;
     }
     for (const incoming of body) {
       if (incoming.user_id !== userId) return reply(403, { message: "row level security" });
@@ -185,7 +221,7 @@ function fakeSupabase({ withDeals = false } = {}) {
     }
     return reply(201);
   }
-  return { fetch, rows, dealRows };
+  return { fetch, rows, dealRows, egress };
 }
 
 function computer(server, initialCache) {
@@ -463,6 +499,32 @@ test("two computers stay in sync through the database", async () => {
 
   // הסיסמה לא נשמרת במחשב
   assert.doesNotMatch(JSON.stringify(a.store), /pw-1/);
+});
+
+test("a computer never downloads back the listings it sent itself; another computer downloads only real changes", async () => {
+  const server = fakeSupabase();
+  const initial = {};
+  for (let i = 0; i < 40; i++) initial[`yad2:r${i}`] = { title: `R${i}`, price: 1_000_000 + i, priceHistory: Array(20).fill({ price: 1, at: 1 }), updatedAt: 100 };
+  const a = computer(server, initial);
+  assert.equal((await a.connect()).ok, true);
+  const b = computer(server, {});
+  assert.equal((await b.connect()).ok, true);
+  assert.equal(Object.keys(b.cache()).length, 40);
+
+  // A משנה מודעה אחת ונוגע ב-5 (רק חותמת זמן / גיל מודעה) – נשלחת רק האחת
+  const next = { ...a.cache() };
+  next["yad2:r1"] = { ...next["yad2:r1"], price: 999, updatedAt: 900 };
+  for (let i = 2; i < 7; i++) next[`yad2:r${i}`] = { ...next[`yad2:r${i}`], updatedAt: 900, listingAgeDays: 5 };
+  await a.setCache(next);
+  server.egress.dataRows = 0;
+  await a.syncNow();
+  assert.equal(server.egress.dataRows, 0, "A does not download its own listing back");
+  assert.equal(server.rows.get("user-1|yad2:r2").client_updated_at, 100, "a timestamp-only touch is not sent");
+
+  server.egress.dataRows = 0;
+  await b.syncNow();
+  assert.equal(server.egress.dataRows, 1, "B downloads only the one listing that changed");
+  assert.equal(b.cache()["yad2:r1"].price, 999);
 });
 
 test("wrong password or a missing table give a clear error and leave sync off", async () => {

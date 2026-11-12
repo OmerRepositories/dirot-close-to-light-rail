@@ -205,14 +205,50 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
   }
 
   // רשומות מקומיות שהשתנו מאז הסנכרון האחרון (לפי hash)
+  // שדות שמשתנים בלי שהמודעה עצמה השתנתה: חותמת הזמן (גם "רענון" של 24 שעות) וגיל המודעה שמחושב
+  // מחדש כל יום. שינוי רק בהם לא נשלח לשרת – אחרת כל צפייה במודעה העלתה אותה שוב וכל מחשב הוריד אותה.
+  const VOLATILE_FIELDS = ["updatedAt", "listingAgeDays", "listingAgeAt"];
+  function contentHash(record) {
+    if (!record || typeof record !== "object" || Array.isArray(record)) return `h2:${hashRecord(record)}`;
+    const copy = { ...record };
+    for (const field of VOLATILE_FIELDS) delete copy[field];
+    return `h2:${hashRecord(copy)}`;
+  }
+  // hash שנשמר לפני 1.50 (על כל הרשומה) עדיין נחשב תואם – כדי לא לשלוח הכל מחדש פעם אחת
+  function hashMatches(known, record) {
+    if (!known) return false;
+    if (known === contentHash(record)) return true;
+    return !String(known).startsWith("h2:") && known === hashRecord(record);
+  }
+
   function changedKeys(cache, hashes) {
     const changed = [];
     const known = hashes && typeof hashes === "object" ? hashes : {};
     for (const [key, record] of Object.entries(cache && typeof cache === "object" ? cache : {})) {
       if (!record || typeof record !== "object") continue;
-      if (known[key] !== hashRecord(record)) changed.push(key);
+      if (!hashMatches(known[key], record)) changed.push(key);
     }
     return changed;
+  }
+
+  // משיכה בשני שלבים: קודם רק "כותרות" (מפתח + זמן, בלי תוכן), ורק למודעות שבאמת חדשות יותר
+  // ממה שיש במחשב מורידים את התוכן. כך מודעות שהמחשב הזה עצמו שלח (ואלה שכבר מעודכנות) לא יורדות שוב.
+  function keysNeedingData(heads, cache, pendingDeletes = new Map()) {
+    const need = [];
+    for (const head of Array.isArray(heads) ? heads : []) {
+      if (!head || typeof head.key !== "string" || !head.key) continue;
+      if (head.key === SETTINGS_ROW_KEY) {
+        need.push(head.key);
+        continue;
+      }
+      if (head.deleted) continue; // מחיקה לא צריכה תוכן
+      const remoteAt = Number(head.client_updated_at) || 0;
+      if (pendingDeletes.has(head.key) && remoteAt <= pendingDeletes.get(head.key)) continue;
+      const local = cache && cache[head.key];
+      const localAt = local && Number.isFinite(local.updatedAt) ? local.updatedAt : 0;
+      if (!local || localAt < remoteAt) need.push(head.key);
+    }
+    return need;
   }
 
   // מיזוג שורות מהשרת לתוך המטמון המקומי. הגרסה עם updatedAt מאוחר יותר מנצחת.
@@ -240,8 +276,8 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
         continue;
       }
       if (!row.data || typeof row.data !== "object" || Array.isArray(row.data)) continue;
-      const remoteHash = hashRecord(row.data);
-      if (local && hashRecord(local) === remoteHash) {
+      const remoteHash = contentHash(row.data);
+      if (local && contentHash(local) === remoteHash) {
         hashUpdates[row.key] = remoteHash;
         continue;
       }
@@ -460,6 +496,28 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
     return (await call(settings, `/rest/v1/${DEALS_TABLE}?${query}`, { token: settings.accessToken })) || [];
   }
 
+  // רק מפתח, זמן ומחיקה – עשרות בתים לשורה במקום כל המודעה
+  async function fetchChangeHeadsSince(settings, sinceIso, limit = PULL_PAGE) {
+    const query =
+      `select=key,deleted,client_updated_at,updated_at` +
+      `&updated_at=gt.${encodeURIComponent(sinceIso)}&order=updated_at.asc&limit=${limit}`;
+    return (await call(settings, `/rest/v1/${TABLE}?${query}`, { token: settings.accessToken })) || [];
+  }
+
+  const DATA_BY_KEYS_CHUNK = 80;
+  // התוכן המלא רק למפתחות האלה (במנות, כדי שהכתובת לא תהיה ארוכה מדי)
+  async function fetchRowsByKeys(settings, keys) {
+    const out = [];
+    for (let index = 0; index < keys.length; index += DATA_BY_KEYS_CHUNK) {
+      const part = keys.slice(index, index + DATA_BY_KEYS_CHUNK);
+      const list = part.map((key) => `"${String(key).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",");
+      const query = `select=key,data,deleted,client_updated_at,updated_at&key=in.(${encodeURIComponent(list)})&limit=${part.length}`;
+      const rows = await call(settings, `/rest/v1/${TABLE}?${query}`, { token: settings.accessToken });
+      if (Array.isArray(rows)) out.push(...rows);
+    }
+    return out;
+  }
+
   async function fetchChangesSince(settings, sinceIso, limit = PULL_PAGE) {
     const query =
       `select=key,data,deleted,client_updated_at,updated_at` +
@@ -552,6 +610,11 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
     PULL_OVERLAP_MS,
     SETUP_SQL,
     hashRecord,
+    contentHash,
+    hashMatches,
+    keysNeedingData,
+    fetchChangeHeadsSince,
+    fetchRowsByKeys,
     normalizeProjectUrl,
     changedKeys,
     mergeRemoteRows,

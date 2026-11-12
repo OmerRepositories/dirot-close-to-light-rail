@@ -390,12 +390,16 @@ const CLOUD_LABELS = { synced: "✓ בענן", pending: "⏳ ממתין" };
 
 function cloudState(key, record) {
   if (!cloudSync.enabled || !record || typeof record !== "object") return "";
-  let hash = cloudHashCache.get(record);
-  if (!hash) {
-    hash = LRSync.hashRecord(record);
-    cloudHashCache.set(record, hash);
+  const known = cloudSync.hashes[key];
+  if (!known) return "pending";
+  // אותה השוואה כמו בשליחה: שינוי רק בחותמת הזמן / גיל המודעה לא נחשב "ממתין"
+  let hashes = cloudHashCache.get(record);
+  if (!hashes) {
+    hashes = { content: LRSync.contentHash(record), legacy: LRSync.hashRecord(record) };
+    cloudHashCache.set(record, hashes);
   }
-  return cloudSync.hashes[key] === hash ? "synced" : "pending";
+  const synced = known === hashes.content || (!String(known).startsWith("h2:") && known === hashes.legacy);
+  return synced ? "synced" : "pending";
 }
 
 function cloudTime(timestamp) {

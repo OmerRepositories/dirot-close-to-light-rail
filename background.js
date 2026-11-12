@@ -643,7 +643,7 @@ async function syncPush(settings) {
       await upsertListings(part.slice(0, half));
       await upsertListings(part.slice(half));
     }
-    for (const key of part) hashes[key] = LRSync.hashRecord(cache[key]);
+    for (const key of part) hashes[key] = LRSync.contentHash(cache[key]);
     pushed += part.length;
     await chrome.storage.local.set({ [LRSync.HASHES_KEY]: hashes });
     syncStep("pushListings", { done: pushed, detail: `נשלחו ${countText(pushed)} מתוך ${countText(total)}` });
@@ -685,6 +685,7 @@ async function syncPull(settings) {
   let received = 0;
   let removed = 0;
   let pages = 0;
+  let skippedData = 0;
   syncStep("pullListings", { status: "running", detail: `בודק כמה מודעות השתנו בשרת ${sinceText(since)}…` });
   const total = await LRSync.countChangesSince(settings, since);
   syncStep("pullListings", {
@@ -694,14 +695,26 @@ async function syncPull(settings) {
   const pageState = { pageSize: LRSync.PULL_PAGE };
   for (;;) {
     if (total === 0) break;
-    const rows = await fetchPageAdaptive((from, limit) => LRSync.fetchChangesSince(settings, from, limit), since, pageState, "pullListings");
-    if (!rows.length) break;
+    // שלב 1: רק כותרות (מפתח + זמן) – קטן מאוד
+    const heads = await fetchPageAdaptive((from, limit) => LRSync.fetchChangeHeadsSince(settings, from, limit), since, pageState, "pullListings");
+    if (!heads.length) break;
     pages++;
-    received += rows.length;
+    received += heads.length;
     syncStep("pullListings", {
       done: received,
       detail: `עמוד ${pages}: התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} – משווה למידע שבמחשב…`,
     }, true);
+    // שלב 2: תוכן מלא רק למודעות שחדשות יותר ממה שיש כאן (לא מודעות שהמחשב הזה שלח בעצמו)
+    const before = await chrome.storage.local.get(LRSync.TOMBSTONES_KEY);
+    const pendingBefore = new Map(
+      (Array.isArray(before[LRSync.TOMBSTONES_KEY]) ? before[LRSync.TOMBSTONES_KEY] : [])
+        .filter((item) => item && item.key)
+        .map((item) => [item.key, item.at])
+    );
+    const needKeys = LRSync.keysNeedingData(heads, await LRListingStore.read(chrome.storage.local), pendingBefore);
+    skippedData += heads.filter((head) => !head.deleted).length - needKeys.length;
+    const fullRows = needKeys.length ? await LRSync.fetchRowsByKeys(settings, needKeys) : [];
+    const rows = [...heads.filter((head) => head.deleted && head.key !== LRSync.SETTINGS_ROW_KEY), ...fullRows];
     // באותו מנעול של כתיבות הלשוניות – כדי שמיזוג מהשרת וכתיבה מלשונית לא ידרסו זה את זה
     const { merge, relevantRows } = await withListingCacheLock(async () => {
     const stored = await chrome.storage.local.get([LRSync.HASHES_KEY, LRSync.TOMBSTONES_KEY]);
@@ -733,20 +746,20 @@ async function syncPull(settings) {
     });
     applied += merge.applied;
     removed += relevantRows.filter((row) => row.deleted).length;
-    const last = rows[rows.length - 1].updated_at;
+    const last = heads[heads.length - 1].updated_at;
     if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
     since = last;
     await saveSyncSettings(fullPull ? { listingsFullPullCursor: cursor } : { cursor });
     syncStep("pullListings", {
       detail: `התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} · ${countText(applied)} עדכנו את המחשב הזה (השאר כבר היו מעודכנים)`,
     });
-    if (rows.length < pageState.pageSize) break;
+    if (heads.length < pageState.pageSize) break;
   }
   syncStep("pullListings", {
     status: "done",
     done: received,
     detail: received
-      ? `התקבלו ${countText(received)} שינויים · ${countText(applied)} עודכנו במחשב הזה${removed ? ` (כולל ${countText(removed)} מחיקות)` : ""} · ${countText(received - applied)} כבר היו מעודכנים`
+      ? `התקבלו ${countText(received)} שינויים · ${countText(applied)} עודכנו במחשב הזה${removed ? ` (כולל ${countText(removed)} מחיקות)` : ""} · ${countText(received - applied)} כבר היו מעודכנים${skippedData ? ` (${countText(skippedData)} מהם בלי להוריד את התוכן – חוסך תעבורה)` : ""}`
       : "אין שינויים חדשים בשרת",
   });
   await saveSyncSettings({
@@ -832,10 +845,13 @@ async function syncDeals(settings) {
     detail: total === 0 ? "אין עסקאות חדשות בשרת" : `${total === null ? "" : `${countText(total)} עסקאות `}${sinceText(since)} – מוריד…`,
   }, true);
   const pageState = { pageSize: LRSync.PULL_PAGE };
+  // עסקאות יורדות במלואן: שורה קטנה (~300 בתים), והשרת משלים בה שדות ומקורות ממחשבים אחרים –
+  // דילוג על עסקה שכבר יש במחשב היה מפספס את ההשלמות האלה
   for (;;) {
     if (total === 0) break;
     const rows = await fetchPageAdaptive((from, limit) => LRSync.fetchDealChangesSince(settings, from, limit), since, pageState, "pullDeals");
     if (!rows.length) break;
+    const lastHead = rows[rows.length - 1];
     received += rows.length;
     syncStep("pullDeals", { done: received, detail: `התקבלו ${countText(received)}${total ? ` מתוך ${countText(total)}` : ""} – ממזג עם העסקאות שבמחשב…` }, true);
     const items = rows.map(LRSync.rowToDeal).filter(Boolean);
@@ -852,7 +868,7 @@ async function syncDeals(settings) {
     }
     await chrome.storage.local.set({ [LRSync.DEAL_HASHES_KEY]: hashes });
     pulled += merged.added + merged.updated;
-    const last = rows[rows.length - 1].updated_at;
+    const last = lastHead.updated_at;
     if (!cursor || Date.parse(last) > Date.parse(cursor)) cursor = last;
     since = last;
     // התקדמות נשמרת אחרי כל עמוד (אלפי עסקאות), כדי שסבב שנקטע ימשיך מאותה נקודה
@@ -863,7 +879,9 @@ async function syncDeals(settings) {
   syncStep("pullDeals", {
     status: "done",
     done: received,
-    detail: received ? `התקבלו ${countText(received)} · ${countText(pulled)} חדשות או השלימו מידע · ${countText(received - pulled)} כבר היו` : "אין עסקאות חדשות בשרת",
+    detail: received
+      ? `התקבלו ${countText(received)} · ${countText(pulled)} חדשות או השלימו מידע · ${countText(received - pulled)} כבר היו`
+      : "אין עסקאות חדשות בשרת",
   });
 
   // שליחה: רק עסקאות שהשתנו מאז הסנכרון האחרון
