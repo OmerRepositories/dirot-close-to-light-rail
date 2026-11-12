@@ -1851,6 +1851,8 @@
     const listingHeading =
       root.querySelector("h1") ||
       (entry.kind === "list" ? root.querySelector('[data-testid="ad-card-title"]') : null);
+    // המתווך (משרד + סוכן) – רק במודעות תיווך; מודעה שלא נקרא בה מתווך שומרת את מה שכבר נשמר
+    const broker = typeof parser.brokerInfo === "function" ? parser.brokerInfo(root) : null;
     const record = preserveManualOverrides({
       ...previous,
       recordType: "listing",
@@ -1905,6 +1907,8 @@
       ),
       // "search" = נשמרה רק מכרטיס בתוצאות החיפוש (מידע חלקי); "page" = עמוד המודעה נפתח
       indexedFrom: fromSearch ? previous.indexedFrom || "search" : "page",
+      brokerOffice: (broker && broker.office) || previous.brokerOffice || undefined,
+      brokerAgent: (broker && broker.agent) || previous.brokerAgent || undefined,
       ...extra,
     }, previous);
     if (recordUnchanged(record, previous)) return;

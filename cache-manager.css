@@ -1192,3 +1192,7 @@ tbody tr:hover .favorite-street-toggle, .favorite-street-toggle:focus-visible { 
 .favorite-street-toggle.on { opacity: 1; color: #b07d00; font-weight: 700; }
 :root[data-theme="dark"] .favorite-street-toggle.on { color: #f5c542; }
 .favorite-street-toggle:hover { color: #b07d00; background: color-mix(in srgb, #f5b301 15%, transparent); transform: none; }
+/* מתווך */
+.broker-cell { min-width: 120px; max-width: 220px; white-space: normal; line-height: 1.3; }
+.broker-office { display: block; font-weight: 600; }
+.broker-agent { display: block; color: var(--muted); font-size: 12px; }

@@ -556,7 +556,25 @@ var LRMadlan = (() => {
     return null;
   }
 
+  // המתווך בעמוד מודעה (נבדק 2026-11-12): תגית "מתיווך" (data-auto="agent-tag"), שם הסוכן
+  // (data-auto="poc-name") ושם המשרד בכותרת "דירות נוספות של <משרד>". בלי התגית (מודעה פרטית) לא
+  // נשמר שום שם – poc-name הוא אז שם המוכר. בלי טלפון. בכרטיסי חיפוש מדלן לא מציגה שמות.
+  function brokerInfo(root) {
+    if (root !== document || !/^\/(?:listings|bulletin)\//.test(location.pathname)) return null;
+    if (!document.querySelector('[data-auto="agent-tag"]')) return null;
+    const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const agentElement = document.querySelector('[data-auto="poc-name"]');
+    const agent = clean(agentElement && (agentElement.innerText || agentElement.textContent));
+    const heading = document.querySelector('[data-auto="agents-office-listings"] h3, [data-auto="agents-office-listings"] h2');
+    const headingText = clean(heading && (heading.innerText || heading.textContent));
+    const officeMatch = headingText.match(/(?:דירות|נכסים|מודעות)\s+נוספות\s+של\s+(.+)$/);
+    const office = officeMatch ? clean(officeMatch[1]) : "";
+    if (!office && !agent) return null;
+    return { office, agent: agent && agent !== office ? agent : "" };
+  }
+
   return {
+    brokerInfo,
     listingPageStatus,
     listingId,
     listingUrl,

@@ -206,6 +206,20 @@ test("Madlan listing page status: 'המודעה הוסרה' page is removed, a p
   assert.equal(CacheData.listingStatusKey("madlan", {}, false), "unchecked");
 });
 
+test("Madlan broker: agent and office from an agency listing page, nothing from a private one", () => {
+  const { LRMadlan, document } = madlanPage([], "/listings/0rExoeJzlEM");
+  const elements = {
+    '[data-auto="agent-tag"]': { innerText: "מתיווך" },
+    '[data-auto="poc-name"]': { innerText: "אריק קופרשטיין" },
+    '[data-auto="agents-office-listings"] h3, [data-auto="agents-office-listings"] h2': { innerText: "דירות נוספות של B.K נדל''ן" },
+  };
+  document.querySelector = (selector) => elements[selector] || null;
+  assert.deepEqual(JSON.parse(JSON.stringify(LRMadlan.brokerInfo(document))), { office: "B.K נדל''ן", agent: "אריק קופרשטיין" });
+  // מודעה פרטית: אין תגית "מתיווך" – שם איש הקשר (המוכר) לא נקרא
+  delete elements['[data-auto="agent-tag"]'];
+  assert.equal(LRMadlan.brokerInfo(document), null);
+});
+
 test("Madlan removed listing that redirected to a search page is still recognized as removed", () => {
   const { LRMadlan, document } = madlanPage([], "/for-sale/%D7%A9%D7%9B%D7%95%D7%A0%D7%94");
   document.body = { innerText: "המודעה הוסרה המודעה שחיפשת אינה זמינה יותר בלוח הדירות" };

@@ -54,6 +54,10 @@
         ? { shelterDistance: num(item.metaData.shelterDistance) }
         : undefined,
       inProperty,
+      // רק במודעת משרד תיווך: שם המשרד (שם עסק). שם מפרסם פרטי / טלפון לא מועתקים
+      customer: item.adType === "commercial" && item.customer && typeof item.customer.agencyName === "string"
+        ? { agencyName: item.customer.agencyName }
+        : undefined,
     };
   }
 

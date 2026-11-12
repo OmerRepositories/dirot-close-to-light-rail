@@ -348,6 +348,31 @@ test("Yad2 brokerage comes from the page data's adType (private / commercial)", 
   assert.equal(feed.LRYad2.brokerageFromData(card("missing")), null);
 });
 
+test("Yad2 broker: agency and agent names only for commercial listings, never a private seller's name", () => {
+  const listings = [
+    { token: "agent1", adType: "commercial", address: {}, customer: { agencyName: "שחף נכסים", name: "יגאל זר", brokers: [{ name: "יגאל זר" }, { name: "שחף נכסים-הנהלה ראשית" }] } },
+    { token: "office1", adType: "commercial", address: {}, customer: { agencyName: "אידלסון נכסים", name: "אידלסון נכסים", brokers: [{ name: "אידלסון נכסים" }] } },
+    { token: "priv1", adType: "private", address: {}, customer: { name: "ישראל ישראלי" } },
+  ];
+  const context = {
+    LR,
+    URL,
+    document: {
+      querySelector: (selector) =>
+        selector === "script#__NEXT_DATA__" ? { textContent: JSON.stringify({ props: { pageProps: { feed: listings } } }) } : null,
+    },
+    location: { pathname: "/realestate/forsale", href: "https://www.yad2.co.il/realestate/forsale" },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "yad2.js"), "utf8"), context);
+  const card = (id) => ({
+    querySelector: (selector) => (selector.includes("/realestate/item/") ? { href: `https://www.yad2.co.il/realestate/item/x/${id}` } : null),
+    querySelectorAll: () => [{ href: `https://www.yad2.co.il/realestate/item/x/${id}` }],
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.LRYad2.brokerInfo(card("agent1")))), { office: "שחף נכסים", agent: "יגאל זר, שחף נכסים-הנהלה ראשית" });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.LRYad2.brokerInfo(card("office1")))), { office: "אידלסון נכסים", agent: "" });
+  assert.equal(context.LRYad2.brokerInfo(card("priv1")), null, "private seller name is never read");
+});
+
 test("Yad2 reads card data copied by the in-page script when __NEXT_DATA__ is stale (page 2+)", () => {
   const copied = {
     token: "page2card",

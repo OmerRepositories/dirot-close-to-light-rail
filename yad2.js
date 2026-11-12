@@ -329,6 +329,25 @@ var LRYad2 = (() => {
     return null;
   }
 
+  // המתווך: שם המשרד (customer.agencyName) ושמות הסוכנים (customer.brokers) – רק במודעת משרד תיווך
+  // (adType "commercial"). במודעה פרטית לא נשמר שום שם (זה שם המוכר).
+  // בכרטיס חיפוש יש רק את שם המשרד; בעמוד המודעה גם הסוכנים. בלי טלפון.
+  function brokerInfo(root) {
+    const id = listingId(root);
+    const index = id ? getPageListingsById() : null;
+    const data = index && index.get(id);
+    if (!data || data.adType !== "commercial") return null;
+    const customer = data.customer && typeof data.customer === "object" ? data.customer : {};
+    const clean = (value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "");
+    const office = clean(customer.agencyName);
+    const names = (Array.isArray(customer.brokers) ? customer.brokers : [])
+      .map((broker) => clean(broker && broker.name))
+      .concat(clean(customer.name));
+    const agents = [...new Set(names.filter((name) => name && name !== office))];
+    if (!office && !agents.length) return null;
+    return { office, agent: agents.join(", ") };
+  }
+
   function listingExportData(root) {
     const id = listingId(root);
     const index = id ? getPageListingsById() : null;
@@ -648,6 +667,7 @@ var LRYad2 = (() => {
     readAddress,
     listingExportData,
     brokerageFromData,
+    brokerInfo,
     dealsQuery,
     listingPageStatus,
     projectExportData,

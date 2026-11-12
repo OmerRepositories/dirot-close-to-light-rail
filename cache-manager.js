@@ -437,6 +437,7 @@ const columns = [
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
+  { key: "broker", label: "מתווך", sortKey: "broker", className: "broker-col", title: "משרד התיווך והסוכן, כמו שהם מופיעים ביד2 / במדלן (רק במודעות תיווך; בלי טלפון). בחיפוש בעמודה אפשר כמה שמות מופרדים בפסיק" },
   { key: "site", label: "אתר", sortKey: "site" },
   { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
   { key: "shelterMeters", label: "מקלט ציבורי (מ׳)", sortKey: "shelterMeters", title: "מרחק למקלט הציבורי הקרוב, כפי שיד2 מציגה בעמוד המודעה" },
@@ -855,6 +856,7 @@ function floorText(record) {
 
 function rowSortValue(key, record, priceRanks, sortKey = sort.key) {
   if (sortKey === "favorite") return record.favorite === true ? 1 : 0;
+  if (sortKey === "broker") return brokerText(record) || null;
   if (sortKey === "recordType") return recordType(record);
   if (sortKey === "site") return recordSite(key);
   if (sortKey === "pricePerSqm") return LRCacheData.pricePerSqm(record);
@@ -972,9 +974,16 @@ function matchesSearchDateFilters(record) {
   return true;
 }
 
+// המתווך כמו באתר: "משרד · סוכן" (יד2: משרד + סוכנים; מדלן: סוכן + משרד)
+function brokerText(record) {
+  if (!record) return "";
+  return [record.brokerOffice, record.brokerAgent].filter(Boolean).join(" · ");
+}
+
 function columnFilterText(key, record, recordKey, priceRanks) {
   if (key === "title") return [record.title, record.address, record.city, record.neighborhood].filter(Boolean).join(" ");
   if (key === "notes") return record.notes || "";
+  if (key === "broker") return brokerText(record);
   if (key === "type") return recordType(record) === "project" ? "פרויקט" : "מודעה";
   if (key === "site") return recordSite(recordKey);
   if (key === "listingStatus") {
@@ -1067,10 +1076,13 @@ function filterRecordsFor(searchMode, favoritesMode = false) {
   // עיר: כתיב מלא או חסר לא משנה ("פתח תקוה" = "פתח תקווה"), וחלק מהשם מספיק ("רמת" = רמת גן / רמת השרון)
   if (searchMode) fillListingCities();
   const searchCities = searchMode ? multiSelectValues("listingSearchCity") : [];
+  const searchBrokers = searchMode
+    ? $("listingSearchBroker").value.toLocaleLowerCase("he").split(",").map((part) => part.trim()).filter(Boolean)
+    : [];
   const preset = searchMode ? searchPreset : null;
   if (searchMode) renderSearchPresetChip();
   const waiting = searchMode && !(
-    preset || query || site || type || searchStatuses.length || searchCities.length ||
+    preset || query || site || type || searchStatuses.length || searchCities.length || searchBrokers.length ||
     searchBoolFilters.length || amenityFilters.length || ranges.size || searchDates
   );
   const list = waiting ? [] : Object.entries(cache)
@@ -1080,6 +1092,10 @@ function filterRecordsFor(searchMode, favoritesMode = false) {
       if (preset && !preset.keys.has(key)) return false;
       if (site && recordSite(key) !== site) return false;
       if (searchCities.length && !LRStreetFilter.cityAllowed(searchCities, record.city || "")) return false;
+      if (searchBrokers.length) {
+        const broker = brokerText(record).toLocaleLowerCase("he");
+        if (!broker || !searchBrokers.some((name) => broker.includes(name))) return false;
+      }
       if (type && recordType(record) !== type) return false;
       if (searchStatuses.length) {
         // סטטוס אחד לכל מודעה: "פעילה" לא כוללת מודעות שסומנו לא רלוונטיות
@@ -1098,11 +1114,14 @@ function filterRecordsFor(searchMode, favoritesMode = false) {
       if (!matchesNumericFilters(record, ranges)) return false;
       if (searchMode && !matchesSearchDateFilters(record)) return false;
       if (query && !matchesSearchWords(key, record, queryWords)) return false;
-      return columnFilters.every(([field, value]) =>
-        columnFilterText(field, record, key, priceRanks)
-          .toLocaleLowerCase("he")
-          .includes(value)
-      );
+      return columnFilters.every(([field, value]) => {
+        const text = columnFilterText(field, record, key, priceRanks).toLocaleLowerCase("he");
+        // מתווך: כמה שמות מופרדים בפסיק = אחד מהם ("דורון, עומר כהן")
+        if (field === "broker") {
+          return value.split(",").map((part) => part.trim()).filter(Boolean).some((part) => text.includes(part));
+        }
+        return text.includes(value);
+      });
     })
   // ORDER BY לפי סדר העמודות שנבחרו; ערך כל עמודה מחושב פעם אחת לשורה. ערכים חסרים בסוף בכל רמה.
   const order = recordSortOrder();
@@ -1264,6 +1283,11 @@ function renderRows() {
         heart.title = on ? "במועדפים – לחיצה מסירה" : "הוספה למועדפים";
         heart.setAttribute("aria-label", heart.title);
         td.appendChild(heart);
+      } else if (column.key === "broker") {
+        td.className = "broker-cell";
+        if (record.brokerOffice) td.appendChild(textCell(record.brokerOffice, "broker-office"));
+        if (record.brokerAgent) td.appendChild(textCell(record.brokerAgent, "broker-agent"));
+        td.title = brokerText(record);
       } else if (column.key === "notes") {
         td.className = "notes-cell";
         td.textContent = record.notes || "";
@@ -5288,7 +5312,7 @@ document.addEventListener("keydown", (event) => {
     details.querySelector("summary").focus();
   });
 });
-for (const id of ["listingSearchQuery", "listingSearchCity", "listingSearchSite", "listingSearchType", "listingSearchStatus"]) {
+for (const id of ["listingSearchQuery", "listingSearchBroker", "listingSearchCity", "listingSearchSite", "listingSearchType", "listingSearchStatus"]) {
   $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
 }
@@ -5315,6 +5339,7 @@ $("clearSearchPreset").addEventListener("click", () => {
 });
 $("clearListingSearch").addEventListener("click", () => {
   searchPreset = null;
+  $("listingSearchBroker").value = "";
   recordSorts = []; // גם המיונים חוזרים לברירת המחדל
   $("listingSearchQuery").value = "";
   $("listingSearchSite").value = "";
