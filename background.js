@@ -151,7 +151,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       }
       const url = chrome.runtime.getURL(
         `cache-manager.html?scheduledRefresh=1&uncheckedOnly=${schedule.uncheckedOnly === true ? "1" : "0"}&site=${
-          schedule.site === "yad2" || schedule.site === "madlan" ? schedule.site : "all"
+          ["yad2", "madlan", "homeless", "komo"].includes(schedule.site) ? schedule.site : "all"
         }`
       );
       let tab = Number.isInteger(runtime.managerTabId)

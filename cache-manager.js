@@ -699,6 +699,17 @@ function refreshableListingUrl(key, record) {
   ) {
     return url.href;
   }
+  return newSiteListingUrl(key, url);
+}
+
+// הומלס: /sale/viewad,<id>.aspx · קומו: /code/nadlan/details/?modaaNum=<id>
+function newSiteListingUrl(key, url) {
+  if (recordSite(key) === "homeless" && url.hostname === "www.homeless.co.il" && /^\/(?:sale|rent)\/viewad,\d+\.aspx$/i.test(url.pathname)) {
+    return url.href;
+  }
+  if (recordSite(key) === "komo" && url.hostname === "www.komo.co.il" && /^\/code\/nadlan\/details\/?$/i.test(url.pathname) && /^\d+$/.test(url.searchParams.get("modaaNum") || "")) {
+    return url.href;
+  }
   return null;
 }
 
@@ -726,7 +737,7 @@ function listingPageUrl(key, record) {
   ) {
     return url.href;
   }
-  return null;
+  return newSiteListingUrl(key, url);
 }
 
 function dateInputValue(value) {
@@ -1177,7 +1188,7 @@ function renderRows() {
         ));
       } else if (column.key === "site") {
         const siteName = recordSite(key);
-        td.textContent = siteName === "yad2" ? "יד2" : siteName === "madlan" ? "מדלן" : siteName;
+        td.textContent = LRCacheData.siteLabel(siteName);
       } else if (column.key === "cloud") {
         td.className = "cloud-col";
         renderCloudCell(td, key, record);
@@ -1191,7 +1202,7 @@ function renderRows() {
           status.className = "listing-status irrelevant";
           status.textContent = "לא רלוונטית";
           td.title = irrelevantTitle(relevance);
-        } else if (!["yad2", "madlan"].includes(site) || recordType(record) !== "listing") {
+        } else if (!LRCacheData.LISTING_SITES.includes(site) || recordType(record) !== "listing") {
           status.className = "listing-status unknown";
           status.textContent = searchOnly ? "מהחיפוש בלבד" : "—";
           if (searchOnly) td.title = SEARCH_ONLY_TITLE;
@@ -1729,7 +1740,7 @@ function renderPriceTimeline() {
     if (dateInfo.title) date.title = dateInfo.title;
     const site = document.createElement("span");
     site.className = "timeline-site";
-    site.textContent = change.site === "yad2" ? "יד2" : change.site === "madlan" ? "מדלן" : change.site;
+    site.textContent = LRCacheData.siteLabel(change.site);
     metadata.append(date, site);
     if (dateInfo.badge) {
       const badge = document.createElement("span");
@@ -1975,7 +1986,7 @@ async function renderDashboard() {
   const today = startOfToday();
   const weekAgo = today - 6 * 86400000;
   const stats = {
-    listings: 0, projects: 0, yad2: 0, madlan: 0,
+    listings: 0, projects: 0, yad2: 0, madlan: 0, homeless: 0, komo: 0,
     relevant: 0, irrelevant: 0, amenitiesUnknown: 0,
     active: 0, removed: 0, unchecked: 0, searchOnly: 0,
     refreshedToday: 0, refreshedWeek: 0, neverRefreshed: 0,
@@ -2009,6 +2020,8 @@ async function renderDashboard() {
     const site = recordSite(key);
     if (site === "yad2") stats.yad2++;
     if (site === "madlan") stats.madlan++;
+    if (site === "homeless") stats.homeless++;
+    if (site === "komo") stats.komo++;
     const hasAmenities = record.amenities && Object.values(record.amenities).some((v) => typeof v === "boolean");
     const irrelevant = listingRelevance(record).irrelevant;
     if (irrelevant) stats.irrelevant++;
@@ -2257,7 +2270,7 @@ function drawDashboard(stats, cities) {
   // שורת מספרים ראשית
   const heroes = el("div", "stat-row");
   heroes.append(
-    tile("מודעות שמורות", number(stats.listings), `יד2 ${number(stats.yad2)} · מדלן ${number(stats.madlan)} · ${number(stats.projects)} פרויקטים`, () => openSearchWith({}), "teal", "🏠"),
+    tile("מודעות שמורות", number(stats.listings), [`יד2 ${number(stats.yad2)}`, `מדלן ${number(stats.madlan)}`, stats.homeless ? `הומלס ${number(stats.homeless)}` : "", stats.komo ? `קומו ${number(stats.komo)}` : "", `${number(stats.projects)} פרויקטים`].filter(Boolean).join(" · "), () => openSearchWith({}), "teal", "🏠"),
     tile("לא רלוונטיות", number(stats.irrelevant), `${pct(stats.irrelevant, stats.listings)} מהמודעות · לא נכללות ברענון`, () => openSearchWith({ status: "irrelevant" }), "amber", "🚫"),
     // רלוונטיות = יש בהן את מאפייני החובה (מודעות שהמאפיינים שלהן עוד לא ידועים לא נספרות)
     tile(
@@ -3166,9 +3179,9 @@ async function loadRefreshSchedule() {
 }
 
 // "אילו מודעות לרענן?" – אפשר לצמצם לאתר אחד (all / yad2 / madlan)
-const REFRESH_SITE_NAMES = { all: "", yad2: "יד2", madlan: "מדלן" };
+const REFRESH_SITE_NAMES = { all: "", yad2: "יד2", madlan: "מדלן", homeless: "הומלס", komo: "קומו" };
 function normalizeRefreshSite(value) {
-  return value === "yad2" || value === "madlan" ? value : "all";
+  return LRCacheData.LISTING_SITES.includes(value) ? value : "all";
 }
 
 async function saveRefreshSchedule() {
@@ -3264,7 +3277,7 @@ async function saveListingStatus(key, status, attemptId, index) {
       refreshAttemptId !== attemptId ||
       refreshIndex !== index ||
       !latest[key] ||
-      !["yad2", "madlan"].includes(recordSite(key))
+      !LRCacheData.LISTING_SITES.includes(recordSite(key))
     ) {
       return;
     }
@@ -3530,7 +3543,7 @@ function onRefreshTabUpdated(tabId, changeInfo, tab) {
   }
   const [key, record] = refreshQueue[refreshIndex];
   logListingRefreshed(key);
-  if (["yad2", "madlan"].includes(recordSite(key))) {
+  if (LRCacheData.LISTING_SITES.includes(recordSite(key))) {
     checkCurrentListingStatus(tabId, key, record);
   }
   if (refreshPaused) {
@@ -3630,7 +3643,7 @@ function refreshPlan(options = {}) {
   };
   const queue = source.filter(([key, record]) => {
     if (site !== "all" && recordSite(key) !== site) { counts.otherSite++; return false; }
-    if (uncheckedOnly && (!["yad2", "madlan"].includes(recordSite(key)) || ["active", "removed"].includes(record.listingStatus))) {
+    if (uncheckedOnly && (!LRCacheData.LISTING_SITES.includes(recordSite(key)) || ["active", "removed"].includes(record.listingStatus))) {
       counts.alreadyChecked++;
       return false;
     }

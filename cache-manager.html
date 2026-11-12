@@ -84,7 +84,7 @@
           </button>
           <button id="settings-sitesTab" class="view-tab" data-tone="slate" data-settings="sites" type="button" role="tab" aria-selected="false" aria-controls="settingsPanel" tabindex="-1" title="אתרים פעילים">
             <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.6 5.2 3.6 8.5s-1 6.1-3.6 8.5c-2.6-2.4-3.6-5.2-3.6-8.5s1-6.1 3.6-8.5z"/></svg></span>
-            <span class="nav-text"><span class="nav-label">אתרים פעילים</span><span class="nav-hint">יד2, מדלן, פייסבוק</span></span>
+            <span class="nav-text"><span class="nav-label">אתרים פעילים</span><span class="nav-hint">יד2, מדלן, הומלס, קומו, פייסבוק</span></span>
           </button>
           <button id="listingDeleteTab" class="view-tab" data-tone="red" type="button" role="tab" aria-selected="false" aria-controls="listingDeletePanel" tabindex="-1" title="מחיקת מודעות">
             <span class="nav-tile"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/></svg></span>
@@ -155,6 +155,8 @@
             <option value="">כל האתרים</option>
             <option value="yad2">יד2</option>
             <option value="madlan">מדלן</option>
+            <option value="homeless">הומלס</option>
+            <option value="komo">קומו</option>
           </select>
         </label>
         <label class="search-choice">
@@ -301,6 +303,8 @@
             <option value="">כל האתרים</option>
             <option value="yad2">יד2</option>
             <option value="madlan">מדלן</option>
+            <option value="homeless">הומלס</option>
+            <option value="komo">קומו</option>
           </select>
         </label>
         <div class="search-choice multi-choice">
@@ -397,7 +401,8 @@
           <h2>מודעות ופרויקטים</h2>
           <p>כל מה שנשמר מיד2 וממדלן. לחיצה על שורה פותחת עריכה; לחיצה על הכותרת פותחת את המודעה.</p>
         </div>
-        <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
+        <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
+
         <button id="refreshShownListings" type="button" title="פותח את מסך הרענון עם המודעות שמוצגות עכשיו בטבלה (אחרי החיפוש והסינון שעשית כאן)">🔄 רענון המודעות שמוצגות</button>
       </div>
       <div class="side-layout">
@@ -413,6 +418,8 @@
           <option value="">כל האתרים</option>
           <option value="yad2">יד2</option>
           <option value="madlan">מדלן</option>
+          <option value="homeless">הומלס</option>
+          <option value="komo">קומו</option>
         </select>
       </label>
       <label>
@@ -718,6 +725,8 @@
           <option value="all">כל האתרים</option>
           <option value="yad2">רק יד2</option>
           <option value="madlan">רק מדלן</option>
+          <option value="homeless">רק הומלס</option>
+          <option value="komo">רק קומו</option>
         </select>
       </label>
       <label class="refresh-include-irrelevant" title="מודעות שחסר בהן מאפיין חובה מההגדרות. בדרך כלל אין צורך לפתוח אותן שוב – אבל אם שינית את מאפייני החובה, כדאי">

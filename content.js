@@ -4,15 +4,19 @@
 //  - הדגשה למודעות שוות
 // תלוי ב-parse.js (משתנה גלובלי LR).
 (() => {
-  const IS_YAD2 = location.hostname.includes("yad2.co.il");
-  const isProjectDetailPage = () =>
-    IS_YAD2
-      ? LRYad2.isProjectPage(location.pathname)
-      : LRMadlan.isProjectPage(location.pathname);
-  const isProjectListingPage = () =>
-    IS_YAD2
-      ? LRYad2.isProjectListingPage(location.pathname)
-      : LRMadlan.isProjectListingPage(location.pathname);
+  // האתר הנוכחי: יד2 / מדלן / הומלס / קומו. PARSER = קורא הדפים של האתר (אותו ממשק בכולם)
+  const SITE = location.hostname.includes("yad2.co.il")
+    ? "yad2"
+    : location.hostname.includes("homeless.co.il")
+      ? "homeless"
+      : location.hostname.includes("komo.co.il")
+        ? "komo"
+        : "madlan";
+  const IS_YAD2 = SITE === "yad2";
+  const IS_MADLAN = SITE === "madlan";
+  const PARSER = { yad2: LRYad2, madlan: LRMadlan, homeless: LRHomeless, komo: LRKomo }[SITE];
+  const isProjectDetailPage = () => PARSER.isProjectPage(location.pathname);
+  const isProjectListingPage = () => PARSER.isProjectListingPage(location.pathname);
 
   // ===== הגדרות =====
   // ברירות המחדל זהות ל-popup.js. המשתמש משנה אותן דרך חלון ההגדרות של התוסף.
@@ -29,6 +33,8 @@
     removeProjects: false,
     disableYad2: false,
     disableMadlan: false,
+    disableHomeless: false,
+    disableKomo: false,
     saveListingData: true,
     listingIndexingMode: "encountered",
     indexCities: [], // ערים שנשמרות מתוצאות החיפוש (ריק = כל הערים)
@@ -56,7 +62,7 @@
   // שהגיעו מהסנכרון (והסנכרון לא היה מחזיר אותן, כי הן כבר נמשכו בעבר).
   const LISTING_CACHE_MAX_ITEMS = Infinity;
   const LISTING_CACHE_MAX_BYTES = Infinity;
-  const SITE_DISABLE_KEY = IS_YAD2 ? "disableYad2" : "disableMadlan";
+  const SITE_DISABLE_KEY = { yad2: "disableYad2", madlan: "disableMadlan", homeless: "disableHomeless", komo: "disableKomo" }[SITE];
   let listingCache = {};
   let listingCacheLoaded = false;
   let pendingCacheSave = false;
@@ -91,7 +97,19 @@
   // קישורים שמזהים מודעה בודדת
   const LISTING_HREF = IS_YAD2
     ? /\/realestate\/item\//
-    : /\/(listings|bulletin)\/[^/?#]+/;
+    : IS_MADLAN
+      ? /\/(listings|bulletin)\/[^/?#]+/
+      : PARSER.LISTING_HREF;
+  // "נתיב" של מודעה מקישור – בקומו המזהה בפרמטר (modaaNum), אז הוא חלק מהנתיב
+  const listingPathOf = (href) => {
+    if (PARSER.listingPathFromUrl) return PARSER.listingPathFromUrl(href);
+    try {
+      return new URL(href, location.href).pathname;
+    } catch {
+      return null;
+    }
+  };
+  const currentPath = () => listingPathOf(location.href) || location.pathname;
 
   // בדף מודעה בודדת: מכאן והלאה זה "מודעות דומות", לא המודעה עצמה
   const SIMILAR_MARKERS =
@@ -141,7 +159,7 @@
   function ctxCity() {
     if (!IS_YAD2) {
       const h1 = document.querySelector("h1");
-      return LRMadlan.searchCityContext(
+      return PARSER.searchCityContext(
         location.pathname,
         [h1 ? h1.innerText : "", document.title || ""].filter(Boolean).join(" ")
       );
@@ -298,8 +316,8 @@
   // בעמוד מודעה רק main, כי בתפריט ובכותרת התחתונה של יד2 מופיע "נדל״ן" ואז כל מודעה נראתה כתיווך.
   function hasBrokerageSignal(root, dataRoot = root) {
     if (!root) return false;
-    if (IS_YAD2) {
-      const fromData = LRYad2.brokerageFromData(dataRoot);
+    if (PARSER.brokerageFromData) {
+      const fromData = PARSER.brokerageFromData(dataRoot);
       if (fromData !== null) return fromData;
     }
     const agentLabel = root.querySelector('[data-testid="ad-card-above-price"]');
@@ -321,7 +339,7 @@
       if (entry.streetFilterText !== text) {
         entry.streetFilterText = text;
         try {
-          const siteParser = IS_YAD2 ? LRYad2 : LRMadlan;
+          const siteParser = PARSER;
           const address = siteParser.readAddress(entry.card, text, ctxCity(), false);
           entry.streetFilterAddress = { street: address.street || "", city: address.city || "" };
         } catch {
@@ -485,7 +503,7 @@
   function createBrokerageFilterBar() {
     if (
       brokerageFilterBar ||
-      LISTING_HREF.test(location.pathname) ||
+      LISTING_HREF.test(currentPath()) ||
       isProjectDetailPage()
     ) return;
     brokerageFilterBar = document.createElement("div");
@@ -656,7 +674,7 @@
     let path = hrefPathCache.get(href);
     if (path === undefined) {
       try {
-        path = new URL(href, location.href).pathname;
+        path = listingPathOf(href);
       } catch {
         path = null;
       }
@@ -668,8 +686,8 @@
 
   function findCards() {
     const byHref = new Map();
-    const currentListingPath = LISTING_HREF.test(location.pathname)
-      ? location.pathname.replace(/\/+$/, "")
+    const currentListingPath = LISTING_HREF.test(currentPath())
+      ? currentPath().replace(/\/+$/, "")
       : null;
     document.querySelectorAll("a[href]").forEach((a) => {
       const path = hrefPath(a.href);
@@ -812,7 +830,8 @@
       document.body.appendChild(wrap);
       card = wrap;
     } else {
-      card.appendChild(wrap);
+      // בהומלס הכרטיס הוא שורת טבלה – התגים נכנסים לתא (div ישירות בתוך tr לא מוצג)
+      (PARSER.wrapHost ? PARSER.wrapHost(card) : card).appendChild(wrap);
     }
 
     const entry = {
@@ -867,7 +886,7 @@
   }
 
   function formatCopyData(entry) {
-    const parser = IS_YAD2 ? LRYad2 : LRMadlan;
+    const parser = PARSER;
     const root = entry.kind === "single" ? document : entry.card;
     const text = entry.getText();
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
@@ -917,8 +936,8 @@
       missingAmenities,
       // נתוני הדף של יד2 קובעים; רק כשאין בהם תשובה נעזרים גם במה שנשמר על המודעה
       brokerage:
-        (IS_YAD2 && LRYad2.brokerageFromData(root) !== null)
-          ? LRYad2.brokerageFromData(root)
+        (PARSER.brokerageFromData && PARSER.brokerageFromData(root) !== null)
+          ? PARSER.brokerageFromData(root)
           : hasBrokerageSignal(
               root === document ? document.querySelector("main") || document.body : root,
               root
@@ -928,6 +947,13 @@
   }
 
   function readListingFloor(root) {
+    // הומלס / קומו: הקומה כבר מפוענחת בקורא הדפים
+    if (!IS_YAD2 && !IS_MADLAN) {
+      const metadata = PARSER.listingExportData(root);
+      if (!Number.isFinite(metadata.floor)) return null;
+      const floorText = metadata.floor === 0 ? "קרקע" : String(metadata.floor);
+      return Number.isFinite(metadata.buildingTopFloor) ? `${floorText} מתוך ${metadata.buildingTopFloor}` : floorText;
+    }
     const selectors = IS_YAD2
       ? [
           '[data-testid="floor"]',
@@ -1093,7 +1119,7 @@
       if (!isRunning || !CFG.calculateRail || !entry.card.isConnected) return;
       const text = entry.getText();
       const root = entry.kind === "single" ? document : entry.card;
-      const siteParser = IS_YAD2 ? LRYad2 : LRMadlan;
+      const siteParser = PARSER;
       const parsed = siteParser.readAddress(root, text, ctxCity(), entry.kind === "single");
       entry.listingId = siteParser.listingId(root);
       const { queries } = parsed;
@@ -1203,7 +1229,7 @@
   }
 
   function cacheKeyForListing(id) {
-    return `${IS_YAD2 ? "yad2" : "madlan"}:${id}`;
+    return `${SITE}:${id}`;
   }
 
   function validCachedAmenities(record, now = Date.now()) {
@@ -1516,7 +1542,7 @@
       railStation: result.station && result.station.name ? result.station.name : "",
     };
     if (entry.projectPage) {
-      const parser = IS_YAD2 ? LRYad2 : LRMadlan;
+      const parser = PARSER;
       const project = parser.projectExportData(document, entry.getText());
       if (project) rememberProjectData({ ...project, ...metrics });
       return;
@@ -1753,6 +1779,8 @@
       });
       return;
     }
+    // עסקאות אמת נאספות רק מיד2 וממדלן (בהומלס ובקומו אין טבלת עסקאות)
+    if (!IS_MADLAN) return;
     const table = document.querySelector('[data-auto="sold-listings-table"][data-lr-deals]');
     const json = table && table.getAttribute("data-lr-deals");
     if (!json || json === lastMadlanDealsJson) return;
@@ -1785,11 +1813,11 @@
       !listingCacheLoaded ||
       (entry.kind === "list" && CFG.listingIndexingMode !== "encountered")
     ) return;
-    const parser = IS_YAD2 ? LRYad2 : LRMadlan;
+    const parser = PARSER;
     const root = entry.kind === "single" ? document : entry.card;
     if (isRentalListing(entry)) return;
     // מדלן: כרטיס פרויקט בחיפוש ("החל מ־...") הוא לא מודעה – לא נשמר כמודעה
-    if (entry.kind === "list" && !IS_YAD2 && LRMadlan.isProjectCard(root)) return;
+    if (entry.kind === "list" && !IS_YAD2 && PARSER.isProjectCard(root)) return;
     const id = parser.listingId(root);
     if (!id) return;
     const key = cacheKeyForListing(id);
@@ -2004,9 +2032,18 @@
   }
 
   // כמה זמן המודעה באוויר לפי תאריך היצירה שנשמר
+  const OLD_LISTING_DAYS = 180;
   function listingAgeText(record) {
     const created = record && record.listingCreatedAt ? Date.parse(record.listingCreatedAt) : NaN;
-    if (!Number.isFinite(created)) return "";
+    if (!Number.isFinite(created)) {
+      // הומלס / קומו: אין תאריך פרסום, רק תאריך עדכון. עדכון ישן = כנראה מודעה ישנה שלא הוסרה
+      const updated = record && record.listingUpdatedAt ? Date.parse(record.listingUpdatedAt) : NaN;
+      if (!Number.isFinite(updated)) return "";
+      const sinceUpdate = Math.floor((Date.now() - updated) / 86400000);
+      if (sinceUpdate < 0) return "";
+      const text = sinceUpdate === 0 ? "עודכנה היום" : `עודכנה לפני ${sinceUpdate.toLocaleString("he-IL")} ימים`;
+      return sinceUpdate >= OLD_LISTING_DAYS ? `⚠ ${text} – כנראה מודעה ישנה` : text;
+    }
     const days = Math.floor((Date.now() - created) / 86400000);
     if (days < 0) return "";
     if (days === 0) return "פורסמה היום";
@@ -2091,7 +2128,7 @@
       }
       if (entry.projectPage) {
         if (CFG.saveListingData && listingCacheLoaded) {
-          const projectParser = IS_YAD2 ? LRYad2 : LRMadlan;
+          const projectParser = PARSER;
           rememberProjectData(projectParser.projectExportData(document, entry.getText()));
         }
         entry.ppsm.hidden = true;
@@ -2101,7 +2138,7 @@
         continue;
       }
       const root = entry.kind === "single" ? document : entry.card;
-      const siteParser = IS_YAD2 ? LRYad2 : LRMadlan;
+      const siteParser = PARSER;
       if (!CFG.calculatePpsm) {
         entry.info = null;
         entry.parsed = null;
@@ -2118,7 +2155,7 @@
         entry.info = entry.parsed.ppsm ? entry.parsed : null;
       }
       entry.listingId = siteParser.listingId(root);
-      const currentAmenities = (IS_YAD2 ? LRYad2 : LRMadlan).readAmenities(root);
+      const currentAmenities = PARSER.readAmenities(root);
       if (entry.kind === "single") {
         rememberListingExportData(entry);
         collectDeals(entry);
@@ -2337,9 +2374,9 @@
 
   // דף מודעה בודדת: פאנל צף עם אותם נתונים
   function ensureMain() {
-    const isItem = LISTING_HREF.test(location.pathname);
+    const isItem = LISTING_HREF.test(currentPath());
     const isProject = isProjectDetailPage();
-    if (main && ((!isItem && !isProject) || main.path !== location.pathname)) {
+    if (main && ((!isItem && !isProject) || main.path !== currentPath())) {
       main.entry.wrap.remove();
       entries.delete(main.entry.card);
       main = null;
@@ -2357,7 +2394,7 @@
       entry.cacheNote.hidden = true;
     }
     entries.set(entry.card, entry);
-    main = { entry, path: location.pathname };
+    main = { entry, path: currentPath() };
     setTimeout(() => startLookup(entry), 800);
     setTimeout(scheduleRefresh, 1200);
   }
@@ -2536,7 +2573,7 @@
   // סטטוס המודעה בעמוד הפתוח (פעילה / הוסרה) – לרענון מודעות, ביד2 ובמדלן
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== "lightrail:get-listing-status") return false;
-    sendResponse((IS_YAD2 ? LRYad2 : LRMadlan).listingPageStatus());
+    sendResponse(PARSER.listingPageStatus());
     return false;
   });
 
@@ -2545,7 +2582,7 @@
   // גם כשפותחים בעצמך מודעה שהוסרה (לא רק ברענון): המודעה השמורה מסומנת "הוסרה".
   // איזו מודעה? הכתובת /listings/ID האחרונה שהעמוד עבר בה ב-20 השניות האחרונות (מדלן מנתבת בתוך
   // אותו עמוד), ואם לא נראתה – הכתובת שהעמוד נפתח בה (רשומת הניווט).
-  if (!IS_YAD2) {
+  if (IS_MADLAN) {
     const reportedRemoved = new Set();
     const loadedAt = Date.now();
     let lastListing = null;

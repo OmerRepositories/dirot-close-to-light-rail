@@ -57,6 +57,8 @@ var LRCacheExport = (() => {
     const encodedId = encodeURIComponent(id);
     if (site === "madlan") return `https://www.madlan.co.il/listings/${encodedId}`;
     if (site === "yad2") return `https://www.yad2.co.il/realestate/item/${encodedId}`;
+    if (site === "homeless") return `https://www.homeless.co.il/sale/viewad,${encodedId}.aspx`;
+    if (site === "komo") return `https://www.komo.co.il/code/nadlan/details/?modaaNum=${encodedId}`;
     return "";
   }
 

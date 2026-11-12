@@ -408,11 +408,16 @@ var LRCacheData = (() => {
     );
   }
 
+  // האתרים שהתוסף שומר מהם מודעות (מפתח במטמון: "<אתר>:<מזהה>") ושמם להצגה
+  const LISTING_SITES = ["yad2", "madlan", "homeless", "komo"];
+  const SITE_LABELS = { yad2: "יד2", madlan: "מדלן", homeless: "הומלס", komo: "קומו", facebook: "פייסבוק" };
+  const siteLabel = (site) => SITE_LABELS[site] || site || "";
+
   // סטטוס אחד לכל מודעה, כמו שמוצג בעמודת "סטטוס מודעה": הוסרה > לא רלוונטית > פעילה/לא נבדקה.
   // כך "פעילה" לא כוללת מודעות לא רלוונטיות. "" = אין סטטוס (פרויקט, או מודעת מדלן רלוונטית).
   function listingStatusKey(site, record, irrelevant) {
     if (!record || record.recordType === "project") return "";
-    const checkable = site === "yad2" || site === "madlan";
+    const checkable = LISTING_SITES.includes(site);
     if (checkable && record.listingStatus === "removed") return "removed";
     if (irrelevant) return "irrelevant";
     if (!checkable) return "";
@@ -957,6 +962,9 @@ var LRCacheData = (() => {
     hasListingDeletionFilters,
     filterListingsForDeletion,
     listingStatusKey,
+    LISTING_SITES,
+    SITE_LABELS,
+    siteLabel,
     normalizeStatusFilter,
     dealScore,
   };
