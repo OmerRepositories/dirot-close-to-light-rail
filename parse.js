@@ -44,6 +44,8 @@ var LR = (() => {
   const ALIASES = {
     'ת"א': "תל אביב יפו",
     'פ"ת': "פתח תקווה",
+    "פתח תיקוה": "פתח תקווה",
+    "פתח תיקווה": "פתח תקווה",
     'ר"ג': "רמת גן",
     'ראשל"צ': "ראשון לציון",
     'ב"ש': "באר שבע",
@@ -303,7 +305,8 @@ var LR = (() => {
     // ו) שורה שכולה "שם רחוב + מספר" ("יוסף ספיר 29") – נפוץ בפוסטים של מתווכים
     if (!street) {
       for (const rawLine of normQuotes(text).split(/\n/)) {
-        const line = rawLine.replace(/[^֐-׿\d\s'"\-]/g, " ").replace(/\s+/g, " ").trim();
+        // רק החלק הראשון עד פסיק: "שרגא רפאלי 18, אם המושבות החדשה, פתח תקווה"
+        const line = rawLine.split(",")[0].replace(/[^֐-׿\d\s'"\-]/g, " ").replace(/\s+/g, " ").trim();
         const lm = new RegExp(`^(${W}(?:\\s${W}){0,2})\\s+(\\d{1,3}[א-ת]?)$`).exec(line);
         if (!lm) continue;
         const name = cleanStreetWords(lm[1]);
@@ -348,10 +351,15 @@ var LR = (() => {
 
   function extractPriceSqmFree(text) {
     let t = normQuotes(text);
+    // סכומים חודשיים שלא אומרים שהמודעה להשכרה: דירה מושכרת שמוצעת למכירה, ועד בית, ארנונה
+    const rentProbe = t.replace(
+      /(?:מושכר(?:ת)?|מניב(?:ה)?|שכירות\s+קיימת|מקבלת\s+שכירות|תשואת\s+שכירות|ועד\s+(?:ה)?בית|ארנונה|הנכס\s+מושכר|כיום\s+מושכר(?:ת)?)[^\n]{0,70}/g,
+      " "
+    );
     const isRent =
       /להשכרה|לשכירות|השכרה|שכר\s*דירה|שכ"ד|דמי\s*שכירות|לחודש|\/\s*חודש|בחודש|סאבלט/.test(
-        t
-      ) && !/למכירה|מכירה\s+(?:ישירה|מפרטי|פרטית)/.test(t);
+        rentProbe
+      ) && !/למכירה|מכירה\s+(?:ישירה|מפרטי|פרטית)|בבלעדיות|בייצוג\s+בלעדי|מחיר\s+(?:שיווק|מבוקש)|מוכר(?:ת|ים)?\s+את/.test(t);
     const cands = [];
     const push = (val, idx, len) => {
       const ctx = t.slice(Math.max(0, idx - 14), idx + len + 8);
@@ -422,7 +430,7 @@ var LR = (() => {
     const addSq = (val, idx, strong) => {
       if (val >= 20 && val <= 1000) sq.push({ val, idx, strong });
     };
-    const labelRe = /(?:בגודל|גודל|בשטח|שטחה|שטח|ברוטו|נטו)\s*(?:בנוי)?\s*[:\-–]?\s*(?:של\s+|כ-?\s*)?(\d{2,4}(?:[.,]\d{1,2})?)(?![\d]|\s*(?:חדר|חד'|קומה|₪|מיליון|אלף))/g;
+    const labelRe = /(?:בגודל|גודל|בשטח|שטחה|שטח|ברוטו|נטו|בנוי)\s*(?:בנוי)?\s*[:\-–]?\s*(?:של\s+|כ-?\s*)?(\d{2,4}(?:[.,]\d{1,2})?)(?![\d]|\s*(?:חדר|חד'|קומה|₪|מיליון|אלף))/g;
     for (const x of t.matchAll(labelRe)) addSq(parseFloat(x[1].replace(",", ".")), x.index, 1);
 
     const unitRe = /(?<![\d.,])(\d{2,4}(?:[.,]\d{1,2})?)\s*(מ"ר|מ'ר|מ['׳]|מר|מטר(?:ים)?(?:\s+(?:מרובעים|בנויים|בנוי|נטו|ברוטו))?|מ²|מ2|m²|m2|sqm|sq\.?\s?m)(?![֐-׿\w])/gi;
@@ -438,8 +446,8 @@ var LR = (() => {
       // "מרפסת 12 מ"ר" / "30 מ"ר מרפסות" / "גינה 50 מ"ר" – שטח של תוספת, לא של הדירה
       const aroundBefore = t.slice(Math.max(0, x.index - 16), x.index);
       const aroundAfter = t.slice(x.index + x[0].length, x.index + x[0].length + 12);
-      if (/(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|חני(?:ה|ות)|גג|מרתף)[^\n\d]{0,8}$/.test(aroundBefore)) continue;
-      if (/^\s*(?:של\s+)?(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|גג|מרתף)/.test(aroundAfter)) continue;
+      if (/(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|חני(?:ה|ות)|גג|מרתף|מגרש|מגרשים|קרקע)[^\n\d]{0,8}$/.test(aroundBefore)) continue;
+      if (/^\s*(?:של\s+)?(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|גג|מרתף|מגרש|קרקע)/.test(aroundAfter)) continue;
       addSq(parseFloat(x[1].replace(",", ".")), x.index, 0);
     }
     sq.sort((a, b) => b.strong - a.strong || a.idx - b.idx);
