@@ -67,11 +67,27 @@ var LR = (() => {
   }));
 
   // מוצא עיר בטקסט חופשי (כותרת קבוצה, פוסט). מחזיר { canon, pat } או null.
-  function findCityHit(text) {
+  // streetAware: שם עיר שהוא בעצם שם רחוב לא נחשב עיר – "ברחוב ראשון לציון 12" / "רח' חולון 5" /
+  // "ראשון לציון 12, פתח תקווה" (שם עיר ומיד אחריו מספר בית). אז מחפשים את המופע הבא של עיר.
+  const STREET_BEFORE = /(?:ברחוב|רחוב|ברח'|רח'|בשדרות|שדרות|בשד'|שד'|בשביל|שביל|בסמטת|סמטת|כיכר|בכיכר)\s*:?\s*$/;
+  const HOUSE_AFTER = /^\s+\d{1,3}[א-ת]?(?!\d|[.,]\d|\s*(?:חדר|חד'|חד׳|מ"ר|מטר|קומ|דקות|דק'|ק"מ|אלף|מיליון|₪))/;
+  function findCityHit(text, { streetAware = false } = {}) {
     const t = normQuotes(text);
     let best = null;
     for (const c of cityRes) {
-      const m = c.re.exec(t);
+      let m = null;
+      if (streetAware) {
+        const all = new RegExp(c.re.source, "g");
+        for (const hit of t.matchAll(all)) {
+          const start = hit.index + hit[1].length;
+          const end = hit.index + hit[0].length;
+          if (STREET_BEFORE.test(t.slice(Math.max(0, start - 12), start)) || HOUSE_AFTER.test(t.slice(end, end + 30))) continue;
+          m = hit;
+          break;
+        }
+      } else {
+        m = c.re.exec(t);
+      }
       if (!m) continue;
       const cand = {
         canon: c.canon,
@@ -232,7 +248,7 @@ var LR = (() => {
 
   function parseFreeAddress(text, ctxCity) {
     const t = normQuotes(text).replace(/\s+/g, " ");
-    const cityHit = findCityHit(t);
+    const cityHit = findCityHit(t, { streetAware: true });
     const city = cityHit ? cityHit.canon : null;
     const ctx = city || ctxCity || null;
 
@@ -322,7 +338,11 @@ var LR = (() => {
     const cands = [];
     const push = (val, idx, len) => {
       const ctx = t.slice(Math.max(0, idx - 14), idx + len + 8);
-      const strong = /₪|ש"ח|שח\b|שקל|מחיר|מבוקש|מבקש|מיליון|אלף|ב-/.test(ctx) ? 1 : 0;
+      // "עדכון מחיר: 2,100,000" / "מחיר מעודכן" / "ירד ל-" גובר על "מחיר שיווק" שבאותו פוסט
+      const updated = /(?:עי?דכון\s+מחיר|מחיר\s+(?:מעודכן|חדש|עדכני|אחרי\s+הורדה)|ירד(?:ה)?\s+ל|הורד(?:ה|נו|נו\s+את\s+המחיר)?\s+(?:מחיר\s+)?ל)\W{0,6}$/.test(
+        t.slice(Math.max(0, idx - 30), idx)
+      );
+      const strong = updated ? 2 : /₪|ש"ח|שח\b|שקל|מחיר|מבוקש|מבקש|מיליון|אלף|ב-/.test(ctx) ? 1 : 0;
       cands.push({ val, idx, strong });
     };
     const mask = (m) => {
@@ -367,6 +387,10 @@ var LR = (() => {
       if (/0\d{1,2}[-\s.]$/.test(before)) continue; // חלק ממספר טלפון
       if (/^0/.test(x[1])) continue;
       push(Number(x[1].replace(/[.,]/g, "")), x.index, x[0].length);
+    }
+    // מספר עם פסיק במקום הלא נכון: "2100,000" = 2,100,000
+    for (const x of t.matchAll(/(?<![\d.,])(\d{4})[.,](\d{3})(?![\d]|[.,]\d)/g)) {
+      push(Number(x[1] + x[2]), x.index, x[0].length);
     }
 
     const lo = isRent ? 800 : 200000;

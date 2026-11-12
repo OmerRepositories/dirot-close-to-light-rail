@@ -134,6 +134,31 @@ test("a listing needs price or area plus enough details; 'מטר' and 'מטר מ
   assert.equal(listing("למכירה דירה מהממת, שווה לבדוק!"), "other");
 });
 
+test("a post from another city in a city group: the post's city wins; a city name used as a street is a street", () => {
+  const LR = globalThis.LR;
+  // פוסט מחולון בקבוצה של פתח תקווה
+  const holon = LR.parseFreeAddress("למכירה בייצוג בלעדי ברחוב הדר 28 חולון, שכונת תל גיבורים", "פתח תקווה");
+  assert.equal(holon.city, "חולון");
+  assert.equal(holon.street, "הדר 28");
+  // "ראשון לציון" כרחוב בעיר אחרת
+  const street = LR.parseFreeAddress("למכירה דירת 4 חדרים ברחוב ראשון לציון 12, פתח תקווה", null);
+  assert.equal(street.street, "ראשון לציון 12");
+  assert.equal(street.city, "פתח תקווה");
+  const noKeyword = LR.parseFreeAddress("דירה למכירה: ראשון לציון 12, פתח תקווה", null);
+  assert.equal(noKeyword.city, "פתח תקווה");
+  // וכעיר – כשהיא באמת העיר
+  assert.equal(LR.parseFreeAddress("למכירה בראשון לציון, רחוב הרצל 40", "פתח תקווה").city, "ראשון לציון");
+});
+
+test("the updated price wins over the marketing price, also when the comma is misplaced", () => {
+  const parsed = globalThis.LR.extractPriceSqmFree(`למכירה דירה 72 מ"ר
+ועד בית: 300 ₪ לחודש
+*עידכון מחיר:2100,000* ₪
+מחיר שיווק: 2,280,000 ₪`);
+  assert.equal(parsed.price, 2_100_000);
+  assert.equal(parsed.sqm, 72);
+});
+
 test("only groups whose name looks like a real-estate group are scanned", () => {
   const { isRealEstateGroupName, groupId } = require("../facebook-page.js");
   // מספיקה מילה כללית אחת בשם הקבוצה
