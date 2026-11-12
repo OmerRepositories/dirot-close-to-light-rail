@@ -274,6 +274,26 @@ var LR = (() => {
         if (name && name.length >= 2) street = name;
       }
     }
+    // ו) שורה (או חלק של שורה עד פסיק / מקף / קו) שכולה "שם רחוב + מספר": "יוסף ספיר 29",
+    // "בר אילן 9,כפר אברהם", "חדש למכירה במרכז השקט - סלומון 9". לפני ג, כדי ש"בר אילן" לא ייקרא "ב+ר אילן"
+    if (!street) {
+      outer: for (const rawLine of normQuotes(text).split(/\n/)) {
+        for (const part of rawLine.split(/,|\s[-–|]\s|\|/)) {
+          const line = part.replace(/[^֐-׿\d\s'"\-]/g, " ").replace(/\s+/g, " ").trim();
+          const lm = new RegExp(`^(${W}(?:\\s${W}){0,2})\\s+(\\d{1,3}[א-ת]?)$`).exec(line);
+          if (!lm) continue;
+          const name = cleanStreetWords(lm[1]);
+          const first = name.split(" ")[0];
+          if (
+            name === lm[1].trim() && name.length >= 3 && !BAD_STREET_FIRST.has(first) && !findCity(name) &&
+            !/חדר|קומה|קומות|מ"ר|מטר|דירות|דיירים|שנים|שנה|דקות|חודש|כיוונ|מרפס|חניה|חניות|תמא|תמ"א|מחסן/.test(lm[0])
+          ) {
+            street = `${name} ${lm[2]}`;
+            break outer;
+          }
+        }
+      }
+    }
     // ג) "בהרצל 12"
     if (!street) {
       const re = new RegExp(
@@ -282,9 +302,12 @@ var LR = (() => {
       );
       let mm;
       while ((mm = re.exec(t))) {
-        const name = cleanStreetWords(mm[1]);
+        // מילות מילוי בתחילת השם: "בבלעדיות אורלנסקי 5" → "אורלנסקי 5"
+        const raw = mm[1].trim().replace(/^(?:(?:בלעדיות|בבלעדיות|בלעדי|ייצוג|ייצוג\s+בלעדי|למכירה|מכירה|חדש|חדשה)\s+)+/, "");
+        const name = cleanStreetWords(raw);
         const first = name.split(" ")[0];
-        if (name.length >= 2 && !BAD_STREET_FIRST.has(first) && !findCity(name)) {
+        // אם מילה כמו "קומה" חתכה את השם – המספר לא שייך לרחוב ("בנוי קומה 6")
+        if (name.length >= 2 && name === raw && !BAD_STREET_FIRST.has(first) && !findCity(name) && !/^נוי$|^ניין$/.test(name)) {
           street = `${name} ${mm[2]}`;
           break;
         }
@@ -299,22 +322,6 @@ var LR = (() => {
       if (mm) {
         const name = cleanStreetWords(mm[1]);
         if (name.length >= 2) street = `${name} ${mm[2]}`;
-      }
-    }
-
-    // ו) שורה שכולה "שם רחוב + מספר" ("יוסף ספיר 29") – נפוץ בפוסטים של מתווכים
-    if (!street) {
-      for (const rawLine of normQuotes(text).split(/\n/)) {
-        // רק החלק הראשון עד פסיק: "שרגא רפאלי 18, אם המושבות החדשה, פתח תקווה"
-        const line = rawLine.split(",")[0].replace(/[^֐-׿\d\s'"\-]/g, " ").replace(/\s+/g, " ").trim();
-        const lm = new RegExp(`^(${W}(?:\\s${W}){0,2})\\s+(\\d{1,3}[א-ת]?)$`).exec(line);
-        if (!lm) continue;
-        const name = cleanStreetWords(lm[1]);
-        const first = name.split(" ")[0];
-        if (name.length >= 3 && !BAD_STREET_FIRST.has(first) && !findCity(name) && !/חדר|קומה|מ"ר|מטר|דירות|שנים|שנה|דקות|חודש|כיוונ|מרפס|חניה/.test(lm[0])) {
-          street = `${name} ${lm[2]}`;
-          break;
-        }
       }
     }
 
@@ -362,6 +369,8 @@ var LR = (() => {
       ) && !/למכירה|מכירה\s+(?:ישירה|מפרטי|פרטית)|בבלעדיות|בייצוג\s+בלעדי|מחיר\s+(?:שיווק|מבוקש)|מוכר(?:ת|ים)?\s+את/.test(t);
     const cands = [];
     const push = (val, idx, len) => {
+      // "בפחות מ-2 מיליון" / "עד 2.5 מיליון" – תקרה, לא המחיר
+      if (/(?:בפחות\s+מ|פחות\s+מ|מתחת\s+ל|עד)\s*-?\s*$/.test(t.slice(Math.max(0, idx - 12), idx))) return;
       const ctx = t.slice(Math.max(0, idx - 14), idx + len + 8);
       // "עדכון מחיר: 2,100,000" / "מחיר מעודכן" / "ירד ל-" גובר על "מחיר שיווק" שבאותו פוסט
       const updated = /(?:עי?דכון\s+מחיר|מחיר\s+(?:מעודכן|חדש|עדכני|אחרי\s+הורדה)|ירד(?:ה)?\s+ל|הורד(?:ה|נו|נו\s+את\s+המחיר)?\s+(?:מחיר\s+)?ל)\W{0,6}$/.test(
@@ -444,10 +453,12 @@ var LR = (() => {
         if (/(?:מרחק|עד|במרחק)\s*$/.test(before)) continue;
       }
       // "מרפסת 12 מ"ר" / "30 מ"ר מרפסות" / "גינה 50 מ"ר" – שטח של תוספת, לא של הדירה
-      const aroundBefore = t.slice(Math.max(0, x.index - 16), x.index);
+      // לפני: עד כמה מילים באותה שורה ("מרפסת שמש גדולה 20 מ"ר"); אחרי: רק באותה שורה
+      // ("149 מ"ר" ובשורה הבאה "מרפסת שמש 17 מ"ר" – 149 הוא שטח הדירה)
+      const aroundBefore = t.slice(Math.max(0, x.index - 26), x.index);
       const aroundAfter = t.slice(x.index + x[0].length, x.index + x[0].length + 12);
-      if (/(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|חני(?:ה|ות)|גג|מרתף|מגרש|מגרשים|קרקע)[^\n\d]{0,8}$/.test(aroundBefore)) continue;
-      if (/^\s*(?:של\s+)?(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|גג|מרתף|מגרש|קרקע)/.test(aroundAfter)) continue;
+      if (/(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|חני(?:ה|ות)|גג|מרתף|מגרש|מגרשים|קרקע)[^\n\d]{0,18}$/.test(aroundBefore)) continue;
+      if (/^[ \t]*(?:של\s+)?(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|גג|מרתף|מגרש|קרקע)/.test(aroundAfter)) continue;
       addSq(parseFloat(x[1].replace(",", ".")), x.index, 0);
     }
     sq.sort((a, b) => b.strong - a.strong || a.idx - b.idx);
@@ -461,6 +472,34 @@ var LR = (() => {
 
     const ppsm = !reason ? Math.round(price / sqm) : null;
     return { price, sqm, ppsm, reason, rent: isRent };
+  }
+
+  // חדרים וקומה מטקסט חופשי: "4.5 חדרים", "5חד'", "3.5 חדרם", "ארבעה וחצי חדרים";
+  // "קומה 4 מתוך 9", "קומה 4/9", "4 מתוך 6", "קומה ראשונה", "קומת קרקע", "קומה 6 ואחרונה"
+  const WORD_NUMBERS = { אחד: 1, אחת: 1, שניים: 2, שתיים: 2, שני: 2, שתי: 2, שלושה: 3, שלוש: 3, ארבעה: 4, ארבע: 4, חמישה: 5, חמש: 5, שישה: 6, שש: 6, שבעה: 7, שבע: 7 };
+  const FLOOR_WORDS = { קרקע: 0, ראשונה: 1, שנייה: 2, שניה: 2, שלישית: 3, רביעית: 4, חמישית: 5, שישית: 6, שביעית: 7 };
+  function extractRoomsFloorFree(text) {
+    const t = normQuotes(text);
+    let rooms = null;
+    const digits = t.match(/(?<![\d.])(\d{1,2}(?:[.,]5)?)\s*(?:\+\s*חצי\s*)?(?:חדרים|חדרם|חדר|חד'|חד׳|חד\b)/);
+    if (digits) rooms = Number(digits[1].replace(",", ".")) + (/\+\s*חצי/.test(digits[0]) ? 0.5 : 0);
+    if (rooms === null) {
+      const words = new RegExp(`(${Object.keys(WORD_NUMBERS).join("|")})(\\s+וחצי)?\\s+חדרים`).exec(t);
+      if (words) rooms = WORD_NUMBERS[words[1]] + (words[2] ? 0.5 : 0);
+    }
+    if (rooms !== null && (rooms < 1 || rooms > 15)) rooms = null;
+    let floor = null;
+    let topFloor = null;
+    const numeric = t.match(/קומה\s*:?\s*(-?\d{1,2})(?:\s*(?:מתוך|\/)\s*(\d{1,2}))?/) || t.match(/(?<!\d)(\d{1,2})\s*מתוך\s*(\d{1,2})(?:\s*קומות)?/);
+    if (numeric) {
+      floor = Number(numeric[1]);
+      if (numeric[2]) topFloor = Number(numeric[2]);
+    } else {
+      const word = new RegExp(`(?:קומה|קומת)\\s+(${Object.keys(FLOOR_WORDS).join("|")})`).exec(t);
+      if (word) floor = FLOOR_WORDS[word[1]];
+    }
+    if (floor !== null && /קומה\s*-?\d{1,2}\s*ואחרונה/.test(t) && topFloor === null) topFloor = floor;
+    return { rooms, floor, topFloor };
   }
 
   function hasExplicitFacebookAddress(text, street) {
@@ -519,6 +558,7 @@ var LR = (() => {
     parseFreeAddress,
     extractPriceSqmFree: (t) => sanity(extractPriceSqmFree(t)),
     hasExplicitFacebookAddress,
+    extractRoomsFloorFree,
     findCity,
     findCities,
   };

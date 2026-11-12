@@ -138,8 +138,7 @@
     const text = postText(entry.article);
     const address = LR.parseFreeAddress(text, groupContext());
     const parsed = entry.parsed;
-    const rooms = (text.match(/(\d(?:[.,]5)?)\s*(?:חדרים|חד['׳])/) || [])[1];
-    const floorMatch = text.match(/קומה\s*:?\s*(-?\d{1,2})(?:\s*מתוך\s*(\d{1,2}))?/) || text.match(/(\d{1,2})\s*מתוך\s*(\d{1,2})/);
+    const roomsFloor = LR.extractRoomsFloorFree(text);
     const res = entry.res && entry.res.ok ? entry.res : null;
     const record = {
       recordType: "listing",
@@ -153,9 +152,9 @@
       price: Number.isFinite(parsed.price) && !parsed.rent ? parsed.price : undefined,
       sqm: Number.isFinite(parsed.sqm) ? parsed.sqm : undefined,
       pricePerSqm: Number.isFinite(parsed.ppsm) ? parsed.ppsm : undefined,
-      rooms: rooms ? Number(rooms.replace(",", ".")) : undefined,
-      floor: floorMatch ? Number(floorMatch[1]) : undefined,
-      buildingTopFloor: floorMatch && floorMatch[2] ? Number(floorMatch[2]) : undefined,
+      rooms: roomsFloor.rooms ?? undefined,
+      floor: roomsFloor.floor ?? undefined,
+      buildingTopFloor: roomsFloor.topFloor ?? undefined,
       railMeters: res ? res.meters : undefined,
       railStation: res && res.station ? res.station.name : undefined,
       railApprox: res ? Boolean(res.approx) : undefined,

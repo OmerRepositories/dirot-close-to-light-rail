@@ -91,3 +91,22 @@ test("facebook corpus: streets", () => {
   assert.equal(street("למכירה ברחוב דגל ראובן 62 פ\"ת"), "דגל ראובן 62");
   assert.equal(street("רחוב קהילת פינסק 5, קומה 2"), "קהילת פינסק 5");
 });
+
+// כל הקורפוס: סוג, מחיר, שטח, חדרים, קומה, רחוב ועיר – בדיוק כמו שהתוסף שומר (fb.js)
+test("facebook corpus: every field of every collected post", () => {
+  const corpus = require("./facebook-corpus-data.js");
+  const wrong = [];
+  corpus.forEach((item, index) => {
+    const c = classify(item.t);
+    const parsed = c.parsed || LR.extractPriceSqmFree(item.t);
+    const address = LR.parseFreeAddress(item.t, "פתח תקווה");
+    const rf = LR.extractRoomsFloorFree(item.t);
+    const got = { type: c.type, price: parsed.price, sqm: parsed.sqm, rooms: rf.rooms ?? undefined, floor: rf.floor ?? undefined, street: address.street || undefined, city: address.city || undefined };
+    for (const [field, want] of Object.entries(item.expect)) {
+      const ok = field === "street" ? String(got[field] || "").startsWith(want) : got[field] === want;
+      if (!ok) wrong.push(`#${index} ${field}: want ${want} got ${got[field]}`);
+    }
+  });
+  // "דירת 6 חדרים במקור, כיום 5" נשאר דו-משמעי – מותרת טעות אחת
+  assert.ok(wrong.length <= 1, wrong.join("\n"));
+});
