@@ -8,6 +8,7 @@
     nearM: 800,
     highlight: true,
     disableFacebook: false,
+    saveListingData: true,
   };
   const CFG = { ...DEFAULTS, MIN_SAMPLES: 5, ROOT_MARGIN: "600px" };
 
@@ -84,6 +85,96 @@
       });
     }
     return list;
+  }
+
+  // פייסבוק מציג רק את תחילת הפוסט עד "עוד" – ושם בדרך כלל אין מחיר, מ"ר או כתובת.
+  // לחיצה על "עוד" פותחת את הטקסט המלא בתוך הפוסט (בלי מעבר דף; נבדק 2026-11-12). פעם אחת לכל פוסט.
+  function expandPost(article) {
+    if (article._lrExpanded) return false;
+    const msg = messageEl(article);
+    if (!msg) return false;
+    const button = [...msg.querySelectorAll('[role="button"]')].find(
+      (element) => /^(?:עוד|See more|ראה עוד|הצג עוד)$/.test(element.textContent.trim()) && !element.closest("a[href]")
+    );
+    article._lrExpanded = true;
+    if (!button) return false;
+    try {
+      button.click();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---------- שמירת המודעה במנהל המידע ----------
+  // לינק לפוסט, שם המפרסם, טלפונים מהטקסט, מחיר/שטח/חדרים/קומה/כתובת ומרחק מהרכבת.
+  // הרשומה ממוזגת ברקע עם מה שכבר שמור (merge) – הערות, לב והיסטוריית מחיר נשמרים.
+  const PHONE_RE = /(?<!\d)(?:\+?972[-\s]?|0)(5\d|[2-489]|7\d)[-\s.]?(\d{3})[-\s.]?(\d{4})(?!\d)/g;
+  function postPhones(text) {
+    const phones = [];
+    for (const match of String(text || "").matchAll(PHONE_RE)) {
+      const phone = `0${match[1]}-${match[2]}${match[3]}`;
+      if (!phones.includes(phone)) phones.push(phone);
+    }
+    return phones.slice(0, 3);
+  }
+  function postLink(article) {
+    for (const link of article.querySelectorAll("a[href]")) {
+      const match = link.href.match(/\/groups\/([^/?#]+)\/(?:posts|permalink)\/(\d+)/);
+      if (match) return { url: `https://www.facebook.com/groups/${match[1]}/posts/${match[2]}/`, id: match[2] };
+    }
+    return null;
+  }
+  function posterName(article) {
+    const element = article.querySelector('[data-ad-rendering-role="profile_name"]');
+    if (!element) return "";
+    const strong = element.querySelector("strong, h2 a, h3 a, a[role='link']") || element;
+    return String(strong.textContent || "").split(/\s*[·•]\s*/)[0].replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+  function saveListing(entry) {
+    if (!CFG.saveListingData || !entry.relevant || !entry.parsed) return;
+    const link = postLink(entry.article);
+    if (!link) return;
+    const text = postText(entry.article);
+    const address = LR.parseFreeAddress(text, groupContext());
+    const parsed = entry.parsed;
+    const rooms = (text.match(/(\d(?:[.,]5)?)\s*(?:חדרים|חד['׳])/) || [])[1];
+    const floorMatch = text.match(/קומה\s*:?\s*(-?\d{1,2})(?:\s*מתוך\s*(\d{1,2}))?/) || text.match(/(\d{1,2})\s*מתוך\s*(\d{1,2})/);
+    const res = entry.res && entry.res.ok ? entry.res : null;
+    const record = {
+      recordType: "listing",
+      site: "facebook",
+      indexedFrom: "page",
+      title: text.split("\n").map((line) => line.trim()).find((line) => line.length > 3) || "",
+      address: [address.street, address.city].filter(Boolean).join(", "),
+      city: address.city || groupContext() || "",
+      neighborhood: address.hood || "",
+      url: link.url,
+      price: Number.isFinite(parsed.price) && !parsed.rent ? parsed.price : undefined,
+      sqm: Number.isFinite(parsed.sqm) ? parsed.sqm : undefined,
+      pricePerSqm: Number.isFinite(parsed.ppsm) ? parsed.ppsm : undefined,
+      rooms: rooms ? Number(rooms.replace(",", ".")) : undefined,
+      floor: floorMatch ? Number(floorMatch[1]) : undefined,
+      buildingTopFloor: floorMatch && floorMatch[2] ? Number(floorMatch[2]) : undefined,
+      railMeters: res ? res.meters : undefined,
+      railStation: res && res.station ? res.station.name : undefined,
+      railApprox: res ? Boolean(res.approx) : undefined,
+      contactName: posterName(entry.article) || undefined,
+      contactPhones: postPhones(text).join(", ") || undefined,
+      brokerage: /תיווך|מתווך|נדל["״']?ן|RE\/?MAX|רי\/?מקס|אנגלו סכסון|סוכנ(?:ות|ת)/i.test(text) || undefined,
+      postText: text.slice(0, 2000),
+      updatedAt: Date.now(),
+    };
+    record.priceHistory = Number.isFinite(record.price) ? [{ price: record.price, at: record.updatedAt, src: "page" }] : [];
+    const signature = JSON.stringify({ ...record, updatedAt: 0, priceHistory: 0 });
+    if (entry.savedSignature === signature) return;
+    entry.savedSignature = signature;
+    try {
+      chrome.runtime.sendMessage(
+        { type: "lightrail:cache-patch", puts: [{ key: `facebook:${link.id}`, record, existed: false, merge: true }], prunes: [] },
+        () => void chrome.runtime.lastError
+      );
+    } catch {}
   }
 
   // הסריקה רצה על כל שינוי בפיד; קריאת הטקסט וסיווג הפוסט חוזרים רק כשהתוכן שלו השתנה
@@ -370,6 +461,8 @@
       deal.hidden = !isDeal;
       if (isDeal) deal.title = reasons.join(" · ");
       entry.wrap.classList.toggle("lr-deal-card", isDeal);
+      // שומרים אחרי שחישוב המרחק הסתיים (גם אם לא נמצאה כתובת), כדי שהמרחק יישמר עם המודעה
+      if (entry.res) saveListing(entry);
     }
   }
 
@@ -385,6 +478,8 @@
     try {
       for (const art of findPosts()) {
         let entry = entries.get(art);
+        // קודם פותחים את הטקסט המלא; הניתוח ירוץ בסריקה הבאה, אחרי שהטקסט הוחלף
+        if (expandPost(art)) continue;
         const { text, classification } = classifiedPost(art);
         if (!text) continue;
         if (classification.type === "rent" || classification.type === "seeking") {

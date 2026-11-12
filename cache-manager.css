@@ -1205,3 +1205,5 @@ tbody tr:hover .favorite-street-toggle, .favorite-street-toggle:focus-visible { 
 .timeline-copy { position: absolute; top: 48px; inset-inline-end: 12px; min-height: 30px; padding: 4px 10px; border-color: var(--line); background: var(--surface); font-size: 13px; }
 .timeline-copy:hover { border-color: var(--action); background: var(--action-soft); }
 @media (max-width: 700px) { .timeline-copy { position: static; margin-top: 6px; margin-inline-start: 6px; } }
+.broker-phone { display: block; color: var(--action); font-size: 12px; direction: ltr; text-align: right; text-decoration: none; }
+.broker-phone:hover { text-decoration: underline; }

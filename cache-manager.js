@@ -437,7 +437,7 @@ const columns = [
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
-  { key: "broker", label: "מתווך", sortKey: "broker", className: "broker-col", title: "משרד התיווך והסוכן, כמו שהם מופיעים ביד2 / במדלן (רק במודעות תיווך; בלי טלפון). בחיפוש בעמודה אפשר כמה שמות מופרדים בפסיק" },
+  { key: "broker", label: "יצירת קשר", sortKey: "broker", className: "broker-col", title: "משרד התיווך והסוכן (יד2 / מדלן / הומלס), או שם המפרסם וטלפון (פייסבוק). בחיפוש בעמודה אפשר כמה שמות או מספרים מופרדים בפסיק" },
   { key: "site", label: "אתר", sortKey: "site" },
   { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
   { key: "shelterMeters", label: "מקלט ציבורי (מ׳)", sortKey: "shelterMeters", title: "מרחק למקלט הציבורי הקרוב, כפי שיד2 מציגה בעמוד המודעה" },
@@ -703,7 +703,11 @@ function refreshableListingUrl(key, record) {
 }
 
 // הומלס: /sale/viewad,<id>.aspx · קומו: /code/nadlan/details/?modaaNum=<id>
-function newSiteListingUrl(key, url) {
+// פייסבוק: /groups/<קבוצה>/posts/<id>/ – רק לפתיחה מהטבלה, לא לרענון (אין דף מודעה לבדוק)
+function newSiteListingUrl(key, url, forRefresh = true) {
+  if (!forRefresh && recordSite(key) === "facebook" && url.hostname === "www.facebook.com" && /^\/groups\/[^/]+\/(?:posts|permalink)\/\d+\/?$/.test(url.pathname)) {
+    return url.href;
+  }
   if (recordSite(key) === "homeless" && url.hostname === "www.homeless.co.il" && /^\/(?:sale|rent)\/viewad,\d+\.aspx$/i.test(url.pathname)) {
     return url.href;
   }
@@ -737,7 +741,7 @@ function listingPageUrl(key, record) {
   ) {
     return url.href;
   }
-  return newSiteListingUrl(key, url);
+  return newSiteListingUrl(key, url, false);
 }
 
 function dateInputValue(value) {
@@ -985,10 +989,10 @@ function matchesSearchDateFilters(record) {
   return true;
 }
 
-// המתווך כמו באתר: "משרד · סוכן" (יד2: משרד + סוכנים; מדלן: סוכן + משרד)
+// יצירת קשר: משרד התיווך והסוכן (יד2 / מדלן / הומלס), או שם המפרסם וטלפונים (פייסבוק)
 function brokerText(record) {
   if (!record) return "";
-  return [record.brokerOffice, record.brokerAgent].filter(Boolean).join(" · ");
+  return [record.brokerOffice, record.brokerAgent, record.contactName, record.contactPhones].filter(Boolean).join(" · ");
 }
 
 function columnFilterText(key, record, recordKey, priceRanks) {
@@ -1105,7 +1109,8 @@ function filterRecordsFor(searchMode, favoritesMode = false) {
       if (searchCities.length && !LRStreetFilter.cityAllowed(searchCities, record.city || "")) return false;
       if (searchBrokers.length) {
         const broker = brokerText(record).toLocaleLowerCase("he");
-        if (!broker || !searchBrokers.some((name) => broker.includes(name))) return false;
+        const digits = broker.replace(/\D/g, "");
+        if (!broker || !searchBrokers.some((name) => broker.includes(name) || (/^[\d\s-]{6,}$/.test(name) && digits.includes(name.replace(/\D/g, ""))))) return false;
       }
       if (type && recordType(record) !== type) return false;
       if (searchStatuses.length) {
@@ -1298,6 +1303,17 @@ function renderRows() {
         td.className = "broker-cell";
         if (record.brokerOffice) td.appendChild(textCell(record.brokerOffice, "broker-office"));
         if (record.brokerAgent) td.appendChild(textCell(record.brokerAgent, "broker-agent"));
+        if (record.contactName) td.appendChild(textCell(record.contactName, record.brokerOffice ? "broker-agent" : "broker-office"));
+        if (record.contactPhones) {
+          for (const phone of String(record.contactPhones).split(/\s*,\s*/).filter(Boolean)) {
+            const link = document.createElement("a");
+            link.href = `tel:${phone.replace(/[^\d+]/g, "")}`;
+            link.className = "broker-phone";
+            link.dataset.recordLink = "true";
+            link.textContent = phone;
+            td.appendChild(link);
+          }
+        }
         td.title = brokerText(record);
       } else if (column.key === "notes") {
         td.className = "notes-cell";

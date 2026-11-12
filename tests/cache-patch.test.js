@@ -40,6 +40,19 @@ test("applyCachePatch keeps a favorite set after the tab read the record", () =>
   assert.equal(kept.cache["yad2:a"].favorite, false);
 });
 
+test("applyCachePatch merge (Facebook): keeps notes and history, adds a new price, skips unchanged", () => {
+  const stored = { "facebook:1": { updatedAt: 5, price: 2_000_000, notes: "לבדוק", favorite: true, favoriteAt: 4, priceHistory: [{ price: 2_000_000, at: 5, src: "page" }] } };
+  const same = LRSync.applyCachePatch(stored, [{ key: "facebook:1", record: { updatedAt: 9, price: 2_000_000 }, existed: false, merge: true }]);
+  assert.equal(same.changed, false, "same price again – nothing written");
+  const drop = LRSync.applyCachePatch(stored, [{ key: "facebook:1", record: { updatedAt: 9, price: 1_900_000, contactPhones: "052-1234567" }, existed: false, merge: true }]);
+  const merged = drop.cache["facebook:1"];
+  assert.equal(merged.price, 1_900_000);
+  assert.equal(merged.notes, "לבדוק");
+  assert.equal(merged.favorite, true);
+  assert.equal(merged.contactPhones, "052-1234567");
+  assert.deepEqual(merged.priceHistory.map((point) => point.price), [2_000_000, 1_900_000]);
+});
+
 test("applyCachePatch prunes only records that were not updated since", () => {
   const cache = { "yad2:old": { updatedAt: 1 }, "yad2:touched": { updatedAt: 9 } };
   const result = LRSync.applyCachePatch(cache, [], [["yad2:old", 1], ["yad2:touched", 3], ["yad2:none", 1]]);

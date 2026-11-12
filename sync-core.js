@@ -546,6 +546,27 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
   // puts: [{key, record, existed}] – existed = הרשומה הייתה במטמון כשהלשונית קראה אותו.
   //   רשומה שהייתה ונמחקה מאז (מחיקה במנהל המידע) – לא מוחזרת. רשומה שמורה חדשה יותר – נשארת.
   // prunes: [[key, updatedAt]] – רשומות שפג תוקפן; נמחקות רק אם לא עודכנו מאז.
+  function mergeIntoStored(stored, record) {
+    const history = Array.isArray(stored.priceHistory) ? stored.priceHistory : [];
+    const last = history.length ? history[history.length - 1] : null;
+    const priceHistory = Number.isFinite(record.price) && (!last || last.price !== record.price)
+      ? [...history, { price: record.price, at: record.updatedAt || Date.now(), src: "page" }].slice(-50)
+      : history;
+    const merged = { ...stored };
+    for (const [field, value] of Object.entries(record)) {
+      if (value !== undefined && value !== null && value !== "") merged[field] = value;
+    }
+    merged.priceHistory = priceHistory;
+    return merged;
+  }
+  function sameExceptTime(a, b) {
+    const strip = (record) => {
+      const { updatedAt, ...rest } = record;
+      return JSON.stringify(rest);
+    };
+    return strip(a) === strip(b);
+  }
+
   function applyCachePatch(cache, puts = [], prunes = []) {
     const source = cache && typeof cache === "object" && !Array.isArray(cache) ? cache : {};
     const next = { ...source };
@@ -564,10 +585,14 @@ create trigger ${DEALS_TABLE}_merge before insert or update on public.${DEALS_TA
         newer[put.key] = stored;
         continue;
       }
+      // merge: הכותב לא מחזיק את הרשומה השמורה (פייסבוק) – משלבים עם מה שכבר שמור: שדות קיימים
+      // (הערה, לב, היסטוריית מחיר) נשארים, והמחיר החדש נוסף להיסטוריה רק כשהוא השתנה
+      const incoming = put.merge && stored ? mergeIntoStored(stored, put.record) : put.record;
       // סימון לב (מועדפים) נעשה במנהל המידע; לשונית שבנתה את הרשומה מעותק ישן לא מבטלת אותו
-      const record = stored && (Number(stored.favoriteAt) || 0) > (Number(put.record.favoriteAt) || 0)
-        ? { ...put.record, favorite: stored.favorite, favoriteAt: stored.favoriteAt }
-        : put.record;
+      const record = stored && (Number(stored.favoriteAt) || 0) > (Number(incoming.favoriteAt) || 0)
+        ? { ...incoming, favorite: stored.favorite, favoriteAt: stored.favoriteAt }
+        : incoming;
+      if (put.merge && stored && sameExceptTime(stored, record)) continue;
       next[put.key] = record;
       changed = true;
     }

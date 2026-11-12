@@ -17,13 +17,25 @@
   // מחיר, שטח או חדרים.
   // פוסט עם פחות מזה הוא בדרך כלל סתם פוסט של אנשים ("מישהו מכיר דירה באזור?").
   const SQM_RE = /(?<![\d.,])\d{2,4}(?:[.,]\d+)?\s*(?:מ["'״׳]?ר(?![א-ת])|מ["'״׳]ר|מטר(?:ים)?(?:\s+מרובע(?:ים)?)?(?![א-ת])|מ\s*["'״׳]?\s*ר\b|sqm\b|m2\b|מ²)/i;
+  // שטח הדירה מהטקסט – בלי שטח של מרפסת / גינה / מחסן ("מרפסת 12 מר", "30 מ"ר מרפסות")
+  const EXTRA_AREA_BEFORE = /(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|חני(?:ה|ות)|גג|מרתף)[^\n\d]{0,8}$/;
+  const EXTRA_AREA_AFTER = /^\s*(?:של\s+)?(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|גג|מרתף)/;
+  function apartmentSqm(source) {
+    for (const match of source.matchAll(new RegExp(SQM_RE.source, "gi"))) {
+      if (EXTRA_AREA_BEFORE.test(source.slice(Math.max(0, match.index - 16), match.index))) continue;
+      if (EXTRA_AREA_AFTER.test(source.slice(match.index + match[0].length, match.index + match[0].length + 12))) continue;
+      const value = Number(match[0].match(/\d{2,4}(?:[.,]\d+)?/)[0].replace(",", "."));
+      if (value >= 15 && value <= 1000) return value;
+    }
+    return null;
+  }
   const AMENITY_RE = /ממ["'״׳]?ד|מרחב\s+מוגן|מעלית|חני(?:ה|יה|ות)|מרפס(?:ת|ות)|מחסן|מיזוג|מזגנים|דוד\s+שמש|גינה|משופצת|שמורה/;
   const LISTING_FIELDS_MIN = 3;
   function listingDetails(source, parsed) {
     const location = typeof parser.parseFreeAddress === "function" ? parser.parseFreeAddress(source) : null;
     const fields = {
       price: Boolean(parsed && parsed.price),
-      sqm: Boolean(parsed && parsed.sqm) || SQM_RE.test(source),
+      sqm: Boolean(parsed && parsed.sqm) || apartmentSqm(source) !== null,
       rooms: /\d(?:[.,]\d)?\s*(?:חדרים?|חד['׳]?)(?![א-ת])|(?:שני|שלושה|שלוש|ארבעה|ארבע|חמישה|חמש|שישה|שש)\s+חדרים/.test(source),
       floor: /קומה\s*:?\s*-?\d|קומת\s+(?:קרקע|גג|כניסה)|קומה\s+(?:ראשונה|שנייה|שניה|שלישית|רביעית|חמישית|אחרונה|גבוהה|נמוכה)|\d{1,2}\s*מתוך\s*\d{1,2}/.test(source),
       location: Boolean(location && (location.street || location.city || location.hood)),
@@ -71,9 +83,8 @@
     const parsed = parser.extractPriceSqmFree(source);
     // "95 מטר", "95 מטר מרובע", "95 מטרים" – שטח גם כשהמנתח הכללי זיהה רק מ"ר
     if (!parsed.sqm) {
-      const match = source.match(SQM_RE);
-      const value = match ? Number(match[0].match(/\d{2,4}(?:[.,]\d+)?/)[0].replace(",", ".")) : NaN;
-      if (value >= 15 && value <= 1000) {
+      const value = apartmentSqm(source);
+      if (value !== null) {
         parsed.sqm = value;
         if (parsed.price && !parsed.rent) {
           parsed.ppsm = Math.round(parsed.price / value);
