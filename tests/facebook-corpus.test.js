@@ -92,6 +92,32 @@ test("facebook corpus: streets", () => {
   assert.equal(street("רחוב קהילת פינסק 5, קומה 2"), "קהילת פינסק 5");
 });
 
+test("facebook corpus (sweep 2): odd area, rooms and price formats", () => {
+  const base = "למכירה דירת 4 חדרים ברחוב הרצל 10 פתח תקווה, קומה 2, ";
+  const parsed = (text) => {
+    const c = classify(base + text);
+    return c.parsed || LR.extractPriceSqmFree(base + text);
+  };
+  assert.equal(parsed(`103 מ"​ר נטו. מחיר 1,900,000`).sqm, 103);
+  assert.equal(parsed(`109+ 50 מ"ר מרפסת. מחיר 1,900,000`).sqm, 109);
+  assert.equal(parsed(`כ־68 מ״ר לפי ארנונה | כ־56 מ״ר בטאבו. מחיר 1,900,000`).price, 1_900_000);
+  assert.equal(parsed(`100 מ"ר. מחיר 2.950k ש"ח`).price, 2_950_000);
+  assert.equal(parsed(`100 מ"ר. מחיר 1.980,000 ש"ח`).price, 1_980_000);
+  assert.equal(parsed(`100 מ"ר. עדכון מחיר של -90000₪ !! מחיר 1,900,000 ₪`).price, 1_900_000);
+  const rooms = (text) => LR.extractRoomsFloorFree(text).rooms;
+  assert.equal(rooms("5 חד מהממת בקומה 3"), 5);
+  assert.equal(rooms("בית חד משפחתי, 6 חדרים"), 6);
+  assert.equal(rooms("דירת 6 חדרים שהפכה ל-4 חדרים"), 4);
+  assert.equal(LR.parseFreeAddress("למכירה בחריש דירת 4 חדרים", "פתח תקווה").city, "חריש");
+});
+
+test("facebook corpus (sweep 2): post types", () => {
+  assert.equal(classify(`בניין 3 קומות מחולק ל 10 יחידות דיור, 400 מ"ר, מחיר 9,000,000 ₪`).type, "other");
+  assert.equal(classify(`אימוני ריצה לנשים בפארק, 3 פעמים בשבוע, 150 ש"ח לחודש`).type, "other");
+  assert.equal(classify(`תתרגל להגיד נמכר! דירת 4 חדרים 100 מ"ר בקומה 2, 2,100,000 ₪`).type, "listing");
+  assert.equal(classify(`נמכר! דירת 4 חדרים ברחוב ברנר`).type, "other");
+});
+
 // כל הקורפוס: סוג, מחיר, שטח, חדרים, קומה, רחוב ועיר – בדיוק כמו שהתוסף שומר (fb.js)
 test("facebook corpus: every field of every collected post", () => {
   const corpus = require("./facebook-corpus-data.js");
@@ -107,6 +133,5 @@ test("facebook corpus: every field of every collected post", () => {
       if (!ok) wrong.push(`#${index} ${field}: want ${want} got ${got[field]}`);
     }
   });
-  // "דירת 6 חדרים במקור, כיום 5" נשאר דו-משמעי – מותרת טעות אחת
-  assert.ok(wrong.length <= 1, wrong.join("\n"));
+  assert.deepEqual(wrong, []);
 });
