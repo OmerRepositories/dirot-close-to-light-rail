@@ -1389,12 +1389,16 @@
     listingStats = null
   ) {
     const key = id ? cacheKeyForListing(id) : null;
+    // הומלס / קומו מחזירים null למאפיין שהעמוד לא מסמן ("לא ידוע"). פעם כל השמירה נדחתה בגלל
+    // ערך כזה – ולכן מחסן וכו' לא התעדכנו בכניסה לעמוד. עכשיו שומרים רק את הידועים.
+    const known = amenities && typeof amenities === "object"
+      ? Object.fromEntries(Object.entries(amenities).filter(([, value]) => typeof value === "boolean"))
+      : {};
     if (
       !CFG.saveListingData ||
       !id ||
       cacheWriteSuppressedIds.has(key) ||
-      !amenities ||
-      !Object.values(amenities).every((value) => typeof value === "boolean")
+      !Object.keys(known).length
     ) {
       return;
     }
@@ -1403,13 +1407,6 @@
     const manualOverrides = new Set(
       existing && Array.isArray(existing.manualOverrides) ? existing.manualOverrides : []
     );
-    const savedAmenities =
-      manualOverrides.has("amenities") && existing && existing.amenities
-        ? existing.amenities
-        : amenities;
-    const savedCoordinates = manualOverrides.has("coordinates")
-      ? existing && existing.coordinates
-      : validCoordinates;
     const existingAmenities =
       existing &&
       existing.amenities &&
@@ -1417,6 +1414,14 @@
       !Array.isArray(existing.amenities)
         ? existing.amenities
         : {};
+    // מאפיין שלא ידוע הפעם שומר את הערך השמור
+    const savedAmenities =
+      manualOverrides.has("amenities") && existing && existing.amenities
+        ? existing.amenities
+        : { ...existingAmenities, ...known };
+    const savedCoordinates = manualOverrides.has("coordinates")
+      ? existing && existing.coordinates
+      : validCoordinates;
     const stats = {};
     // אותה הגנה כמו בשמירת המודעה: מחיר חשוד (שעוד לא אושר) לא דורס את המחיר השמור
     const suspiciousPrice =
@@ -1937,12 +1942,28 @@
       indexedFrom: fromSearch ? previous.indexedFrom || "search" : "page",
       brokerOffice: (broker && broker.office) || previous.brokerOffice || undefined,
       brokerAgent: (broker && broker.agent) || previous.brokerAgent || undefined,
+      ...(fromSearch ? {} : visitedPageStatus(parser, previous)),
       ...extra,
     }, previous);
     if (recordUnchanged(record, previous)) return;
     record.updatedAt = Date.now();
     putCacheRecord(key, record);
     saveListingCache();
+  }
+
+  // עמוד מודעה שנפתח ומוצג כרגיל = המודעה פעילה (בלי לחכות לרענון). תאריך הבדיקה מתעדכן
+  // לכל היותר פעם ביום, כדי שכל סריקה של העמוד לא תשמור את הרשומה מחדש.
+  const DAY_MS = 86400000;
+  function visitedPageStatus(parser, previous) {
+    if (typeof parser.listingPageStatus !== "function") return {};
+    let status = null;
+    try {
+      status = parser.listingPageStatus();
+    } catch {}
+    if (!status || status.status !== "active") return {};
+    const now = Date.now();
+    if (previous.listingStatus === "active" && now - (previous.listingStatusCheckedAt || 0) < DAY_MS) return {};
+    return { listingStatus: "active", listingStatusCheckedAt: now };
   }
 
   // מודעות שכירות לא נשמרות במטמון (התוסף מיועד לחיפוש רכישה)
