@@ -126,10 +126,11 @@ test("Facebook analysis is limited to group main-feed URLs", () => {
 
 test("only groups whose name looks like a real-estate group are scanned", () => {
   const { isRealEstateGroupName, groupId } = require("../facebook-page.js");
-  for (const name of ["דירות למכירה בפתח תקווה", "נדל\"ן בשרון – קנייה ומכירה", "דירות להשכרה תל אביב", "Real Estate Israel", "נכסים בקריית אונו"]) {
+  // מספיקה מילה כללית אחת בשם הקבוצה
+  for (const name of ["קבוצת דירות", "להשכרה בעיר", "לקנייה ישירות", "נדל\"ן באזור", "נכסים", "apartments"]) {
     assert.equal(isRealEstateGroupName(name), true, name);
   }
-  for (const name of ["הורים בפתח תקווה", "מתכונים טבעוניים", "Python Israel", ""]) {
+  for (const name of ["הורים בעיר", "מתכונים", "קבוצת תכנות", ""]) {
     assert.equal(isRealEstateGroupName(name), false, name);
   }
   assert.equal(groupId("/groups/370244223604031/"), "370244223604031");

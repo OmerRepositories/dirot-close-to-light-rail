@@ -8,9 +8,9 @@
     return match ? decodeURIComponent(match[1]) : null;
   };
 
-  // מילים בשם הקבוצה שמעידות על קבוצת דירות / נדל"ן (עברית ואנגלית)
+  // מילים כלליות בשם הקבוצה שמעידות על קבוצת דירות (בלי שמות של קבוצות או אתרים מסוימים)
   const REAL_ESTATE_NAME =
-    /דירות|דירה|נדל["״׳']?ן|נדלן|נכסים|נכס|למכירה|להשכרה|השכרה|מכירה|מכירת|שכירות|דיור|בתים|קוטג|מגרשים|קרקעות|יד\s*2|תיווך|מתווכים|real\s*estate|apartment|apartments|homes?\b|housing|property|properties|for\s+sale|for\s+rent|rentals?\b|flat/i;
+    /דירות|דירה|נדל["״׳']?ן|נדלן|נכסים|נכס|למכירה|מכירה|להשכרה|השכרה|שכירות|לקני(?:י)?ה|קני(?:י)?ה|לרכישה|דיור|בתים|מגרשים|קרקעות|real\s*estate|apartments?|housing|propert(?:y|ies)|for\s+sale|for\s+rent|rentals?\b/i;
   function isRealEstateGroupName(name) {
     return REAL_ESTATE_NAME.test(String(name || ""));
   }
