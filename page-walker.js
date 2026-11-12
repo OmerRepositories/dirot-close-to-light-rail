@@ -4,7 +4,6 @@ var LRPageWalker = (() => {
   const MAX_PAGES = 500;
   // {pagehere}, {page}, {p}, {n} – כל אחד מהם מסמן איפה מספר העמוד
   const PLACEHOLDER = /\{\s*(?:pagehere|page|p|n)\s*\}/gi;
-  const ALLOWED_HOSTS = ["www.yad2.co.il", "yad2.co.il", "www.madlan.co.il", "madlan.co.il"];
 
   const SPEEDS = {
     slow: { stepPx: 250, stepMs: 700 },
@@ -44,8 +43,9 @@ var LRPageWalker = (() => {
       } catch {
         return { error: "הכתובת אינה תקינה." };
       }
-      if (url.protocol !== "https:" || !ALLOWED_HOSTS.includes(url.hostname)) {
-        return { error: "אפשר לדפדף רק בעמודים של יד2 או מדלן (https)." };
+      // כל אתר (http/https). ביד2 / מדלן / הומלס / קומו התוסף גם קורא את המודעות; באתרים אחרים רק גולל
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        return { error: "צריך כתובת של אתר (שמתחילה ב-https://)." };
       }
       urls.push({ page, url: url.href });
     }

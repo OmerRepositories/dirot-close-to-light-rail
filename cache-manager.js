@@ -3876,11 +3876,27 @@ function startWalker() {
   }
   readWalkerDelay();
   saveWalkerSettings();
-  Object.assign(walker, {
-    urls: built.urls, index: 0, paused: false, phase: "idle", cards: 0, skipped: 0, pageStartedAt: 0, workMs: 0, workCount: 0,
+  const begin = (injected) => {
+    Object.assign(walker, {
+      urls: built.urls, index: 0, paused: false, phase: "idle", cards: 0, skipped: 0, pageStartedAt: 0, workMs: 0, workCount: 0, injected,
+    });
+    updateWalkerButtons();
+    openWalkerPage();
+  };
+  if (!walkerNeedsInjection(built.urls[0].url)) {
+    begin(false);
+    return;
+  }
+  // אתר אחר: מבקשים הרשאה לאתר הזה בלבד (פעם אחת), כדי שאפשר יהיה לגלול בו
+  const origin = `${new URL(built.urls[0].url).origin}/*`;
+  chrome.permissions.request({ origins: [origin] }, (granted) => {
+    if (chrome.runtime.lastError || !granted) {
+      setWalkerStatus("בלי הרשאה לאתר הזה אי אפשר לגלול בו. אפשר לנסות שוב ולאשר את ההרשאה.", true);
+      return;
+    }
+    setWalkerStatus("באתר הזה התוסף רק גולל (הוא לא קורא בו מודעות). ממשיכים…");
+    begin(true);
   });
-  updateWalkerButtons();
-  openWalkerPage();
 }
 
 function finishWalker(message) {
@@ -3963,9 +3979,56 @@ function onWalkerTabUpdated(tabId, changeInfo) {
   }, WALKER_AFTER_LOAD_MS);
 }
 
+// אתרים שהתוסף פועל בהם (יש בהם סקריפט תוכן שגולל וסופר מודעות). בכל אתר אחר הגלילה מוזרקת לעמוד
+// (chrome.scripting, אחרי הרשאה לאתר), בלי ספירת מודעות.
+const WALKER_CONTENT_HOSTS = /(?:^|\.)(?:yad2|madlan|homeless|komo)\.co\.il$/i;
+function walkerNeedsInjection(url) {
+  try {
+    return !WALKER_CONTENT_HOSTS.test(new URL(url).hostname);
+  } catch {
+    return true;
+  }
+}
+// רצה בתוך העמוד: גלילה הדרגתית עד הסוף, ממתינה לטעינת עוד תוצאות (כמו LRPageWalker.slowScrollToBottom)
+async function injectedWalkerScroll(stepPx, stepMs) {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const scroller = () => document.scrollingElement || document.documentElement;
+  const maxY = () => scroller().scrollHeight - window.innerHeight;
+  let steps = 0;
+  let quiet = 0;
+  const started = Date.now();
+  while (Date.now() - started < 4 * 60 * 1000) {
+    if (scroller().scrollTop < maxY() - 2) {
+      window.scrollBy({ top: stepPx, behavior: "smooth" });
+      steps++;
+      await sleep(stepMs);
+      quiet = 0;
+      continue;
+    }
+    const before = maxY();
+    await sleep(2000);
+    if (maxY() > before + 2) continue;
+    if (++quiet >= 2) return { reason: "bottom", steps, generic: true };
+  }
+  return { reason: "timeout", steps, generic: true };
+}
+
 function scrollWalkerPage(attempt, retries) {
+  if (walker.injected) {
+    const speed = LRPageWalker.SPEEDS[walker.speed] || LRPageWalker.SPEEDS.normal;
+    chrome.scripting
+      .executeScript({ target: { tabId: walker.tabId }, func: injectedWalkerScroll, args: [speed.stepPx, speed.stepMs] })
+      .then((results) => handleWalkerScrollResult(attempt, retries, null, results && results[0] && results[0].result))
+      .catch((error) => handleWalkerScrollResult(attempt, retries, error, null));
+    return;
+  }
   chrome.tabs.sendMessage(walker.tabId, { type: "lightrail:walker-scroll", speed: walker.speed }, (result) => {
-    const error = chrome.runtime.lastError;
+    handleWalkerScrollResult(attempt, retries, chrome.runtime.lastError, result);
+  });
+}
+
+function handleWalkerScrollResult(attempt, retries, error, result) {
+  {
     if (attempt !== walker.attempt || !walkerActive()) return;
     if (error || !result) {
       // סקריפט התוכן עוד לא מוכן, או שהעמוד עבר לכתובת אחרת באמצע
@@ -3985,6 +4048,16 @@ function scrollWalkerPage(attempt, retries) {
       walker.pageStartedAt = 0;
     }
     walker.cards += Number(result.cards) || 0;
+    // באתר שהתוסף לא מכיר אין ספירת מודעות – ממשיכים לעמוד הבא
+    if (result.generic) {
+      const isLastPage = walker.index + 1 >= walker.urls.length;
+      setWalkerStatus(
+        `${walkerPageLabel()} נגלל עד הסוף${result.reason === "timeout" ? " (נעצר אחרי זמן מרבי)" : ""}.` +
+        (walker.paused ? " הדפדוף מושהה." : isLastPage ? "" : ` ממתין ${walker.delaySec} שניות לעמוד הבא…${walkerRemainingText()}`)
+      );
+      scheduleNextWalkerPage();
+      return;
+    }
     if (!result.cards) {
       // אין מודעות: סוף התוצאות, או בדיקת "אני לא רובוט". עוצרים עד שהמשתמש מחליט
       walker.paused = true;
@@ -4003,7 +4076,7 @@ function scrollWalkerPage(attempt, retries) {
       (walker.paused ? " הדפדוף מושהה." : isLast ? "" : ` ממתין ${walker.delaySec} שניות לעמוד הבא…${walkerRemainingText()}`)
     );
     scheduleNextWalkerPage();
-  });
+  }
 }
 
 function toggleWalkerPause() {

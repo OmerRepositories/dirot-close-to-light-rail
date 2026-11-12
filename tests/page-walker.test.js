@@ -23,14 +23,14 @@ test("buildPageUrls accepts other placeholder spellings and adds page= when ther
   assert.equal(Walker.buildPageUrls("https://www.madlan.co.il/for-sale/x", 4, 4).urls[0].url, "https://www.madlan.co.il/for-sale/x?page=4");
 });
 
-test("buildPageUrls rejects bad ranges, other sites and invalid URLs", () => {
+test("buildPageUrls rejects bad ranges and invalid URLs, and accepts any website", () => {
   assert.ok(Walker.buildPageUrls("", 1, 2).error);
   assert.ok(Walker.buildPageUrls(TEMPLATE, 5, 2).error);
   assert.ok(Walker.buildPageUrls(TEMPLATE, 0, 2).error);
   assert.ok(Walker.buildPageUrls(TEMPLATE, 1.5, 2).error);
   assert.ok(Walker.buildPageUrls(TEMPLATE, 1, Walker.MAX_PAGES + 1).error);
-  assert.ok(Walker.buildPageUrls("https://example.com/?page={pagehere}", 1, 2).error);
-  assert.ok(Walker.buildPageUrls("http://www.yad2.co.il/?page={pagehere}", 1, 2).error);
+  assert.equal(Walker.buildPageUrls("https://example.com/?page={pagehere}", 1, 2).urls[1].url, "https://example.com/?page=2");
+  assert.ok(Walker.buildPageUrls("ftp://example.com/?page={pagehere}", 1, 2).error);
   assert.ok(Walker.buildPageUrls("not a url {pagehere}", 1, 2).error);
 });
 
