@@ -1006,7 +1006,7 @@ function columnFilterText(key, record, recordKey, priceRanks) {
     const searchOnly = recordType(record) === "listing" && record.indexedFrom === "search"
       ? " מהחיפוש בלבד"
       : "";
-    return recordSite(recordKey) === "yad2" && recordType(record) === "listing"
+    return LRCacheData.LISTING_SITES.includes(recordSite(recordKey)) && recordType(record) === "listing"
       ? record.listingStatus === "active"
         ? "פעילה"
         : record.listingStatus === "removed"
@@ -3372,9 +3372,15 @@ function checkCurrentListingStatus(tabId, key, record, retries = 8) {
   let urlId;
   try {
     const parsedUrl = new URL(url);
-    const match = recordSite(key) === "madlan"
+    const site = recordSite(key);
+    // מזהה המודעה מהכתובת – לכל אתר בדרך שלו (בקומו הוא בפרמטר modaaNum)
+    const match = site === "madlan"
       ? parsedUrl.pathname.match(/\/(?:listings|bulletin)\/([^/]+)/)
-      : parsedUrl.pathname.match(/^\/realestate\/item\/[^/]+\/([^/]+)/);
+      : site === "homeless"
+        ? parsedUrl.pathname.match(/\/(?:sale|rent)\/viewad,(\d+)\.aspx/i)
+        : site === "komo"
+          ? [null, parsedUrl.searchParams.get("modaaNum")]
+          : parsedUrl.pathname.match(/^\/realestate\/item\/[^/]+\/([^/]+)/);
     urlId = match && match[1];
   } catch {
     return;
