@@ -343,3 +343,5 @@ html.lr-hide-ads [id^="div-gpt-ad"] { display: none !important; }
 }
 .lr-twin:hover { text-decoration: underline !important; }
 .lr-twin[hidden] { display: none; }
+.lr-fb-group-notice { position: fixed; z-index: 2147483000; left: 16px; bottom: 16px; max-width: 360px; padding: 10px 12px; border: 1px solid rgba(0,0,0,.12); border-radius: 10px; background: #fff; color: #1c1e21; box-shadow: 0 8px 24px rgba(0,0,0,.18); font: 13px/1.45 system-ui, sans-serif; direction: rtl; }
+.lr-fb-group-notice button { margin-inline-start: 6px; padding: 3px 10px; border: 1px solid #0b6e69; border-radius: 6px; background: #0b6e69; color: #fff; font: inherit; cursor: pointer; }

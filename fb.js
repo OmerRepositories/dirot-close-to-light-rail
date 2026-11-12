@@ -415,9 +415,62 @@
     scanTimer = setTimeout(scan, 900);
   }
 
+  // רק בפיד של קבוצה שנראית קבוצת דירות (לפי שם הקבוצה), או קבוצה שהמשתמש הפעיל בעצמו.
+  // שם הקבוצה נטען אחרי הדף – עד שהוא מופיע, לא סורקים.
+  const FORCED_GROUPS_KEY = "lightrailFbForcedGroups";
+  let forcedGroups = new Set();
+  let groupDecision = { path: "", name: "", result: null };
+  function groupName() {
+    const heading = document.querySelector('[role="main"] h1') || document.querySelector("h1");
+    const title = String(document.title || "").replace(/^\(\d+\)\s*/, "").replace(/\s*\|\s*Facebook\s*$/i, "");
+    return [heading ? heading.textContent : "", title].filter(Boolean).join(" · ").trim();
+  }
+  function isRealEstateGroupHere() {
+    const id = LRFacebookPage.groupId(location.pathname);
+    if (id && forcedGroups.has(id)) return true;
+    const name = groupName();
+    if (groupDecision.path === location.pathname && groupDecision.name === name) return groupDecision.result;
+    const result = !name || /^facebook$/i.test(name) ? null : LRFacebookPage.isRealEstateGroupName(name);
+    groupDecision = { path: location.pathname, name, result };
+    return result;
+  }
+  function shouldRunHere() {
+    return !CFG.disableFacebook && LRFacebookPage.isGroupFeed(location.pathname) && isRealEstateGroupHere() === true;
+  }
+
+  // קבוצה שלא זוהתה כקבוצת דירות: הודעה קטנה עם אפשרות להפעיל בכל זאת
+  let groupNotice = null;
+  function renderGroupNotice() {
+    const show = settingsLoaded && !CFG.disableFacebook && LRFacebookPage.isGroupFeed(location.pathname) && isRealEstateGroupHere() === false;
+    if (!show) {
+      if (groupNotice) groupNotice.remove();
+      groupNotice = null;
+      return;
+    }
+    if (groupNotice && groupNotice.isConnected) return;
+    groupNotice = document.createElement("div");
+    groupNotice.className = "lr-fb-group-notice lr-wrap";
+    groupNotice.textContent = "קרבה לרכבת: הקבוצה לא נראית קבוצת דירות, אז התוסף לא סורק בה פוסטים. ";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "להפעיל בקבוצה הזו";
+    button.addEventListener("click", () => {
+      const id = LRFacebookPage.groupId(location.pathname);
+      if (!id) return;
+      forcedGroups.add(id);
+      try {
+        chrome.storage.local.set({ [FORCED_GROUPS_KEY]: [...forcedGroups].slice(-200) });
+      } catch {}
+      syncPageState();
+    });
+    groupNotice.appendChild(button);
+    document.body.appendChild(groupNotice);
+  }
+
   function syncPageState() {
     if (!settingsLoaded) return;
-    if (CFG.disableFacebook || !LRFacebookPage.isGroupFeed(location.pathname)) {
+    renderGroupNotice();
+    if (!shouldRunHere()) {
       stop();
       return;
     }
@@ -448,8 +501,8 @@
 
   function onPageMutation() {
     if (!settingsLoaded) return;
-    const shouldRun = !CFG.disableFacebook && LRFacebookPage.isGroupFeed(location.pathname);
-    if (shouldRun !== isRunning) {
+    const shouldRun = shouldRunHere();
+    if (shouldRun !== isRunning || (!shouldRun && LRFacebookPage.isGroupFeed(location.pathname))) {
       syncPageState();
     } else if (isRunning) {
       scheduleScan();
@@ -477,6 +530,11 @@
   }
 
   routeObserver = new MutationObserver((records) => {
+    // מחוץ לפיד של קבוצה (רוב הזמן בפייסבוק) – בדיקה זולה של הכתובת בלבד, בלי לעבור על כל השינויים
+    if (!isRunning && !LRFacebookPage.isGroupFeed(location.pathname)) {
+      if (groupNotice) renderGroupNotice();
+      return;
+    }
     if (records.every(isOwnMutation)) return;
     onPageMutation();
   });
@@ -494,8 +552,12 @@
   try {
     chrome.storage.sync.get(DEFAULTS, (s) => {
       applySettings(s || {});
-      settingsLoaded = true;
-      syncPageState();
+      chrome.storage.local.get(FORCED_GROUPS_KEY, (stored) => {
+        const list = stored && Array.isArray(stored[FORCED_GROUPS_KEY]) ? stored[FORCED_GROUPS_KEY] : [];
+        forcedGroups = new Set(list.map(String));
+        settingsLoaded = true;
+        syncPageState();
+      });
     });
     // רק אזור sync – מאזין כללי היה מקבל גם עותק מלא של כל כתיבה גדולה לאחסון המקומי
     chrome.storage.sync.onChanged.addListener((changes) => {
