@@ -426,6 +426,8 @@ function renderCloudCell(td, key, record) {
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
+  // המקור כתגית קטנה צמוד לכותרת (העמודה הראשונה נשארת קבועה בגלילה) – בלי לגלול כדי לדעת מאיפה המודעה
+  { key: "site", label: "מקור", sortKey: "site", className: "site-col", title: "האתר שממנו המודעה: יד2, מדלן, הומלס, קומו או פייסבוק (FB)" },
   { key: "favorite", label: "♥", sortKey: "favorite", className: "favorite-col", title: "מועדפים: לחיצה על הלב בשורה מוסיפה או מסירה את המודעה מהמועדפים" },
   { key: "price", label: "מחיר", sortKey: "price", className: "price-col" },
   { key: "priceWithTax", label: "כולל מס רכישה", sortKey: "priceWithTax", className: "price-tax-col", title: "כמה הדירה תעלה בפועל: המחיר ועוד מס רכישה לפי המדרגות שבהגדרות (חישובים ← מס רכישה). המדרגות נכונות לשנת 2026 – כדאי לוודא שהן עדיין מעודכנות." },
@@ -438,7 +440,6 @@ const columns = [
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
   { key: "broker", label: "יצירת קשר", sortKey: "broker", className: "broker-col", title: "משרד התיווך והסוכן (יד2 / מדלן / הומלס), או שם המפרסם וטלפון (פייסבוק). בחיפוש בעמודה אפשר כמה שמות או מספרים מופרדים בפסיק" },
-  { key: "site", label: "אתר", sortKey: "site" },
   { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
   { key: "shelterMeters", label: "מקלט ציבורי (מ׳)", sortKey: "shelterMeters", title: "מרחק למקלט הציבורי הקרוב, כפי שיד2 מציגה בעמוד המודעה" },
   { key: "listingAgeDays", label: "גיל מודעה (ימים)", sortKey: "listingAgeDays", title: "כמה ימים המודעה באוויר; מחושב ונשמר בכל שמירה או רענון של המודעה" },
@@ -1105,7 +1106,7 @@ function filterRecordsFor(searchMode, favoritesMode = false) {
       if (!record || typeof record !== "object" || Array.isArray(record)) return false;
       if (favoritesMode && record.favorite !== true) return false;
       if (preset && !preset.keys.has(key)) return false;
-      if (site && recordSite(key) !== site) return false;
+      if (site === "nofb" ? recordSite(key) === "facebook" : site && recordSite(key) !== site) return false;
       if (searchCities.length && !LRStreetFilter.cityAllowed(searchCities, record.city || "")) return false;
       if (searchBrokers.length) {
         const broker = brokerText(record).toLocaleLowerCase("he");
@@ -1193,7 +1194,10 @@ function renderRows() {
         ));
       } else if (column.key === "site") {
         const siteName = recordSite(key);
-        td.textContent = LRCacheData.siteLabel(siteName);
+        td.className = "site-col";
+        const chip = textCell(siteName === "facebook" ? "FB" : LRCacheData.siteLabel(siteName), `site-chip site-${siteName}`);
+        chip.title = LRCacheData.siteLabel(siteName);
+        td.appendChild(chip);
       } else if (column.key === "cloud") {
         td.className = "cloud-col";
         renderCloudCell(td, key, record);
@@ -1203,7 +1207,11 @@ function renderRows() {
         const site = recordSite(key);
         const searchOnly = recordType(record) === "listing" && record.indexedFrom === "search";
         const relevance = listingRelevance(record);
-        if (relevance.irrelevant && record.listingStatus !== "removed") {
+        if (record.facebookNotListing) {
+          status.className = "listing-status irrelevant";
+          status.textContent = "לא רלוונטית";
+          td.title = "בפענוח מחדש התברר שהפוסט הוא לא מודעת דירה (בניין שלם, הודעת \"נמכר\" וכדומה)";
+        } else if (relevance.irrelevant && record.listingStatus !== "removed") {
           status.className = "listing-status irrelevant";
           status.textContent = "לא רלוונטית";
           td.title = irrelevantTitle(relevance);

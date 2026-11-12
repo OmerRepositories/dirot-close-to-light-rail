@@ -1207,3 +1207,25 @@ tbody tr:hover .favorite-street-toggle, .favorite-street-toggle:focus-visible { 
 @media (max-width: 700px) { .timeline-copy { position: static; margin-top: 6px; margin-inline-start: 6px; } }
 .broker-phone { display: block; color: var(--action); font-size: 12px; direction: ltr; text-align: right; text-decoration: none; }
 .broker-phone:hover { text-decoration: underline; }
+
+/* מקור המודעה – תגית קטנה בתחילת השורה; צבעים שקופים למחצה שעובדים בבהיר ובכהה */
+.site-col { width: 52px; min-width: 52px; text-align: center; white-space: nowrap; }
+th.site-col { min-width: 52px; }
+.site-chip { display: inline-block; min-width: 34px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; color: #64748b; background: rgba(100, 116, 139, .15); }
+.site-chip.site-yad2 { color: #d9480f; background: rgba(253, 126, 20, .16); }
+.site-chip.site-madlan { color: #1971c2; background: rgba(51, 154, 240, .16); }
+.site-chip.site-homeless { color: #2b8a3e; background: rgba(64, 192, 87, .16); }
+.site-chip.site-komo { color: #862e9c; background: rgba(190, 75, 219, .16); }
+.site-chip.site-facebook { color: #1c4fd8; background: rgba(66, 103, 230, .18); }
+:root[data-theme="dark"] .site-chip.site-yad2 { color: #ffa94d; }
+:root[data-theme="dark"] .site-chip.site-madlan { color: #74c0fc; }
+:root[data-theme="dark"] .site-chip.site-homeless { color: #8ce99a; }
+:root[data-theme="dark"] .site-chip.site-komo { color: #e599f7; }
+:root[data-theme="dark"] .site-chip.site-facebook { color: #91a7ff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .site-chip.site-yad2 { color: #ffa94d; }
+  :root:not([data-theme="light"]) .site-chip.site-madlan { color: #74c0fc; }
+  :root:not([data-theme="light"]) .site-chip.site-homeless { color: #8ce99a; }
+  :root:not([data-theme="light"]) .site-chip.site-komo { color: #e599f7; }
+  :root:not([data-theme="light"]) .site-chip.site-facebook { color: #91a7ff; }
+}
