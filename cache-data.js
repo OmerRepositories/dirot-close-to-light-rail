@@ -419,7 +419,8 @@ var LRCacheData = (() => {
     if (!record || record.recordType === "project") return "";
     const checkable = LISTING_SITES.includes(site);
     if (checkable && record.listingStatus === "removed") return "removed";
-    if (irrelevant) return "irrelevant";
+    // פוסט פייסבוק שבפענוח מחדש התברר שהוא לא דירה (בניין שלם, "נמכר", חוג...)
+    if (irrelevant || record.facebookNotListing) return "irrelevant";
     if (!checkable) return "";
     return record.listingStatus === "active" ? "active" : "unchecked";
   }

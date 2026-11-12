@@ -1,6 +1,6 @@
 // Service worker: גיאוקוד כתובות (Nominatim) + רשימת תחנות רכבת קלה (Overpass / OpenStreetMap)
 // + סנכרון אונליין אופציונלי (sync-core.js)
-importScripts("sync-core.js", "deals-core.js", "listing-store.js");
+importScripts("sync-core.js", "deals-core.js", "listing-store.js", "parse.js", "facebook-classifier.js", "facebook-reparse.js");
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const OVERPASS_ENDPOINTS = [
@@ -406,7 +406,68 @@ async function flushCachePatches() {
   }
 }
 
+// ---------- פענוח מחדש של מודעות פייסבוק שמורות ----------
+// כשהמנתח משתפר (LRFacebookReparse.PARSER_VERSION), כל מודעות הפייסבוק השמורות מפוענחות מחדש
+// מהטקסט שנשמר איתן – בלי לחזור לפייסבוק. רץ פעם אחת לכל גרסת מנתח.
+let facebookReparseRunning = null;
+function reparseFacebookListings({ force = false } = {}) {
+  if (facebookReparseRunning) return facebookReparseRunning;
+  facebookReparseRunning = (async () => {
+    const versionKey = LRFacebookReparse.VERSION_KEY;
+    const { [versionKey]: done } = await chrome.storage.local.get(versionKey);
+    if (!force && Number(done) >= LRFacebookReparse.PARSER_VERSION) return { skipped: true };
+    const relocate = [];
+    const summary = await withListingCacheLock(async () => {
+      const cache = await LRListingStore.load(chrome.storage.local);
+      const changedShards = new Set();
+      const result = { checked: 0, updated: 0, notListing: 0 };
+      const now = Date.now();
+      for (const [key, record] of Object.entries(cache)) {
+        if (!record || record.site !== "facebook") continue;
+        result.checked++;
+        const out = LRFacebookReparse.reparseRecord(record, LR, now);
+        if (!out) continue;
+        cache[key] = out.record;
+        changedShards.add(LRListingStore.shardKeyOf(key));
+        result.updated++;
+        if (out.notListing) result.notListing++;
+        if (out.addressChanged && out.queries.length && LR.hasExplicitFacebookAddress(record.postText, out.street)) {
+          relocate.push({ key, queries: out.queries });
+        }
+      }
+      await LRListingStore.saveShards(chrome.storage.local, cache, [...changedShards]);
+      return result;
+    });
+    // מרחק לרכבת לכתובות שהשתנו (אחת אחרי השנייה – Nominatim מגביל קצב)
+    for (const item of relocate) {
+      const res = await lookup(item.queries, null, null).catch(() => null);
+      if (!res || !res.ok) continue;
+      await withListingCacheLock(async () => {
+        const { cache, shardKeys } = await LRListingStore.loadShards(chrome.storage.local, [item.key]);
+        const record = cache[item.key];
+        if (!record) return;
+        cache[item.key] = { ...record, railMeters: res.meters, railStation: res.station ? res.station.name : undefined, railApprox: Boolean(res.approx), updatedAt: Date.now() };
+        await LRListingStore.saveShards(chrome.storage.local, cache, shardKeys);
+      });
+    }
+    await chrome.storage.local.set({ [versionKey]: LRFacebookReparse.PARSER_VERSION, lrFacebookReparseResult: { ...summary, relocated: relocate.length, at: Date.now() } });
+    if (summary.updated) console.info("[lightrail-ext] facebook listings re-parsed", summary);
+    return summary;
+  })().finally(() => {
+    facebookReparseRunning = null;
+  });
+  return facebookReparseRunning;
+}
+const runFacebookReparse = () => reparseFacebookListings().catch((error) => console.warn("[lightrail-ext] facebook re-parse failed", error));
+chrome.runtime.onInstalled.addListener(runFacebookReparse);
+chrome.runtime.onStartup.addListener(runFacebookReparse);
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === "lightrail:facebook-reparse") {
+    if (_sender.id !== chrome.runtime.id) return false;
+    reparseFacebookListings({ force: true }).then(sendResponse, (error) => sendResponse({ error: String(error) }));
+    return true;
+  }
   if (msg && msg.type === "lightrail:cache-patch") {
     if (_sender.id !== chrome.runtime.id) return false;
     queueCachePatch(msg).then(sendResponse);
