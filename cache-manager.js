@@ -1813,6 +1813,20 @@ function renderPriceTimeline() {
         openSaved();
       });
       card.appendChild(button);
+      // העתקת פרטי המודעה + שינוי המחיר (כמה ובאחוזים) – כמו כפתור ההעתקה באתר
+      const recordKey = change.key || `${change.site}:${change.listingId}`;
+      if (cache[recordKey]) {
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "timeline-copy";
+        copy.textContent = "📋 העתקה";
+        copy.title = "מעתיק את פרטי המודעה ואת שינוי המחיר (סכום, אחוזים ותאריך) – להדבקה בוואטסאפ או ל-AI";
+        copy.addEventListener("click", (event) => {
+          event.stopPropagation();
+          copyListingText(recordKey, copy, change);
+        });
+        card.appendChild(copy);
+      }
       card.classList.add("clickable");
       card.title = "לחיצה על הכרטיס פותחת את המידע השמור על המודעה; הכותרת פותחת את המודעה באתר";
       card.addEventListener("click", (event) => {
@@ -2112,12 +2126,51 @@ function listingCopyText(key, record) {
   return LRCacheExport.whatsappMessage({ ...record, pricePerSqm: ppsm }, url, dealsIndex);
 }
 
-async function copyListingText(key, button) {
+// מעמוד שינויי המחירים: אותו טקסט + שורת שינוי המחיר (כמה ובכמה אחוזים, מתי), ואם המחיר ירד
+// גם קודם – סך כל השינוי מאז שהמודעה נראתה לראשונה. השורות נכנסות מתחת לשורת "מחיר:".
+function priceChangeCopyText(key, record, change) {
+  const base = listingCopyText(key, record);
+  if (!base) return "";
+  const lines = [];
+  const pct = (from, to) => (from > 0 ? ((to - from) / from) * 100 : null);
+  const signed = (value) => `${value > 0 ? "+" : "−"}${Math.abs(value).toLocaleString("he-IL", { maximumFractionDigits: 1 })}%`;
+  if ((change.kind === "decrease" || change.kind === "increase") && Number.isFinite(change.fromPrice) && Number.isFinite(change.toPrice)) {
+    const diff = change.toPrice - change.fromPrice;
+    const percent = pct(change.fromPrice, change.toPrice);
+    const dateInfo = timelineDateText(change);
+    const when = ` · ${dateInfo.text}${dateInfo.badge ? ` (${dateInfo.badge})` : ""}`;
+    lines.push(
+      `${change.kind === "decrease" ? "ירידת מחיר" : "עליית מחיר"}: ${displayPrice(change.fromPrice)} ← ${displayPrice(change.toPrice)} ` +
+      `(${change.kind === "decrease" ? "ירד" : "עלה"} ב־${displayPrice(Math.abs(diff))}${percent === null ? "" : `, ${signed(percent)}`})${when}`
+    );
+  }
+  // סך כל השינוי מהמחיר הראשון שנראה (בלי "קפיצות" רעש של כרטיסי חיפוש)
+  const history = LRCacheData.withoutPriceBounces(validPriceHistory(record)).history
+    .filter((point) => point && point.price > 0)
+    .sort((a, b) => (a.at || 0) - (b.at || 0));
+  const first = history.length ? history[0].price : null;
+  const current = Number.isFinite(record.price) ? record.price : change.toPrice;
+  if (Number.isFinite(first) && Number.isFinite(current) && first !== current && first !== change.fromPrice) {
+    const percent = pct(first, current);
+    const drops = history.filter((point, index) => index > 0 && point.price < history[index - 1].price).length;
+    lines.push(
+      `סה״כ מאז שהמודעה נראתה לראשונה: ${displayPrice(first)} ← ${displayPrice(current)}` +
+      `${percent === null ? "" : ` (${signed(percent)})`}${drops > 1 ? ` · ${drops} הורדות מחיר` : ""}`
+    );
+  }
+  if (!lines.length) return base;
+  const rows = base.split("\n");
+  const priceIndex = rows.findIndex((row) => row.startsWith("מחיר:"));
+  rows.splice(priceIndex >= 0 ? priceIndex + 1 : 0, 0, ...lines);
+  return rows.join("\n");
+}
+
+async function copyListingText(key, button, change = null) {
   const record = cache[key];
   if (!record) return;
   const original = button.textContent;
   try {
-    const text = listingCopyText(key, record);
+    const text = change ? priceChangeCopyText(key, record, change) : listingCopyText(key, record);
     if (!text) throw new Error("אין טקסט למודעה הזו.");
     await navigator.clipboard.writeText(text);
     button.textContent = "✓ הועתק";
