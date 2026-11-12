@@ -64,13 +64,25 @@
     );
   }
 
+  // רק פוסטים אמיתיים בפיד של הקבוצה: article בתוך [role="feed"] שבאזור הראשי, עם גוף הודעה של
+  // פוסט. לא צ'אטים (Messenger), חלונות קופצים, סרגלי צד או "סתם div" עם מספרים.
+  const NOT_POST_AREA = '[role="dialog"], [role="complementary"], [role="banner"], [role="navigation"], [aria-label*="צ\'אט"], [aria-label*="Chat"], [aria-label*="Messenger"], [aria-label*="שיחה"]';
   function findPosts() {
     const list = [];
-    document.querySelectorAll('[role="article"]').forEach((a) => {
-      // תגובות הן article בתוך article – מדלגים עליהן
-      if (a.parentElement && a.parentElement.closest('[role="article"]')) return;
-      list.push(a);
-    });
+    const main = document.querySelector('[role="main"]');
+    if (!main) return list;
+    const feeds = [...main.querySelectorAll('[role="feed"]')];
+    const scopes = feeds.length ? feeds : [main];
+    for (const scope of scopes) {
+      scope.querySelectorAll('[role="article"]').forEach((a) => {
+        // תגובות הן article בתוך article – מדלגים עליהן
+        if (a.parentElement && a.parentElement.closest('[role="article"]')) return;
+        if (a.closest(NOT_POST_AREA)) return;
+        // בלי פיד מוכר – רק article שיש בו גוף הודעה של פוסט
+        if (!feeds.length && !messageEl(a)) return;
+        list.push(a);
+      });
+    }
     return list;
   }
 

@@ -72,14 +72,14 @@ const cases = [
 מחיר שיווק: 1,740,000 ₪.`,
   },
   {
-    name: "explicit sale offer with rooms but no price or area",
-    type: "listing",
+    name: "explicit sale offer with rooms but no price or area – too few details for a listing",
+    type: "other",
     text: `למכירה דירה, אפשרות ל-5 חדרים בתכנון נכון.
 דירה מלאה אור יום, מעלית וחניה פרטית.`,
   },
   {
-    name: "property listing with seller contact but missing price and area",
-    type: "listing",
+    name: "property listing with seller contact but missing price and area – price or area is required",
+    type: "other",
     text: `ברוכים הבאים לבית הבא שלכם.
 דירת 4 חדרים, קומה 6, חניה פרטית ומעלית.
 רלוונטי לכם? צרו קשר.`,
@@ -122,6 +122,16 @@ test("Facebook analysis is limited to group main-feed URLs", () => {
   ]) {
     assert.equal(isGroupFeed(path), false, `${path} should be excluded`);
   }
+});
+
+test("a listing needs price or area plus enough details; 'מטר' and 'מטר מרובע' count as area", () => {
+  const listing = (text) => classifyFacebookPost(text).type;
+  assert.equal(listing("למכירה דירת 4 חדרים, 120 מטר, קומה 3 עם מעלית"), "listing");
+  assert.equal(listing("למכירה דירה 95 מטר מרובע עם ממ\"ד וחניה"), "listing");
+  assert.equal(listing("למכירה דירה 4 חדרים 110 מ\"ר"), "listing");
+  // סתם פוסטים של אנשים בקבוצה
+  assert.equal(listing("מישהו מכיר דירה טובה באזור? תודה מראש"), "other");
+  assert.equal(listing("למכירה דירה מהממת, שווה לבדוק!"), "other");
 });
 
 test("only groups whose name looks like a real-estate group are scanned", () => {

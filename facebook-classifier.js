@@ -11,6 +11,38 @@
       .replace(/[״“”]/g, '"')
       .replace(/[׳‘’]/g, "'");
 
+  // כמה מפרטי המודעה יש בפוסט – 7 פרמטרים: מחיר, שטח (מ"ר / מטר / מטר מרובע עם מספר), חדרים, קומה,
+  // מיקום (רחוב/עיר/שכונה), סוג נכס, ומאפיינים (ממ"ד / מעלית / חניה / מרפסת / מחסן...).
+  // מודעה = לפחות חצי מהפרטים העיקריים (3; מאפיינים נספרים כאחד מהם), וגם לפחות אחד מהבסיסיים:
+  // מחיר, שטח או חדרים.
+  // פוסט עם פחות מזה הוא בדרך כלל סתם פוסט של אנשים ("מישהו מכיר דירה באזור?").
+  const SQM_RE = /(?<![\d.,])\d{2,4}(?:[.,]\d+)?\s*(?:מ["'״׳]?ר(?![א-ת])|מ["'״׳]ר|מטר(?:ים)?(?:\s+מרובע(?:ים)?)?(?![א-ת])|מ\s*["'״׳]?\s*ר\b|sqm\b|m2\b|מ²)/i;
+  const AMENITY_RE = /ממ["'״׳]?ד|מרחב\s+מוגן|מעלית|חני(?:ה|יה|ות)|מרפס(?:ת|ות)|מחסן|מיזוג|מזגנים|דוד\s+שמש|גינה|משופצת|שמורה/;
+  const LISTING_FIELDS_MIN = 3;
+  function listingDetails(source, parsed) {
+    const location = typeof parser.parseFreeAddress === "function" ? parser.parseFreeAddress(source) : null;
+    const fields = {
+      price: Boolean(parsed && parsed.price),
+      sqm: Boolean(parsed && parsed.sqm) || SQM_RE.test(source),
+      rooms: /\d(?:[.,]\d)?\s*(?:חדרים?|חד['׳]?)(?![א-ת])|(?:שני|שלושה|שלוש|ארבעה|ארבע|חמישה|חמש|שישה|שש)\s+חדרים/.test(source),
+      floor: /קומה\s*:?\s*-?\d|קומת\s+(?:קרקע|גג|כניסה)|קומה\s+(?:ראשונה|שנייה|שניה|שלישית|רביעית|חמישית|אחרונה|גבוהה|נמוכה)|\d{1,2}\s*מתוך\s*\d{1,2}/.test(source),
+      location: Boolean(location && (location.street || location.city || location.hood)),
+      type: /דירה|דירת|פנטהאוז|דופלקס|טריפלקס|קוטג|וילה|בית\s+(?:פרטי|צמוד|דו)|יחידת\s+דיור|מיני\s*פנטהאוז|מגרש/.test(source),
+      amenities: AMENITY_RE.test(source),
+    };
+    const count = Object.values(fields).filter(Boolean).length;
+    // חובה: מחיר או שטח (מספר עם מ"ר / מטר) – בלי אף אחד מהם זה לא מודעה, גם עם חדרים ומאפיינים
+    const core = fields.price || fields.sqm;
+    return { fields, count, enough: core && count >= LISTING_FIELDS_MIN };
+  }
+
+  function listingOrThin(source, parsed) {
+    const details = listingDetails(source, parsed);
+    return details.enough
+      ? { type: "listing", parsed, details: details.count }
+      : { type: "other", thin: true, details: details.count };
+  }
+
   function classifyFacebookPost(text) {
     const source = normalizeQuotes(text);
     const seekingMatch =
@@ -37,6 +69,20 @@
         source
       );
     const parsed = parser.extractPriceSqmFree(source);
+    // "95 מטר", "95 מטר מרובע", "95 מטרים" – שטח גם כשהמנתח הכללי זיהה רק מ"ר
+    if (!parsed.sqm) {
+      const match = source.match(SQM_RE);
+      const value = match ? Number(match[0].match(/\d{2,4}(?:[.,]\d+)?/)[0].replace(",", ".")) : NaN;
+      if (value >= 15 && value <= 1000) {
+        parsed.sqm = value;
+        if (parsed.price && !parsed.rent) {
+          parsed.ppsm = Math.round(parsed.price / value);
+          parsed.reason = null;
+        } else if (!parsed.price) {
+          parsed.reason = "לא זוהה מחיר";
+        }
+      }
+    }
     const hasListingDetails =
       Boolean(parsed.price || parsed.sqm) ||
       /\d(?:[.,]\d)?\s*(?:חדרים?|חד['׳]?)/.test(source);
@@ -48,7 +94,7 @@
       (seekingIndex < 0 || sellerLanguage || saleIndex < seekingIndex) &&
       (rentIndex < 0 || saleIndex < rentIndex);
 
-    if (saleListing) return { type: "listing", parsed };
+    if (saleListing) return listingOrThin(source, parsed);
 
     if (seekingIndex >= 0 && (rentIndex < 0 || seekingIndex < rentIndex)) {
       if (!sellerLanguage) return { type: "seeking" };
@@ -67,7 +113,7 @@
 
     if (seekingIndex >= 0 && !sellerLanguage) return { type: "seeking" };
 
-    if (property && hasListingDetails) return { type: "listing", parsed };
+    if (property && hasListingDetails) return listingOrThin(source, parsed);
     return { type: "other" };
   }
 
