@@ -2,7 +2,7 @@
 // הישנות מתעדכנות בלי לחזור לפייסבוק. נטען ברקע (importScripts) אחרי parse.js ו-facebook-classifier.js.
 const LRFacebookReparse = (() => {
   // להעלות בכל שינוי במנתח שאמור לתקן מודעות שכבר נשמרו
-  const PARSER_VERSION = 2;
+  const PARSER_VERSION = 3;
   const VERSION_KEY = "lrFacebookParserVersion";
   const FIELDS = ["price", "sqm", "pricePerSqm", "rooms", "floor", "buildingTopFloor", "address", "city", "neighborhood"];
 

@@ -19,12 +19,16 @@
   // פוסט עם פחות מזה הוא בדרך כלל סתם פוסט של אנשים ("מישהו מכיר דירה באזור?").
   const SQM_RE = /(?<![\d.,])\d{2,4}(?:[.,]\d+)?\s*(?:מ["'״׳]?ר(?![א-ת])|מ["'״׳]ר|מטר(?:ים)?(?:\s+מרובע(?:ים)?)?(?![א-ת])|מ\s*["'״׳]?\s*ר\b|sqm\b|m2\b|מ²)/i;
   // שטח הדירה מהטקסט – בלי שטח של מרפסת / גינה / מחסן ("מרפסת 12 מר", "30 מ"ר מרפסות")
-  const EXTRA_AREA_BEFORE = /(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|חני(?:ה|ות)|גג|מרתף|מגרש|מגרשים|קרקע)[^\n\d]{0,18}$/;
+  const EXTRA_AREA_BEFORE = /(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|חני(?:ה|ות)|גג|מרתף|מגרש|מגרשים|קרקע|סלון|מטבח|(?<![א-ת])חדר(?![א-ת]))[^\n\d]{0,18}$/;
   const EXTRA_AREA_AFTER = /^[ \t]*(?:של\s+)?(?:מרפס(?:ת|ות)|גינ(?:ה|ות)|חצר|מחסן|גג|מרתף|מגרש|קרקע)/;
   function apartmentSqm(source) {
     for (const match of source.matchAll(new RegExp(SQM_RE.source, "gi"))) {
-      if (EXTRA_AREA_BEFORE.test(source.slice(Math.max(0, match.index - 26), match.index))) continue;
-      if (EXTRA_AREA_AFTER.test(source.slice(match.index + match[0].length, match.index + match[0].length + 12))) continue;
+      const before = source.slice(Math.max(0, match.index - 26), match.index);
+      const after = source.slice(match.index + match[0].length, match.index + match[0].length + 12);
+      if (EXTRA_AREA_BEFORE.test(before)) continue;
+      if (EXTRA_AREA_AFTER.test(after)) continue;
+      // "50 מטר מהרכבת" / "במרחק 200 מטר" – מרחק, לא שטח
+      if (/מטר/.test(match[0]) && (/^\s*(?:מה[א-ת]{2,}|ממ[א-ת]{2,}|מתחנ|מבית|ל(?:ה)?(?:רכבת|ים|חוף|תחנ|פארק|מרכז|קניון)|עד)/.test(after) || /(?:מרחק|במרחק|עד)\s*$/.test(before))) continue;
       const value = Number(match[0].match(/\d{2,4}(?:[.,]\d+)?/)[0].replace(",", "."));
       if (value >= 15 && value <= 1000) return value;
     }
@@ -62,7 +66,14 @@
   const COMMERCIAL_RE = /(?<![א-ת])(?:חנות|חנויות)|(?<![א-ת])משרד(?:ים)?(?:\s|\d|:|$)|\d\s*משרדים|נכס\s+מסחרי|שטח\s+מסחרי|מבנה\s+תעשי|אולם\s+(?:אירועים|תצוגה)|קליניקה|מחסן\s+לוגיסטי/;
   const HOME_RE = /דירה|דירת|דירות|בית\s+פרטי|הבית|וילה|קוטג|פנטהאוז|דופלקס|דו[-\s]?משפחתי|יחידת\s+דיור|\d(?:\.5)?\s*חדרים/;
   // סכומים חודשיים שאינם שכר דירה של המודעה: נכס מושכר שמוצע למכירה, ועד בית, ארנונה
-  const RENT_NOISE_RE = /(?:מושכר(?:ת)?|מניב(?:ה)?|שכירות\s+קיימת|מקבלת\s+שכירות|תשואת\s+שכירות|ועד\s+(?:ה)?בית|ארנונה|הנכס\s+מושכר|כיום\s+מושכר(?:ת)?)(?:(?!מחיר)[^\n|]){0,70}/g;
+  const RENT_NOISE_RE = /(?:מושכר(?:ת)?|מניב(?:ה)?|שכירות\s+קיימת|שכירות\s+חודשית|מקבלת\s+שכירות|תשואת\s+שכירות|תשואה|ועד\s+(?:ה)?בית|ארנונה|הנכס\s+מושכר|כיום\s+מושכר(?:ת)?|(?:מוצעת|ניתן|אפשר)\s+גם\s+להשכרה)(?:(?!מחיר)[^\n|]){0,70}/g;
+  // מגרש בלבד (בלי בית בנוי) – לא דירה
+  const PLOT_ONLY_RE = /(?:למכירה|רכישת|מוכר(?:ים|ת)?)\s+מגרש|מגרש\s+(?:למכירה|לבנייה|לבניה)/;
+  const BUILT_HOME_RE = /בנוי|בית\s+(?:פרטי|קיים|בנוי)|דירה|דירת|\d\s*חדרים|וילה|קוטג/;
+  // פרויקט חדש: "דירות 5 חדרים החל מ-2,750,000" – מחיר התחלתי, לא דירה מסוימת
+  const PROJECT_RE = /החל\s+מ[-־]?\s*₪?\s*\d|(?:דירות|יחידות)\s+אחרונות|בפרויקט\s+(?:חדש|יוקרתי)[^\n]{0,40}(?:דירות|יחידות)\s+\d/;
+  // "מחפשים דירת 4 חדרים? ... אז כדאי שתכירו" – שאלה רטורית של מוכר, לא מחפש
+  const RHETORICAL_SEEKING_RE = /^[^\n?]{0,120}\?/;
   // מכירה בלי המילה "למכירה": "בבלעדיות", "בייצוג בלעדי", "מחיר שיווק", "מוכרת את הבית"
   const SALE_EXTRA_RE = /בבלעדיות|בלעדיות|בייצוג\s+בלעדי|חדש(?:ה)?\s+ובלעדי|מחיר\s+(?:שיווק|מבוקש)|מוכר(?:ת|ים)?\s+את\s+(?:ה)?(?:דירה|בית|נכס)|הזדמנות\s+(?:השקעה|למשקיעים)/;
 
@@ -75,13 +86,20 @@
     const original = normalizeQuotes(text);
     if (SOLD_RE.test(original.replace(SOLD_SLOGAN_RE, " "))) return { type: "other", sold: true };
     if (BUILDING_RE.test(original)) return { type: "other", building: true };
+    if (PLOT_ONLY_RE.test(original) && !BUILT_HOME_RE.test(original)) return { type: "other", plot: true };
+    if (PROJECT_RE.test(original)) return { type: "other", project: true };
     if (COMMERCIAL_RE.test(original) && !HOME_RE.test(original)) return { type: "other", commercial: true };
     // לזיהוי השכרה: בלי משפטים על שכר דירה קיים / ועד בית (אלה לא אומרים שהמודעה להשכרה)
     const source = original.replace(RENT_NOISE_RE, " ");
-    const seekingMatch =
-      /מחפש(?:ת|ים|ות)?\s+(?:(?:.{1,35}?)\s+)?(?:דירה|דירות|נכס|נכסים|בית|בתים|יחיד(?:ה|ת)(?:\s+דיור)?|קרקע|מגרש|חדרים?|לשכור|לקנות|לרכוש|שותף|שותפים)/.exec(
-        source
-      );
+    let seekingMatch = null;
+    for (const match of source.matchAll(
+      /מחפש(?:ת|ים|ות)?\s+(?:(?:.{1,35}?)\s+)?(?:דירה|דירות|דירת|נכס|נכסים|בית|בתים|יחיד(?:ה|ת)(?:\s+דיור)?|קרקע|מגרש|חדרים?|לשכור|לקנות|לרכוש|שותף|שותפים|הפינה|פינה)|דרוש(?:ה|ים|ות)?\s+(?:דירה|דירת|נכס|בית|יחידת)|תקציב\s*:?\s*(?:של\s+)?עד/g
+    )) {
+      // שאלה רטורית בפוסט של מוכר ("מחפשים דירה מרווחת? בשישי אני פותח את הדלת") – לא מחפש
+      if (RHETORICAL_SEEKING_RE.test(source.slice(match.index))) continue;
+      seekingMatch = match;
+      break;
+    }
     const seekingIndex = seekingMatch ? seekingMatch.index : -1;
     const saleMatch =
       /למכירה|למכור|מוכר(?:ת)?\s+(?:דירה|נכס|בית)|מכירה\s+(?:ישירה|מפרטי|פרטית)/.exec(source) ||
@@ -93,7 +111,7 @@
       );
     const rentIndex = rentMatch ? rentMatch.index : -1;
     const property =
-      /דירה|דירת|חדרים|חד'|פנטהאוז|דופלקס|טריפלקס|מ"ר|מ'ר|\bמר\b|נכס|קוטג|בית\b|וילה|מגרש/.test(
+      /דירה|דירת|חדרים|חד'|פנטהאוז|דופלקס|טריפלקס|מ"ר|מ'ר|\bמר\b|נכס|קוטג|בית\b|וילה|מגרש|יחידת\s+דיור|יחידה/.test(
         source
       );
     const sellerLanguage =
