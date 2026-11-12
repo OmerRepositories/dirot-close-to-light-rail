@@ -1229,3 +1229,11 @@ th.site-col { min-width: 52px; }
   :root:not([data-theme="light"]) .site-chip.site-komo { color: #e599f7; }
   :root:not([data-theme="light"]) .site-chip.site-facebook { color: #91a7ff; }
 }
+
+/* שורת מקור + לב + רחוב מועדף מתחת לכתובת */
+.record-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 3px; }
+.record-meta .favorite-toggle { min-height: 20px; padding: 0 4px; line-height: 18px; }
+.record-meta .favorite-street-toggle { display: inline-block; margin-top: 0; }
+/* עמודות קצרות (מ"ר, חדרים, קומה) – צרות יותר */
+th.narrow-col { min-width: 58px; }
+.side-filters[hidden] { display: none; }

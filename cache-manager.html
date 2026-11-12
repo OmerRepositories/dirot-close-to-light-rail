@@ -403,12 +403,13 @@
           <h2>מודעות ופרויקטים</h2>
           <p>כל מה שנשמר מיד2 וממדלן. לחיצה על שורה פותחת עריכה; לחיצה על הכותרת פותחת את המודעה.</p>
         </div>
+        <button id="toggleListingFilters" type="button" aria-pressed="false" aria-controls="listingSideFilters" title="הסתרה או הצגה של תפריט הסינון והמיון, כדי שלטבלה יהיה יותר מקום">⇥ הסתר סינונים</button>
         <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
 
         <button id="refreshShownListings" type="button" title="פותח את מסך הרענון עם המודעות שמוצגות עכשיו בטבלה (אחרי החיפוש והסינון שעשית כאן)">🔄 רענון המודעות שמוצגות</button>
       </div>
       <div class="side-layout">
-      <aside class="side-filters" aria-label="סינון ומיון">
+      <aside id="listingSideFilters" class="side-filters" aria-label="סינון ומיון">
       <section id="listingToolbar" class="toolbar" aria-label="חיפוש וסינון מידע שמור">
       <label class="search-field">
         <span>חיפוש בכל העמודות</span>

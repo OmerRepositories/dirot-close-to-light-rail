@@ -426,16 +426,14 @@ function renderCloudCell(td, key, record) {
 
 const columns = [
   { key: "title", label: "מודעה / כתובת", sortKey: "title", className: "record-name" },
-  // המקור כתגית קטנה צמוד לכותרת (העמודה הראשונה נשארת קבועה בגלילה) – בלי לגלול כדי לדעת מאיפה המודעה
-  { key: "site", label: "מקור", sortKey: "site", className: "site-col", title: "האתר שממנו המודעה: יד2, מדלן, הומלס, קומו או פייסבוק (FB)" },
-  { key: "favorite", label: "♥", sortKey: "favorite", className: "favorite-col", title: "מועדפים: לחיצה על הלב בשורה מוסיפה או מסירה את המודעה מהמועדפים" },
+  // המקור, הלב (מועדפים) והרחוב המועדף מוצגים בשורה קטנה מתחת לכתובת שבעמודה הזו
   { key: "price", label: "מחיר", sortKey: "price", className: "price-col" },
   { key: "priceWithTax", label: "כולל מס רכישה", sortKey: "priceWithTax", className: "price-tax-col", title: "כמה הדירה תעלה בפועל: המחיר ועוד מס רכישה לפי המדרגות שבהגדרות (חישובים ← מס רכישה). המדרגות נכונות לשנת 2026 – כדאי לוודא שהן עדיין מעודכנות." },
   { key: "pricePerSqm", label: "מחיר למ״ר", sortKey: "pricePerSqm", title: "מחושב ממחיר חלקי שטח; אינו ניתן לעריכה" },
-  { key: "sqm", label: "מ״ר", sortKey: "sqm" },
+  { key: "sqm", label: "מ״ר", sortKey: "sqm", className: "narrow-col" },
   // החשובים קרוב להתחלה (מימין): חדרים, קומה ומרחק מהרכבת
-  { key: "rooms", label: "חדרים", sortKey: "rooms", title: "מספר החדרים שזוהה במודעה" },
-  { key: "floor", label: "קומה", sortKey: "floor", title: "קומת הדירה מתוך מספר הקומות בבניין (מנתוני יד2)" },
+  { key: "rooms", label: "חדרים", sortKey: "rooms", className: "narrow-col", title: "מספר החדרים שזוהה במודעה" },
+  { key: "floor", label: "קומה", sortKey: "floor", className: "narrow-col", title: "קומת הדירה מתוך מספר הקומות בבניין (מנתוני יד2)" },
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
@@ -1264,6 +1262,24 @@ function renderRows() {
             textCell(address, "record-address")
           );
         }
+        // שורה קטנה מתחת לכתובת: מקור המודעה, לב (מועדפים) ורחוב מועדף
+        const meta = document.createElement("div");
+        meta.className = "record-meta";
+        const siteName = recordSite(key);
+        const chip = textCell(siteName === "facebook" ? "FB" : LRCacheData.siteLabel(siteName), `site-chip site-${siteName}`);
+        chip.title = `מקור: ${LRCacheData.siteLabel(siteName)}`;
+        meta.appendChild(chip);
+        const heart = document.createElement("button");
+        heart.type = "button";
+        heart.dataset.action = "favorite";
+        const favoriteOn = record.favorite === true;
+        heart.className = `favorite-toggle${favoriteOn ? " on" : ""}`;
+        heart.textContent = favoriteOn ? "♥" : "♡";
+        heart.setAttribute("aria-pressed", String(favoriteOn));
+        heart.title = favoriteOn ? "במועדפים – לחיצה מסירה" : "הוספה למועדפים";
+        heart.setAttribute("aria-label", heart.title);
+        meta.appendChild(heart);
+        td.appendChild(meta);
         // רחוב מועדף: ★ מסמן/מבטל את הרחוב של המודעה ברשימת הרחובות המועדפים
         if (recordStreetName(record)) {
           const star = document.createElement("button");
@@ -1275,7 +1291,7 @@ function renderRows() {
             ? "הרחוב ברשימת הרחובות המועדפים – לחיצה מסירה"
             : `הוספת "${recordStreetName(record).replace(/\s+\d{1,4}\s*[א-ת]?\s*$/, "")}" לרחובות המועדפים (מודעות ברחוב יודגשו)`;
           star.setAttribute("aria-pressed", String(onFavoriteStreet));
-          td.appendChild(star);
+          meta.appendChild(star);
         }
         // אותה דירה באתר השני
         const twinKey = twins.get(key);
@@ -5501,6 +5517,22 @@ rows.addEventListener("keydown", (event) => {
   event.preventDefault();
   openRecord(row.dataset.key);
 });
+// הסתרת תפריט הסינון בעמוד המודעות – יותר מקום לטבלה; הבחירה נזכרת במחשב הזה
+const LISTING_FILTERS_HIDDEN_KEY = "lrListingFiltersHidden";
+function setListingFiltersHidden(hidden) {
+  $("listingSideFilters").hidden = hidden;
+  const button = $("toggleListingFilters");
+  button.setAttribute("aria-pressed", String(hidden));
+  button.textContent = hidden ? "⇤ הצג סינונים" : "⇥ הסתר סינונים";
+  try {
+    localStorage.setItem(LISTING_FILTERS_HIDDEN_KEY, hidden ? "1" : "0");
+  } catch {}
+}
+try {
+  if (localStorage.getItem(LISTING_FILTERS_HIDDEN_KEY) === "1") setListingFiltersHidden(true);
+} catch {}
+$("toggleListingFilters").addEventListener("click", () => setListingFiltersHidden(!$("listingSideFilters").hidden));
+
 for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
   $(id).addEventListener("input", scheduleRenderRows);
   $(id).addEventListener("change", renderRows);
