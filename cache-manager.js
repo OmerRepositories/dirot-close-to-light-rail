@@ -1433,6 +1433,11 @@ function renderRows() {
   $("listingsCount").textContent = savedListingCount.toLocaleString("he-IL");
   $("listingsCount").title = `${savedListingCount.toLocaleString("he-IL")} מודעות שמורות`;
   renderFavoritesCount();
+  if (activeTab === "listings") {
+    const shown = visibleRecords.filter(([, record]) => recordType(record) === "listing").length;
+    $("refreshShownListings").textContent = `🔄 רענון ${shown.toLocaleString("he-IL")} המודעות שמוצגות`;
+    $("refreshShownListings").disabled = !shown;
+  }
   $("listingsTab").setAttribute(
     "aria-label",
     `מודעות ופרויקטים, ${savedListingCount.toLocaleString("he-IL")} מודעות שמורות`
@@ -6240,3 +6245,11 @@ renderSyncPanel().then(() => {
 
 // תצוגה מקדימה: כמה מודעות ירועננו ולמה האחרות לא
 for (const id of ["refreshScope", "refreshSite", "refreshIncludeIrrelevant"]) $(id).addEventListener("change", renderRefreshPlan);
+
+// מעמוד המודעות: רענון רק של מה שמוצג בטבלה (אחרי החיפוש והסינון שם) – עוברים למסך הרענון עם הבחירה מוכנה
+$("refreshShownListings").addEventListener("click", () => {
+  $("refreshScope").value = "filtered";
+  setActiveTab("refresh");
+  renderRefreshPlan();
+  $("refreshScope").focus();
+});

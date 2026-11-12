@@ -1199,3 +1199,6 @@ tbody tr:hover .favorite-street-toggle, .favorite-street-toggle:focus-visible { 
 .refresh-include-irrelevant { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .refresh-plan { flex: 1 1 100%; margin: 0; padding: 8px 10px; border-radius: var(--r-sm); color: var(--ink); background: var(--surface-alt); font-size: 13px; }
 .refresh-plan:empty { display: none; }
+#refreshShownListings { flex-shrink: 0; white-space: nowrap; }
+#listingsPanel .panel-head { align-items: center; }
+#listingsPanel .panel-head > div:first-child { margin-inline-end: auto; }
