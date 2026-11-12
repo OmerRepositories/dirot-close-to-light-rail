@@ -109,11 +109,12 @@
   // ---------- שמירת המודעה במנהל המידע ----------
   // לינק לפוסט, שם המפרסם, טלפונים מהטקסט, מחיר/שטח/חדרים/קומה/כתובת ומרחק מהרכבת.
   // הרשומה ממוזגת ברקע עם מה שכבר שמור (merge) – הערות, לב והיסטוריית מחיר נשמרים.
-  const PHONE_RE = /(?<!\d)(?:\+?972[-\s]?|0)(5\d|[2-489]|7\d)[-\s.]?(\d{3})[-\s.]?(\d{4})(?!\d)/g;
+  // כל חלוקה של 7 הספרות: "050-1234567", "055-4322-789", "0544-788644", "+972 50 123 4567"
+  const PHONE_RE = /(?<!\d)(?:\+?972[-\s]?|0)(5\d|[2-489]|7\d)((?:[-\s.]?\d){7})(?!\d)/g;
   function postPhones(text) {
     const phones = [];
     for (const match of String(text || "").matchAll(PHONE_RE)) {
-      const phone = `0${match[1]}-${match[2]}${match[3]}`;
+      const phone = `0${match[1]}-${match[2].replace(/\D/g, "")}`;
       if (!phones.includes(phone)) phones.push(phone);
     }
     return phones.slice(0, 3);
@@ -133,9 +134,15 @@
   }
   function saveListing(entry) {
     if (!CFG.saveListingData || !entry.relevant || !entry.parsed) return;
-    const link = postLink(entry.article);
-    if (!link) return;
     const text = postText(entry.article);
+    // refreshAll רץ על כל שינוי בדף (כמעט כל שנייה בפייסבוק) – בלי שינוי בטקסט, במרחק או בפענוח
+    // אין מה לחשב מחדש (כתובת, חדרים, חתימה) לכל פוסט בפיד
+    const res0 = entry.res && entry.res.ok ? entry.res : null;
+    const input = [text, res0 ? `${res0.meters}|${res0.station && res0.station.name}|${res0.approx}` : "", entry.parsed.price, entry.parsed.sqm, entry.parsed.rent, posterName(entry.article)].join("\u0001");
+    if (entry.savedInput === input) return;
+    const link = postLink(entry.article);
+    if (!link) return; // הקישור לפוסט עוד לא נטען – ננסה שוב בפעם הבאה
+    entry.savedInput = input;
     const address = LR.parseFreeAddress(text, groupContext());
     const parsed = entry.parsed;
     const roomsFloor = LR.extractRoomsFloorFree(text);
@@ -196,6 +203,7 @@
   }
 
   // הסריקה רצה על כל שינוי בפיד; קריאת הטקסט וסיווג הפוסט חוזרים רק כשהתוכן שלו השתנה
+  // (textContent זול – לא מחשב פריסה; innerText נקרא רק כשהתוכן באמת השתנה)
   const postMemo = new WeakMap();
   function classifiedPost(article) {
     const msg = messageEl(article);
@@ -203,7 +211,7 @@
     const content = source.textContent || "";
     const memo = postMemo.get(article);
     if (memo && memo.content === content) return memo;
-    const text = msg ? textOf(msg) : textOf(article, 1800);
+    const text = msg ? messageText(msg) : textOf(article, 1800);
     const next = {
       content,
       text,
@@ -213,10 +221,17 @@
     return next;
   }
 
+  // טקסט הפוסט כמו שהוא מוצג – עם שבירות השורה של הכותב, ובלי שבירות מלאכותיות באמצע שורה
+  // (אימוג'י, קישור או תגית מפצלים את הטקסט לכמה צמתים; textOf היה שובר שם שורה).
+  // כך הטקסט זהה לזה שבקורפוס הבדיקות (שנאסף ב-innerText), ומה שעובר בבדיקות הוא מה שרץ בדף.
+  function messageText(msg) {
+    const text = String(msg.innerText || "").replace(/ /g, " ").trim();
+    return text || textOf(msg);
+  }
+
+  // אם אין אלמנט הודעה מוכר, לוקחים את תחילת הפוסט (בלי התגובות שבסופו)
   function postText(article) {
-    const msg = messageEl(article);
-    // אם אין אלמנט הודעה מוכר, לוקחים את תחילת הפוסט (בלי התגובות שבסופו)
-    return msg ? textOf(msg) : textOf(article, 1800);
+    return classifiedPost(article).text;
   }
 
   // ---------- תגים ----------
@@ -419,7 +434,9 @@
       if (!entry.info && entry.relevant && entry.priceTries < 6 && now - entry.lastTry > 1500) {
         entry.priceTries++;
         entry.lastTry = now;
-        entry.parsed = LR.extractPriceSqmFree(postText(art));
+        // אותו פענוח כמו בסיווג (כולל "95 מטר" ובלי משפטי שכירות קיימת) – התג והרשומה השמורה זהים
+        const { text, classification } = classifiedPost(art);
+        entry.parsed = (classification && classification.parsed) || LR.extractPriceSqmFree(text);
         entry.info = entry.parsed.ppsm ? entry.parsed : null;
       }
     }
