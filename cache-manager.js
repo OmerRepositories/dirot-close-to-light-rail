@@ -242,7 +242,7 @@ function readListingDeletionFilters() {
   }
   for (const [field, range] of Object.entries(filters.ranges)) {
     if (Number.isFinite(range.min) && Number.isFinite(range.max) && range.min > range.max) {
-      return { filters, error: "ערך „מ־” לא יכול להיות גדול מערך „עד”." };
+      return { filters, error: "ערך \"מ־\" לא יכול להיות גדול מערך \"עד\"." };
     }
   }
   for (const select of document.querySelectorAll("[data-delete-amenity]")) {
@@ -1647,7 +1647,7 @@ function timelineDateText(change) {
       return {
         text: `עד ${detected}`,
         badge: "תאריך לא ידוע",
-        title: `המחיר הקודם ידוע (למשל מ„ירד ב־” בכרטיס), אבל לא מתי השתנה – רק שזה קרה לפני ${detected}, כשהתוסף ראה את המודעה לראשונה.`,
+        title: `המחיר הקודם ידוע (למשל מ\"ירד ב־\" בכרטיס), אבל לא מתי השתנה – רק שזה קרה לפני ${detected}, כשהתוסף ראה את המודעה לראשונה.`,
       };
     case "detected":
       return from && from !== detected
@@ -1675,8 +1675,8 @@ function timelinePreferencesSummaryText() {
   if (timelinePreferences.calculatePpsm && timelinePreferences.maxPpsm > 0) {
     rules.push(`עד ${displayPrice(timelinePreferences.maxPpsm)} למ״ר`);
   }
-  if (!rules.length) return "„רק מודעות שמתאימות להגדרות שלי”: בהגדרות לא נבחרו תנאים, אז הכפתור לא מסנן כלום.";
-  return `${timelinePreferencesEnabled ? "מוצגות רק מודעות" : "„רק מודעות שמתאימות להגדרות שלי” יציג רק מודעות"} שעונות על ההגדרות שלך: ${rules.join(" · ")}. משנים את התנאים בהגדרות התוסף.`;
+  if (!rules.length) return "\"רק מודעות שמתאימות להגדרות שלי\": בהגדרות לא נבחרו תנאים, אז הכפתור לא מסנן כלום.";
+  return `${timelinePreferencesEnabled ? "מוצגות רק מודעות" : "\"רק מודעות שמתאימות להגדרות שלי\" יציג רק מודעות"} שעונות על ההגדרות שלך: ${rules.join(" · ")}. משנים את התנאים בהגדרות התוסף.`;
 }
 
 // קורא את ערכי המסננים פעם אחת לכל רינדור (ולא פעם לכל אירוע – זה מה שהיה כבד)
@@ -2345,7 +2345,7 @@ function drawDashboard(stats, cities) {
       "green",
       "📊"
     ),
-    tile("ירידות בלי תאריך ידוע", number(stats.dropsUnknownDate), "קרו לפני שהמודעה נשמרה (למשל „ירד ב־” בכרטיס)", show("ירידות בלי תאריך ידוע", stats.keys.unknownDropDate), "slate", "❓"),
+    tile("ירידות בלי תאריך ידוע", number(stats.dropsUnknownDate), "קרו לפני שהמודעה נשמרה (למשל \"ירד ב־\" בכרטיס)", show("ירידות בלי תאריך ידוע", stats.keys.unknownDropDate), "slate", "❓"),
   );
   section("פעילות לאחרונה", "⚡", "amber").appendChild(recent);
 
@@ -3285,7 +3285,7 @@ async function saveListingStatus(key, status, attemptId, index) {
     ensureListingStatusKept(key, status, checkedAt);
     // שקיפות: מה נמצא במודעה שנפתחה
     const statusLine = $("refreshStatus");
-    const note = status === "removed" ? " · המודעה הוסרה מהאתר ✓ (סומנה „הוסרה”)" : " · המודעה פעילה ✓";
+    const note = status === "removed" ? " · המודעה הוסרה מהאתר ✓ (סומנה \"הוסרה\")" : " · המודעה פעילה ✓";
     if (statusLine && !statusLine.textContent.includes(note)) statusLine.textContent += note;
   } catch (error) {
     console.error("[lightrail-ext] failed to save listing status", error);
@@ -3650,7 +3650,7 @@ function refreshPlanText(plan) {
   if (counts.filteredOut) parts.push(`${n(counts.filteredOut)} לא מוצגות עכשיו בעמוד "מודעות" (בגלל החיפוש/הסינון שם)`);
   if (counts.otherSite) parts.push(`${n(counts.otherSite)} מאתר אחר`);
   if (counts.alreadyChecked) parts.push(`${n(counts.alreadyChecked)} כבר נבדקו (פעילה / הוסרה)`);
-  if (counts.removed) parts.push(`${n(counts.removed)} כבר סומנו „הוסרה”`);
+  if (counts.removed) parts.push(`${n(counts.removed)} כבר סומנו \"הוסרה\"`);
   if (counts.noUrl) parts.push(`${n(counts.noUrl)} בלי קישור תקין`);
   if (counts.irrelevant) parts.push(`${n(counts.irrelevant)} לא רלוונטיות (חסרים מאפייני חובה)`);
   return `ירועננו ${n(plan.queue.length)} מתוך ${n(counts.total)} מודעות שמורות${parts.length ? ` · לא ירועננו: ${parts.join(" · ")}` : ""}`;
@@ -3706,7 +3706,7 @@ async function startRefresh(options = {}) {
   const irrelevantNote = ` ${refreshPlanText(plan)}.`;
   if (!refreshQueue.length) {
     const message = (uncheckedOnly
-        ? `אין מודעות${siteName ? ` ${siteName}` : ""} בסטטוס „לא נבדקה” עם קישור תקין.`
+        ? `אין מודעות${siteName ? ` ${siteName}` : ""} בסטטוס \"לא נבדקה\" עם קישור תקין.`
         : `אין מודעות${siteName ? ` ${siteName}` : ""} לרענון.`) + irrelevantNote;
     setRefreshStatus(message, true);
     refreshStarting = false;
@@ -3963,7 +3963,7 @@ function scrollWalkerPage(attempt, retries) {
       updateWalkerButtons();
       setWalkerStatus(
         `ב${walkerPageLabel()} לא נמצאו מודעות – אולי הגעתם לסוף התוצאות או שהאתר מבקש אימות. ` +
-        "אם צריך, השלימו את האימות בכרטיסייה ולחצו „המשך” (העמוד ייסרק שוב), או „עצירה”.",
+        "אם צריך, השלימו את האימות בכרטיסייה ולחצו \"המשך\" (העמוד ייסרק שוב), או \"עצירה\".",
         true
       );
       return;
@@ -5541,7 +5541,7 @@ function scheduleAddressPreview() {
   clearTimeout(addressPreviewTimer);
   const status = $("addressExportStatus");
   status.dataset.error = "false";
-  status.textContent = addressExportLines().length ? "הבדיקה תתחיל כמה שניות אחרי שתסיים להקליד (או לחץ „בדיקה”)." : "";
+  status.textContent = addressExportLines().length ? "הבדיקה תתחיל כמה שניות אחרי שתסיים להקליד (או לחץ \"בדיקה\")." : "";
   addressPreviewTimer = setTimeout(() => runAddressExport(false).catch(() => {}), ADDRESS_PREVIEW_DELAY_MS);
 }
 
@@ -5951,7 +5951,7 @@ async function renderSyncPanel() {
           : "");
     // בזמן שסבב רץ לא מציגים את השגיאה של הסבב הקודם מעל "מסנכרן…"
     if (state.lastError && !$("syncNow").disabled) {
-      setSyncStatus("syncConnectedStatus", `הסנכרון האחרון נכשל: ${state.lastError} אפשר ללחוץ על „סנכרון עכשיו” כדי לנסות שוב.`, true);
+      setSyncStatus("syncConnectedStatus", `הסנכרון האחרון נכשל: ${state.lastError} אפשר ללחוץ על \"סנכרון עכשיו\" כדי לנסות שוב.`, true);
     }
     badge.textContent = state.lastError ? "שגיאת סנכרון" : "מחובר";
     badge.dataset.state = state.lastError ? "error" : "on";
@@ -6085,7 +6085,7 @@ function waitForSyncEnd(request) {
         done({
           ok: false,
           stalled: true,
-          error: `אין התקדמות כבר ${durationText(Date.now() - lastActivity)} בשלב „${(progress.steps.find((step) => step.id === progress.current) || {}).label || ""}”. הסבב ממשיך ברקע, וכל מה שכבר הורד או נשלח נשמר – הסבב הבא ימשיך מאותה נקודה.`,
+          error: `אין התקדמות כבר ${durationText(Date.now() - lastActivity)} בשלב \"${(progress.steps.find((step) => step.id === progress.current) || {}).label || ""}\". הסבב ממשיך ברקע, וכל מה שכבר הורד או נשלח נשמר – הסבב הבא ימשיך מאותה נקודה.`,
         });
       }
     }, 5000);
@@ -6116,7 +6116,7 @@ async function runOnlineSyncNow(quiet = false) {
         ? quiet ? "" : `הסנכרון הושלם · ${syncSummary(result)}`
         : result.stalled
           ? result.error
-          : `הסנכרון נכשל: ${result.error} מה שכבר הורד או נשלח נשמר. אפשר ללחוץ שוב על „סנכרון עכשיו” – הסבב ימשיך מאותה נקודה.`,
+          : `הסנכרון נכשל: ${result.error} מה שכבר הורד או נשלח נשמר. אפשר ללחוץ שוב על \"סנכרון עכשיו\" – הסבב ימשיך מאותה נקודה.`,
       !result.ok
     );
   } finally {
