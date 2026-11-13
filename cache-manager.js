@@ -6240,17 +6240,19 @@ function waitForSyncEnd(request) {
   });
 }
 
-async function runOnlineSyncNow(quiet = false) {
+async function runOnlineSyncNow(quiet = false, full = false) {
   const button = $("syncNow");
   if (button.disabled) return;
+  if (full && !window.confirm("סנכרון מלא מוריד מהשרת את כל המודעות והעסקאות (לא רק השינויים) ושולח מחדש את כל מה שבמחשב הזה. זה לוקח יותר זמן ומשתמש ביותר תעבורה מהמכסה החודשית. להמשיך?")) return;
   button.disabled = true;
+  $("syncFull").disabled = true;
   button.textContent = "מסנכרן…";
   // גם בסנכרון האוטומטי בפתיחת העמוד מראים שהוא רץ – אחרת השגיאה הישנה נשארת והכפתור נראה תקוע
   setSyncStatus("syncConnectedStatus", syncProgressState && syncProgressState.running
     ? "סבב קודם עדיין רץ – הסבב הזה יתחיל מיד אחריו. ההתקדמות מוצגת למטה."
     : "");
   try {
-    const result = await waitForSyncEnd(sendSyncMessage("lightrail:sync-now", { reason: quiet ? "open" : "manual" }));
+    const result = await waitForSyncEnd(sendSyncMessage(full ? "lightrail:sync-full" : "lightrail:sync-now", { reason: quiet ? "open" : "manual" }));
     if (result.skipped) {
       setSyncStatus("syncConnectedStatus", "");
       return;
@@ -6270,6 +6272,7 @@ async function runOnlineSyncNow(quiet = false) {
   } finally {
     button.disabled = false;
     button.textContent = "סנכרון עכשיו";
+    $("syncFull").disabled = false;
   }
 }
 
@@ -6289,6 +6292,7 @@ function notifySyncDeleted(keys) {
 
 $("syncConnect").addEventListener("click", connectOnlineSync);
 $("syncNow").addEventListener("click", () => runOnlineSyncNow(false));
+$("syncFull").addEventListener("click", () => runOnlineSyncNow(false, true));
 $("syncDisconnect").addEventListener("click", disconnectOnlineSync);
 $("syncInterval").addEventListener("change", async () => {
   const result = await sendSyncMessage("lightrail:sync-interval", { minutes: Number($("syncInterval").value) });

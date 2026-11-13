@@ -1146,6 +1146,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     "lightrail:sync-connect": () => connectSync(msg),
     "lightrail:sync-disconnect": () => disconnectSync(),
     "lightrail:sync-now": () => runSync(msg.reason === "open" ? "open" : "manual"),
+    // סנכרון מלא: משיכה של כל המודעות והעסקאות מהשרת (לא רק "מאז הפעם הקודמת"), ושליחה מחדש של
+    // כל מה שבמחשב הזה (בלי ה-hash-ים של מה שכבר נשלח). קודם משיכה ואז שליחה – כך שום גרסה חדשה
+    // יותר מהשרת לא נדרסת. ההגדרות לא מאופסות (אחרת היו דורסות הגדרות חדשות יותר ממחשב אחר).
+    "lightrail:sync-full": async () => {
+      await saveSyncSettings({ listingsFullPull: null, listingsFullPullCursor: null, dealsCursor: null });
+      await chrome.storage.local.remove([LRSync.HASHES_KEY, LRSync.DEAL_HASHES_KEY]);
+      return runSync("manual");
+    },
     "lightrail:sync-status": () => syncStatus(),
     "lightrail:sync-deleted": () => recordSyncDeletions(Array.isArray(msg.keys) ? msg.keys : []),
     "lightrail:sync-interval": () => setSyncInterval(msg.minutes),
