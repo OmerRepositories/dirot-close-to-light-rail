@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "קרבה לרכבת הקלה – יד2, מדלן, הומלס וקומו",
   "description": "מציג על מודעות נדל\"ן ביד2, מדלן, הומלס, קומו ופייסבוק את המרחק לרכבת הקלה ואת המחיר למ\"ר.",
-  "version": "1.82.0",
+  "version": "1.83.0",
   "permissions": ["storage", "unlimitedStorage", "clipboardWrite", "alarms", "scripting"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "icons": {
@@ -35,7 +35,7 @@
         "https://www.homeless.co.il/*",
         "https://www.komo.co.il/*"
       ],
-      "js": ["parse.js", "yad2.js", "madlan.js", "homeless.js", "komo.js", "location.js", "whatsapp-message.js", "cache-data.js", "street-filter.js", "page-walker.js", "deals-core.js", "listing-store.js", "content.js"],
+      "js": ["parse.js", "yad2.js", "madlan.js", "homeless.js", "komo.js", "location.js", "whatsapp-message.js", "cache-data.js", "street-filter.js", "street-scan-core.js", "page-walker.js", "deals-core.js", "listing-store.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     },

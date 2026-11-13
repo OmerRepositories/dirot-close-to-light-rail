@@ -1291,3 +1291,7 @@ th.narrow-col { min-width: 58px; }
 /* חיפוש בתוך רשימת בחירה מרובה ארוכה (1.77.1) */
 .multi-search { position: sticky; top: -6px; z-index: 1; display: block; width: 100%; min-height: 30px; margin-bottom: 4px; padding: 4px 8px; background: var(--surface); }
 .multi-options label[hidden] { display: none; }
+/* סריקת רחובות: בחירת אתרים (1.83.0) */
+.street-scan-sites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 0; padding: 0; border: 0; }
+.street-scan-sites legend { float: inline-start; margin-inline-end: 8px; padding: 0; color: var(--muted); font-size: 13px; }
+.street-scan-sites label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }

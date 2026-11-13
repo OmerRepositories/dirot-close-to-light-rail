@@ -14,7 +14,10 @@ var LRStreetScan = (() => {
     7: "north-and-valleys",
     8: "jerusalem",
   };
-  const DEFAULTS = { enabled: false, everyHours: 24, maxPages: 5, delaySeconds: 20 };
+  // sites: באילו אתרים לסרוק. מדלן כבויה כברירת מחדל (נוספה ב-1.83.0 – רשות)
+  const DEFAULTS = { enabled: false, everyHours: 24, maxPages: 5, delaySeconds: 20, sites: { yad2: true, madlan: false } };
+  const SITES = ["yad2", "madlan"];
+  const IDS_KEYS = { yad2: "lightrailYad2StreetIds", madlan: "lightrailMadlanStreetIds" };
   const LIMITS = {
     everyHours: [1, 168],
     maxPages: [1, 20],
@@ -28,11 +31,13 @@ var LRStreetScan = (() => {
 
   function normalizeSettings(raw) {
     const source = raw && typeof raw === "object" ? raw : {};
+    const sites = source.sites && typeof source.sites === "object" ? source.sites : {};
     return {
       enabled: source.enabled === true,
       everyHours: clampInt(source.everyHours, LIMITS.everyHours, DEFAULTS.everyHours),
       maxPages: clampInt(source.maxPages, LIMITS.maxPages, DEFAULTS.maxPages),
       delaySeconds: clampInt(source.delaySeconds, LIMITS.delaySeconds, DEFAULTS.delaySeconds),
+      sites: Object.fromEntries(SITES.map((site) => [site, typeof sites[site] === "boolean" ? sites[site] : DEFAULTS.sites[site]])),
     };
   }
 
@@ -113,6 +118,44 @@ var LRStreetScan = (() => {
     return url.href;
   }
 
+  // מדלן: ההצעות מתיבת החיפוש של האתר ([{ text: "גובר רבקה, פתח תקווה", type: "רחוב" }]) – האינדקס של
+  // הרחוב המתאים, או -1. מדלן כותבת לפעמים את השם בסדר הפוך ("גובר רבקה" ל"רבקה גובר"), לכן משווים מילים
+  // בלי חשיבות לסדר; העיר חייבת להתאים
+  function pickMadlanSuggestion(suggestions, street, city) {
+    const filter = typeof LRStreetFilter !== "undefined" ? LRStreetFilter : null;
+    const words = (value) => (filter ? filter.normalize(value) : clean(value)).split(" ").filter(Boolean);
+    const wanted = words(street);
+    let best = -1;
+    let bestScore = 0;
+    (Array.isArray(suggestions) ? suggestions : []).forEach((item, index) => {
+      if (!item || !/רחוב/.test(String(item.type || ""))) return;
+      const text = clean(item.text);
+      const comma = text.lastIndexOf(",");
+      if (comma < 0) return;
+      const itemCity = text.slice(comma + 1).trim();
+      if (filter && !filter.cityAllowed([city], itemCity)) return;
+      const have = words(text.slice(0, comma));
+      if (!wanted.length || !wanted.every((word) => have.includes(word))) return;
+      const score = have.length === wanted.length ? 2 : 1; // אותן מילים בדיוק עדיף על שם ארוך יותר
+      if (score > bestScore) {
+        best = index;
+        bestScore = score;
+      }
+    });
+    return best;
+  }
+
+  // עמוד התוצאות של רחוב במדלן לפי המזהה שלו ("גובר-רבקה-פתח-תקווה-ישראל")
+  function madlanStreetUrl(docId, page = 1) {
+    const id = String(docId || "").trim();
+    if (!id || id.includes("/") || !/-ישראל$/.test(id)) return null;
+    return `https://www.madlan.co.il/for-sale/${encodeURIComponent(id)}${page > 1 ? `?page=${page}` : ""}`;
+  }
+
+  function streetPageUrl(site, ids, page = 1) {
+    return site === "madlan" ? madlanStreetUrl(ids && ids.docId, page) : streetUrl(ids, page);
+  }
+
   // כמה עמודים לסרוק ברחוב: לפי מה שיד2 דיווחה, עד המקסימום שהמשתמש בחר
   function pagesFor(totalPages, maxPages) {
     const total = Number.isFinite(totalPages) && totalPages > 0 ? Math.floor(totalPages) : 1;
@@ -137,7 +180,10 @@ var LRStreetScan = (() => {
     return parts.join(" · ");
   }
 
-  return { REGION_SLUGS, DEFAULTS, LIMITS, normalizeSettings, streetsToScan, cacheKey, pickStreet, streetUrl, pagesFor, cachedIds, summary };
+  return {
+    REGION_SLUGS, DEFAULTS, LIMITS, SITES, IDS_KEYS, normalizeSettings, streetsToScan, cacheKey, pickStreet, streetUrl,
+    pickMadlanSuggestion, madlanStreetUrl, streetPageUrl, pagesFor, cachedIds, summary,
+  };
 })();
 
 if (typeof module !== "undefined") module.exports = LRStreetScan;

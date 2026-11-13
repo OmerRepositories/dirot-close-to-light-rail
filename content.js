@@ -2717,12 +2717,70 @@
     }
   }
 
+  // מדלן: כמה עמודים יש לתוצאות – לפי קישורי העמודים (?page=N) של אותו חיפוש; עמוד בלי קישורים = עמוד אחד.
+  // null כשאין בכלל כותרת תוצאות (עמוד אימות / שגיאה)
+  function madlanFeedPages() {
+    const heading = document.querySelector("h1");
+    if (!heading || !/למכירה/.test(heading.innerText || "")) return null;
+    let totalPages = 1;
+    for (const link of document.querySelectorAll('a[href*="page="]')) {
+      try {
+        const url = new URL(link.getAttribute("href"), location.href);
+        if (url.pathname !== location.pathname) continue;
+        const page = Number(url.searchParams.get("page"));
+        if (Number.isInteger(page) && page > totalPages) totalPages = page;
+      } catch {}
+    }
+    const count = (document.title.match(/([\d,]+)\s+דירות/) || [])[1];
+    return { total: count ? Number(count.replace(/,/g, "")) : null, totalPages };
+  }
+
+  // מדלן: מזהה הרחוב דרך תיבת החיפוש של האתר (כמו שמשתמש מחפש): לוחצים על התיבה, כותבים את שם הרחוב,
+  // בוחרים את ההצעה מסוג "רחוב" בעיר הנכונה, והמזהה נלקח מהכתובת שמדלן עוברת אליה.
+  // רץ רק בלשונית הסריקה (שנפתחה על /for-sale/ישראל), לבקשת מנהל המידע
+  async function madlanStreetLookup(street, city) {
+    const input = document.querySelector('input[data-auto="autocomplete-textfield"]');
+    if (!input) return { ok: false, error: "תיבת החיפוש של מדלן לא נמצאה." };
+    const click = (element) => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+      }
+    };
+    const setValue = (value) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value);
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value.slice(-1) }));
+    };
+    click(input);
+    input.focus();
+    setValue("");
+    await sleep(200);
+    setValue(street);
+    let suggestions = [];
+    for (let i = 0; i < 25 && !suggestions.length; i++) {
+      await sleep(300);
+      suggestions = [...document.querySelectorAll('[data-auto="autocomplete-suggestion"]')];
+    }
+    if (!suggestions.length) return { ok: true, docId: null };
+    const items = suggestions.map((element) => ({
+      text: ((element.querySelector('[data-auto="suggetion-text"]') || element).innerText || "").trim(),
+      type: ((element.querySelector('[data-auto="suggestion-type"]') || {}).innerText || "").trim(),
+    }));
+    const index = LRStreetScan.pickMadlanSuggestion(items, street, city);
+    if (index < 0) return { ok: true, docId: null, title: "" };
+    const before = location.pathname;
+    click(suggestions[index]);
+    for (let i = 0; i < 30 && location.pathname === before; i++) await sleep(300);
+    const match = decodeURIComponent(location.pathname).match(/^\/for-sale\/([^/?#]+)/);
+    const docId = match ? match[1].split(",").pop() : null;
+    return { ok: true, docId: docId && /-ישראל$/.test(docId) ? docId : null, title: items[index].text };
+  }
+
   async function runStreetScanPage() {
     if (!isRunning) return { ok: false, error: "התוסף כבוי באתר הזה (בהגדרות)." };
     streetScanPage = streetScanPage || { added: new Set() };
     const started = Date.now();
     while (!listingCacheLoaded && Date.now() - started < 15000) await sleep(500);
-    const feed = yad2FeedPages();
+    const feed = IS_YAD2 ? yad2FeedPages() : IS_MADLAN ? madlanFeedPages() : null;
     // מחכים שמספר הכרטיסים יתייצב ושכולם יעברו שמירה (refreshAll רץ על כל הכרטיסים, גם אלה שלא בתצוגה)
     let lastCount = -1;
     let stable = 0;
@@ -2745,6 +2803,25 @@
       // בלי נתוני תוצאות ובלי כרטיסים: כנראה עמוד אימות ("אני לא רובוט") או שגיאה – לא עוקפים
       blocked: !feed && lastCount <= 0,
     };
+  }
+
+  if (IS_MADLAN) {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!message || typeof message.type !== "string") return false;
+      if (message.type === "lightrail:madlan-street-lookup") {
+        madlanStreetLookup(String(message.street || "").slice(0, 60), String(message.city || "").slice(0, 60))
+          .then(sendResponse)
+          .catch((error) => sendResponse({ ok: false, error: String(error && error.message || error) }));
+        return true;
+      }
+      if (message.type === "lightrail:street-scan-page") {
+        runStreetScanPage()
+          .then(sendResponse)
+          .catch((error) => sendResponse({ ok: false, error: String(error && error.message || error) }));
+        return true;
+      }
+      return false;
+    });
   }
 
   if (IS_YAD2) {

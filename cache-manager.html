@@ -795,13 +795,18 @@
       </div>
         </section>
         <section class="tool-card" data-tone="green" aria-labelledby="streetScanTitle">
-          <h3 id="streetScanTitle"><span class="card-dot"></span>סריקת רחובות מועדפים (יד2)</h3>
-          <p class="card-text">פותח ביד2 את עמוד התוצאות של כל רחוב מועדף (☆) ושומר את המודעות שבו – כך מודעות חדשות ברחובות שמעניינים אותך נכנסות בלי לחפש ידנית. מסנני השמירה מההגדרות (מחיר, שטח, ערים) חלים גם כאן.</p>
+          <h3 id="streetScanTitle"><span class="card-dot"></span>סריקת רחובות מועדפים (יד2 ומדלן)</h3>
+          <p class="card-text">פותח ביד2 ובמדלן את עמוד התוצאות של כל רחוב מועדף (☆) ושומר את המודעות שבו – כך מודעות חדשות ברחובות שמעניינים אותך נכנסות בלי לחפש ידנית. מסנני השמירה מההגדרות (מחיר, שטח, ערים) חלים גם כאן.</p>
           <div class="schedule-settings">
             <label class="schedule-toggle">
               <input id="streetScanEnabled" type="checkbox">
               <span>לסרוק את הרחובות המועדפים אוטומטית</span>
             </label>
+            <fieldset class="street-scan-sites">
+              <legend>באילו אתרים לסרוק?</legend>
+              <label><input id="streetScanYad2" type="checkbox" checked> יד2</label>
+              <label><input id="streetScanMadlan" type="checkbox"> מדלן</label>
+            </fieldset>
             <label class="schedule-interval">
               <span>כל כמה שעות? (1–168)</span>
               <input id="streetScanHours" type="number" min="1" max="168" step="1" value="24">
@@ -820,7 +825,7 @@
               <button id="stopStreetScan" type="button" disabled>עצירה</button>
             </div>
             <p id="streetScanStatus" role="status" aria-live="polite">סריקת רחובות כבויה.</p>
-            <p class="schedule-note">כבוי כברירת מחדל. הרחובות נלקחים מרשימת הרחובות המועדפים (שורה כמו "ההגנה, פתח תקווה"); רחוב בלי עיר לא נסרק. הסריקה פותחת כרטיסייה אחת ברקע, ונעצרת אם יד2 מבקשת אימות – התוסף לא עוקף חסימות. כרגע רק יד2.</p>
+            <p class="schedule-note">כבוי כברירת מחדל. הרחובות נלקחים מרשימת הרחובות המועדפים (שורה כמו "ההגנה, פתח תקווה"); רחוב בלי עיר לא נסרק. הסריקה פותחת כרטיסייה אחת ברקע, ונעצרת באתר שמבקש אימות – התוסף לא עוקף חסימות. במדלן הרחוב נמצא דרך תיבת החיפוש של האתר (מדלן כותבת שמות לפעמים בסדר הפוך, למשל "גובר רבקה"), ולכן הסריקה הראשונה של כל רחוב קצת יותר איטית.</p>
           </div>
         </section>
         <section class="tool-card walker-card" data-tone="amber">

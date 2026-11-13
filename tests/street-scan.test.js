@@ -5,10 +5,10 @@ global.LRStreetFilter = require("../street-filter.js");
 const LRStreetScan = require("../street-scan-core.js");
 
 test("settings are off by default and clamped", () => {
-  assert.deepEqual(LRStreetScan.normalizeSettings(undefined), { enabled: false, everyHours: 24, maxPages: 5, delaySeconds: 20 });
+  assert.deepEqual(LRStreetScan.normalizeSettings(undefined), { enabled: false, everyHours: 24, maxPages: 5, delaySeconds: 20, sites: { yad2: true, madlan: false } });
   assert.deepEqual(
     LRStreetScan.normalizeSettings({ enabled: true, everyHours: 0, maxPages: 99, delaySeconds: 2 }),
-    { enabled: true, everyHours: 1, maxPages: 20, delaySeconds: 10 }
+    { enabled: true, everyHours: 1, maxPages: 20, delaySeconds: 10, sites: { yad2: true, madlan: false } }
   );
   assert.equal(LRStreetScan.normalizeSettings({ enabled: "yes" }).enabled, false);
 });
@@ -95,4 +95,26 @@ test("a favorite/blocked line whose street is the city itself is ignored", () =>
   assert.equal(LRStreetFilter.match(rules, "פתח תקווה", "פתח תקווה"), null);
   const { streets } = LRStreetScan.streetsToScan(["פתח תקווה, פתח תקווה", "שיפר, פתח תקווה"]);
   assert.deepEqual(streets.map((street) => street.street), ["שיפר"]);
+});
+
+test("Madlan: the street suggestion matches words in any order and the city", () => {
+  const items = [
+    { text: "גובר רבקה ומרדכי, קרית מלאכי", type: "רחוב" },
+    { text: "בית ספר רבקה גובר, לכיש", type: "בית ספר" },
+    { text: "גובר רבקה, רעננה", type: "רחוב" },
+    { text: "גובר רבקה, פתח תקווה", type: "רחוב" },
+  ];
+  assert.equal(LRStreetScan.pickMadlanSuggestion(items, "רבקה גובר", "פתח תקוה"), 3);
+  assert.equal(LRStreetScan.pickMadlanSuggestion(items, "רבקה גובר", "חולון"), -1);
+  // שם ארוך יותר באותה עיר מתאים רק כשאין התאמה מדויקת
+  assert.equal(LRStreetScan.pickMadlanSuggestion([{ text: "הרב משה בלוי, פתח תקווה", type: "רחוב" }], "משה בלוי", "פתח תקווה"), 0);
+});
+
+test("Madlan street result URLs and per-site settings", () => {
+  assert.equal(LRStreetScan.madlanStreetUrl("גובר-רבקה-פתח-תקווה-ישראל"),
+    "https://www.madlan.co.il/for-sale/" + encodeURIComponent("גובר-רבקה-פתח-תקווה-ישראל"));
+  assert.match(LRStreetScan.madlanStreetUrl("גובר-רבקה-פתח-תקווה-ישראל", 2), /\?page=2$/);
+  assert.equal(LRStreetScan.madlanStreetUrl("../x"), null);
+  assert.equal(LRStreetScan.streetPageUrl("madlan", { docId: "גובר-רבקה-פתח-תקווה-ישראל" }, 1).startsWith("https://www.madlan.co.il/"), true);
+  assert.deepEqual(LRStreetScan.normalizeSettings({ sites: { madlan: true, yad2: false } }).sites, { yad2: false, madlan: true });
 });

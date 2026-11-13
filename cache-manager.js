@@ -6791,7 +6791,23 @@ $("refreshShownListings").addEventListener("click", () => {
 // את הכרטיסים. בהפעלה מתוזמנת background.js פותח את העמוד עם ?streetScan=1, ובסוף הוא נסגר.
 const STREET_SCAN_KEY = "lightrailStreetScan";
 const STREET_SCAN_RUNTIME_KEY = "lightrailStreetScanRuntime";
-const STREET_SCAN_IDS_KEY = "lightrailYad2StreetIds";
+const STREET_SCAN_SITE_NAMES = { yad2: "יד2", madlan: "מדלן" };
+
+// מזהי הרחוב באתר: יד2 – דרך החיפוש של האתר (מזהי אזור/עיר/רחוב); מדלן – דרך תיבת החיפוש בעמוד
+// (מזהה כמו "גובר-רבקה-פתח-תקווה-ישראל"). null = האתר לא מכיר את הרחוב
+async function resolveStreetIds(site, street) {
+  if (site === "madlan") {
+    // כל חיפוש מתחיל מעמוד כל הארץ, כדי שהבחירה תחליף את המיקום ולא תתווסף אליו
+    await streetScanOpen("https://www.madlan.co.il/for-sale/ישראל");
+    const found = await streetScanAsk({ type: "lightrail:madlan-street-lookup", street: street.street, city: street.city });
+    if (!found.ok) throw new Error(`החיפוש במדלן נכשל (${found.error || "שגיאה"}).`);
+    return found.docId ? { docId: found.docId, title: found.title || "" } : null;
+  }
+  if (!Number.isInteger(streetScan.tabId)) await streetScanOpen("https://www.yad2.co.il/realestate/forsale");
+  const found = await streetScanAsk({ type: "lightrail:yad2-street-lookup", query: street.query });
+  if (!found.ok) throw new Error(`החיפוש ביד2 נכשל (${found.error || "שגיאה"}).`);
+  return LRStreetScan.pickStreet(found, street.street, street.city);
+}
 const STREET_SCAN_ALARM = "lightrail-favorite-street-scan";
 const STREET_SCAN_LOAD_TIMEOUT_MS = 45000;
 const streetScan = { running: false, stopped: false, tabId: null, wake: null };
@@ -6813,6 +6829,7 @@ function streetScanFormSettings() {
     everyHours: $("streetScanHours").value,
     maxPages: $("streetScanPages").value,
     delaySeconds: $("streetScanDelay").value,
+    sites: { yad2: $("streetScanYad2").checked, madlan: $("streetScanMadlan").checked },
   });
 }
 
@@ -6828,6 +6845,8 @@ async function loadStreetScanSettings() {
     $("streetScanHours").value = String(settings.everyHours);
     $("streetScanPages").value = String(settings.maxPages);
     $("streetScanDelay").value = String(settings.delaySeconds);
+    $("streetScanYad2").checked = settings.sites.yad2;
+    $("streetScanMadlan").checked = settings.sites.madlan;
     if (streetScan.running) return;
     const next = settings.enabled && alarm && Number.isFinite(alarm.scheduledTime)
       ? ` · הבאה: ${new Date(alarm.scheduledTime).toLocaleString("he-IL")}`
@@ -6933,49 +6952,59 @@ async function runStreetScan({ scheduled = false } = {}) {
     if (scheduled) await finishStreetScanRun(message, scheduled);
     return;
   }
+  const sites = LRStreetScan.SITES.filter((site) => options.sites[site]);
+  if (!sites.length) {
+    setStreetScanStatus("לא נבחר אף אתר לסריקה (יד2 / מדלן).", true);
+    if (scheduled) await finishStreetScanRun("לא נבחר אף אתר לסריקה.", scheduled);
+    return;
+  }
   Object.assign(streetScan, { running: true, stopped: false, tabId: null });
   updateStreetScanButtons();
   const totals = { streets: 0, pages: 0, cards: 0, added: 0, notFound: [], skipped };
-  let failure = "";
-  try {
-    const idsCache = (await storageGet(STREET_SCAN_IDS_KEY)) || {};
-    let first = true;
-    for (const [index, street] of streets.entries()) {
-      if (streetScan.stopped) break;
-      let ids = LRStreetScan.cachedIds(idsCache, street.key);
-      if (ids === undefined) {
-        setStreetScanStatus(`מחפש ביד2 את ${street.label}…`);
-        if (!Number.isInteger(streetScan.tabId)) await streetScanOpen("https://www.yad2.co.il/realestate/forsale");
-        const found = await streetScanAsk({ type: "lightrail:yad2-street-lookup", query: street.query });
-        if (!found.ok) throw new Error(`החיפוש ביד2 נכשל (${found.error || "שגיאה"}).`);
-        ids = LRStreetScan.pickStreet(found, street.street, street.city);
-        idsCache[street.key] = { ids, at: Date.now() };
-        await storageSet({ [STREET_SCAN_IDS_KEY]: idsCache });
-      }
-      if (!ids) {
-        totals.notFound.push(street.label);
-        continue;
-      }
-      let pages = 1;
-      for (let page = 1; page <= pages && !streetScan.stopped; page++) {
-        if (!first) await streetScanSleep(options.delaySeconds * 1000);
-        first = false;
+  const failures = [];
+  let first = true;
+  for (const site of sites) {
+    if (streetScan.stopped) break;
+    const siteName = STREET_SCAN_SITE_NAMES[site];
+    try {
+      const idsKey = LRStreetScan.IDS_KEYS[site];
+      const idsCache = (await storageGet(idsKey)) || {};
+      for (const [index, street] of streets.entries()) {
         if (streetScan.stopped) break;
-        setStreetScanStatus(`רחוב ${index + 1}/${streets.length}: ${street.label} · עמוד ${page}${pages > 1 ? `/${pages}` : ""}… (${totals.added} חדשות עד עכשיו)`);
-        await streetScanOpen(LRStreetScan.streetUrl(ids, page));
-        const result = await streetScanAsk({ type: "lightrail:street-scan-page" });
-        if (!result.ok) throw new Error(result.error || "העמוד לא נסרק.");
-        if (result.blocked) throw new Error("יד2 ביקשה אימות או שהעמוד לא נטען – הסריקה נעצרה (התוסף לא עוקף חסימות).");
-        if (page === 1) pages = LRStreetScan.pagesFor(result.totalPages, options.maxPages);
-        totals.pages++;
-        totals.cards += result.cards || 0;
-        totals.added += result.added || 0;
+        let ids = LRStreetScan.cachedIds(idsCache, street.key);
+        if (ids === undefined) {
+          setStreetScanStatus(`מחפש ב${siteName} את ${street.label}…`);
+          ids = await resolveStreetIds(site, street);
+          idsCache[street.key] = { ids, at: Date.now() };
+          await storageSet({ [idsKey]: idsCache });
+        }
+        if (!ids) {
+          totals.notFound.push(`${street.label} (${siteName})`);
+          continue;
+        }
+        let pages = 1;
+        for (let page = 1; page <= pages && !streetScan.stopped; page++) {
+          if (!first) await streetScanSleep(options.delaySeconds * 1000);
+          first = false;
+          if (streetScan.stopped) break;
+          setStreetScanStatus(`${siteName} · רחוב ${index + 1}/${streets.length}: ${street.label} · עמוד ${page}${pages > 1 ? `/${pages}` : ""}… (${totals.added} חדשות עד עכשיו)`);
+          await streetScanOpen(LRStreetScan.streetPageUrl(site, ids, page));
+          const result = await streetScanAsk({ type: "lightrail:street-scan-page" });
+          if (!result.ok) throw new Error(result.error || "העמוד לא נסרק.");
+          if (result.blocked) throw new Error(`${siteName} ביקשה אימות או שהעמוד לא נטען – הסריקה ב${siteName} נעצרה (התוסף לא עוקף חסימות).`);
+          if (page === 1) pages = LRStreetScan.pagesFor(result.totalPages, options.maxPages);
+          totals.pages++;
+          totals.cards += result.cards || 0;
+          totals.added += result.added || 0;
+        }
+        totals.streets++;
       }
-      totals.streets++;
+    } catch (error) {
+      // תקלה באתר אחד לא עוצרת את הסריקה באתר השני
+      failures.push(error.message || String(error));
     }
-  } catch (error) {
-    failure = error.message || String(error);
   }
+  const failure = failures.join(" · ");
   if (Number.isInteger(streetScan.tabId)) chrome.tabs.remove(streetScan.tabId).catch(() => {});
   const summary = LRStreetScan.summary(totals);
   const message = failure
