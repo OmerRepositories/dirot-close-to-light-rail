@@ -128,11 +128,12 @@
         </div>
         <span class="heading-actions">
           <span id="searchResultCount" class="record-count" aria-live="polite"></span>
+          <button id="toggleSearchFilters" type="button" aria-pressed="false" aria-controls="searchSideFilters" title="הסתרה או הצגה של תפריט הסינון והמיון, כדי שלטבלה יהיה יותר מקום">⇥ הסתר סינונים</button>
           <button id="exportSearchCsv" class="export-results" type="button" title="מוריד קובץ CSV עם המודעות שמוצגות כרגע לפי המסננים">⬇ ייצוא התוצאות ל־CSV</button>
         </span>
       </div>
       <div class="side-layout">
-      <aside class="side-filters" aria-label="סינון ומיון">
+      <aside id="searchSideFilters" class="side-filters" aria-label="סינון ומיון">
       <div class="listing-search-grid">
         <label class="search-field">
           <span>מילות חיפוש</span>

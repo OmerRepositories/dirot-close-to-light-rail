@@ -5518,20 +5518,26 @@ rows.addEventListener("keydown", (event) => {
   openRecord(row.dataset.key);
 });
 // הסתרת תפריט הסינון בעמוד המודעות – יותר מקום לטבלה; הבחירה נזכרת במחשב הזה
-const LISTING_FILTERS_HIDDEN_KEY = "lrListingFiltersHidden";
-function setListingFiltersHidden(hidden) {
-  $("listingSideFilters").hidden = hidden;
-  const button = $("toggleListingFilters");
+// (גם בעמוד "חיפוש מודעה" – כל עמוד עם בחירה משלו)
+const FILTER_TOGGLES = [
+  { button: "toggleListingFilters", panel: "listingSideFilters", key: "lrListingFiltersHidden" },
+  { button: "toggleSearchFilters", panel: "searchSideFilters", key: "lrSearchFiltersHidden" },
+];
+function setSideFiltersHidden(toggle, hidden) {
+  $(toggle.panel).hidden = hidden;
+  const button = $(toggle.button);
   button.setAttribute("aria-pressed", String(hidden));
   button.textContent = hidden ? "⇤ הצג סינונים" : "⇥ הסתר סינונים";
   try {
-    localStorage.setItem(LISTING_FILTERS_HIDDEN_KEY, hidden ? "1" : "0");
+    localStorage.setItem(toggle.key, hidden ? "1" : "0");
   } catch {}
 }
-try {
-  if (localStorage.getItem(LISTING_FILTERS_HIDDEN_KEY) === "1") setListingFiltersHidden(true);
-} catch {}
-$("toggleListingFilters").addEventListener("click", () => setListingFiltersHidden(!$("listingSideFilters").hidden));
+for (const toggle of FILTER_TOGGLES) {
+  try {
+    if (localStorage.getItem(toggle.key) === "1") setSideFiltersHidden(toggle, true);
+  } catch {}
+  $(toggle.button).addEventListener("click", () => setSideFiltersHidden(toggle, !$(toggle.panel).hidden));
+}
 
 for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
   $(id).addEventListener("input", scheduleRenderRows);
