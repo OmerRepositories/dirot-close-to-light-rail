@@ -133,6 +133,15 @@
   let brokerageFilterBar = null;
   const projectCards = new Set();
   let streetScanPage = null; // עמוד שנפתח בסריקת רחובות מועדפים (ראו runStreetScanPage)
+  // רשימת תחנות הרכבת הקלה שהרקע שמר – כדי לחשב מרחק ממיקום ידוע בדף עצמו. נקראת פעם אחת לכל דף;
+  // בלי רשימה (התקנה חדשה) – כרגיל דרך הרקע, שגם טוען אותה
+  let localStations = null;
+  try {
+    chrome.storage.local.get("stations", (stored) => {
+      const list = stored && stored.stations;
+      if (Array.isArray(list) && list.length) localStations = list;
+    });
+  } catch {}
 
   const io = new IntersectionObserver(
     (list) => {
@@ -1110,7 +1119,17 @@
   // ---------- חישוב רכבת (רק למודעות שנראות / קרובות למסך) ----------
   function startLookup(entry) {
     if (!isRunning || !CFG.calculateRail || entry.started) return;
-    if (!listingCacheLoaded) {
+    // עמוד מודעה עם מיקום מדויק בנתוני האתר: לא צריך לחכות לטעינת המידע השמור (כמה MB) – הוא נחוץ
+    // רק כדי להשתמש במיקום שנשמר בעבר, כשלמודעה אין מיקום משלה
+    let knownLocation = false;
+    if (!listingCacheLoaded && entry.kind === "single" && localStations) {
+      try {
+        knownLocation = LRLocation.validCoordinates(
+          PARSER.readAddress(document, entry.getText(), ctxCity(), true).coordinates
+        );
+      } catch {}
+    }
+    if (!listingCacheLoaded && !knownLocation) {
       setTimeout(() => {
         if (entry.card.isConnected) startLookup(entry);
       }, 100);
@@ -1167,6 +1186,14 @@
           : validCachedCoordinates(cachedListing)
             ? cachedListing.coordinates
             : null;
+        // מיקום ידוע: מחשבים בדף עצמו (בלי לחכות לרקע, שעשוי להיות עסוק בסנכרון או בלשוניות אחרות)
+        const local = coordinates && localStations ? LRLocation.railFromCoordinates(localStations, coordinates) : null;
+        if (local) {
+          pageBias = local.origin;
+          renderRail(entry, local);
+          scheduleRefresh();
+          return;
+        }
         if (!coordinates && queries.every((query) => query.cityOnly)) {
           renderRail(entry, {
             ok: false,
