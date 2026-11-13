@@ -42,3 +42,12 @@ test("hood series: median price per sqm by year, years with too few deals droppe
   assert.equal(center.count, 3);
   assert.equal(Deals.hoodSeries(list, ["פתח תקווה|כפר גנים"], { minCount: 1 })[0].years.length, 2);
 });
+
+test("hood series accepts the [key, deal] pairs that filterDeals returns", () => {
+  const picked = ["פתח תקווה|כפר גנים"];
+  const pairs = Deals.filterDeals(store, { neighborhoods: picked });
+  assert.ok(Array.isArray(pairs[0]));
+  const [series] = Deals.hoodSeries(pairs, picked);
+  assert.equal(series.count, 4);
+  assert.equal(series.years.length, 2);
+});

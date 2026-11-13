@@ -861,7 +861,9 @@ var LRDeals = (() => {
       byId.set(id, entry);
       series.push(entry);
     }
-    for (const deal of Array.isArray(deals) ? deals : []) {
+    // מקבל עסקאות או זוגות [key, deal] (כפי ש-filterDeals מחזירה)
+    for (const item of Array.isArray(deals) ? deals : []) {
+      const deal = Array.isArray(item) ? item[1] : item;
       if (!deal || !deal.neighborhood) continue;
       const entry = byId.get(dealHoodId(deal));
       const year = Number(String(deal.date || "").slice(0, 4));
