@@ -5726,6 +5726,39 @@ for (const id of ["searchInput", "siteFilter", "typeFilter"]) {
 document.querySelectorAll("[data-multi-select]").forEach((details) => {
   details.addEventListener("change", () => updateMultiSelectSummary(details));
 });
+// רשימות ארוכות (ערים, שכונות): תיבת חיפוש בראש הרשימה שמסננת את האפשרויות תוך כדי הקלדה.
+// הסינון רק מסתיר – מה שכבר סומן נשאר מסומן. כשהרשימה נבנית מחדש הסינון מוחל שוב.
+const multiSearchText = (value) => String(value || "").replace(/["'`״׳]/g, "").replace(/\s+/g, " ").trim().toLocaleLowerCase("he");
+function applyMultiSearch(list, input) {
+  const words = multiSearchText(input.value).split(" ").filter(Boolean);
+  for (const label of list.querySelectorAll("label")) {
+    const text = multiSearchText(label.textContent);
+    label.hidden = words.length > 0 && !words.every((word) => text.includes(word));
+  }
+}
+document.querySelectorAll(".multi-options-scroll").forEach((list) => {
+  const input = document.createElement("input");
+  input.type = "search";
+  input.className = "multi-search";
+  input.placeholder = "חיפוש ברשימה…";
+  input.setAttribute("aria-label", "חיפוש ברשימה");
+  input.autocomplete = "off";
+  list.prepend(input);
+  // ההקלדה לא נחשבת לשינוי בבחירה (לא מציירים את התוצאות מחדש)
+  for (const type of ["input", "change"]) input.addEventListener(type, (event) => event.stopPropagation());
+  input.addEventListener("input", () => applyMultiSearch(list, input));
+  // הרשימה נבנית מחדש עם replaceChildren – מחזירים את תיבת החיפוש לראשה ומסננים שוב
+  new MutationObserver(() => {
+    if (list.firstElementChild !== input) list.prepend(input);
+    applyMultiSearch(list, input);
+  }).observe(list, { childList: true });
+  const details = list.closest("details");
+  if (details) {
+    details.addEventListener("toggle", () => {
+      if (details.open) input.focus();
+    });
+  }
+});
 // סגירת רשימת הבחירה המרובה בלחיצה מחוץ לה או ב־Escape
 document.addEventListener("click", (event) => {
   document.querySelectorAll("[data-multi-select][open]").forEach((details) => {

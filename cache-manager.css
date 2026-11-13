@@ -1288,3 +1288,6 @@ th.narrow-col { min-width: 58px; }
 .hoods-chart .hood-dot { fill: var(--hood); stroke: var(--surface); stroke-width: 2; }
 .hoods-chart .hood-label { fill: var(--ink); font-size: 12px; font-family: var(--font); }
 .hood-key { display: inline-block; width: 14px; height: 4px; margin-inline-end: 6px; border-radius: 2px; vertical-align: middle; background: var(--hood); }
+/* חיפוש בתוך רשימת בחירה מרובה ארוכה (1.77.1) */
+.multi-search { position: sticky; top: -6px; z-index: 1; display: block; width: 100%; min-height: 30px; margin-bottom: 4px; padding: 4px 8px; background: var(--surface); }
+.multi-options label[hidden] { display: none; }
