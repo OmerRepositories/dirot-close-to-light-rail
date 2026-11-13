@@ -43,22 +43,29 @@ let sort = { key: "updatedAt", direction: -1 };
 // לחיצה מוסיפה עמודה → הופכת כיוון → מסירה. ריק = המיון הבסיסי (sort, מתיבת "מיון מהיר").
 const RECORD_SORT_MAX = 3;
 let recordSorts = [];
-const recordSortOrder = () => (recordSorts.length ? recordSorts : [sort]);
+const recordSortOrder = () => (recordSorts.length ? recordSorts : sort.key ? [sort] : []);
 function recordSortInitialDirection(key) {
   return ["title", "site", "recordType", "rooms", "price", "pricePerSqm", "railMeters"].includes(key) ? 1 : -1;
 }
 function toggleRecordSort(key) {
   const initial = recordSortInitialDirection(key);
+  // מיון ברירת המחדל (עדכון אחרון, או מה שנבחר בתפריט המיון) מתנהג כמו כל עמודה אחרת: לחיצה הופכת
+  // את הכיוון, ולחיצה נוספת מבטלת אותו. בלי אף מיון – הטבלה לא ממוינת
+  if (!recordSorts.length && sort.key) {
+    if (sort.key !== key) {
+      recordSorts = [{ key, direction: initial }];
+      return;
+    }
+    recordSorts = [{ ...sort }];
+  }
   const index = recordSorts.findIndex((item) => item.key === key);
-  if (!recordSorts.length) {
-    // לחיצה על עמודת המיון הבסיסית הופכת אותה (כמו קודם); עמודה אחרת מתחילה מיון חדש
-    recordSorts = [{ key, direction: sort.key === key ? -sort.direction : initial }];
-  } else if (index < 0) {
+  if (index < 0) {
     recordSorts = [...recordSorts, { key, direction: initial }].slice(-RECORD_SORT_MAX);
   } else if (recordSorts[index].direction === initial) {
     recordSorts = recordSorts.map((item, i) => (i === index ? { key, direction: -initial } : item));
   } else {
     recordSorts = recordSorts.filter((_, i) => i !== index);
+    if (!recordSorts.length) sort = { key: "", direction: 1 }; // הוסר המיון האחרון – בלי מיון
   }
 }
 let refreshQueue = [];
@@ -5873,10 +5880,17 @@ $("clearSearchPreset").addEventListener("click", () => {
   searchPreset = null;
   renderRows();
 });
-$("clearListingSearch").addEventListener("click", () => {
+// מיון ברירת המחדל: עדכון אחרון, מהחדש לישן
+function resetRecordSort() {
+  recordSorts = [];
+  sort = { key: "updatedAt", direction: -1 };
+}
+
+// איפוס כל הסינונים והמיונים של "חיפוש מודעה"
+function resetListingSearch() {
   searchPreset = null;
+  resetRecordSort();
   $("listingSearchBroker").value = "";
-  recordSorts = []; // גם המיונים חוזרים לברירת המחדל
   $("listingSearchQuery").value = "";
   $("listingSearchSite").value = "";
   setMultiSelectValues("listingSearchCity", []);
@@ -5889,7 +5903,23 @@ $("clearListingSearch").addEventListener("click", () => {
     input.value = "";
   });
   renderRows();
-});
+}
+
+// איפוס כל הסינונים והמיונים של טבלת "מודעות" (האתר חוזר לברירת המחדל: בלי פייסבוק)
+function resetListingsTable() {
+  resetRecordSort();
+  $("searchInput").value = "";
+  $("siteFilter").value = "nofb";
+  $("typeFilter").value = "";
+  document.querySelectorAll("[data-boolean-filter], [data-column-filter], [data-range-min], [data-range-max]").forEach((input) => {
+    input.value = "";
+  });
+  renderRows();
+}
+
+$("clearListingSearch").addEventListener("click", resetListingSearch);
+$("resetSearchView").addEventListener("click", resetListingSearch);
+$("resetListingsView").addEventListener("click", resetListingsTable);
 $("listingDeletePanel").addEventListener("input", scheduleDeletionPreview);
 $("listingDeletePanel").addEventListener("change", renderListingDeletionPreview);
 $("clearListingDeleteFilters").addEventListener("click", () => {
