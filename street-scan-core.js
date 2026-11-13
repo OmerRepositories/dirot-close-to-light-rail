@@ -53,6 +53,9 @@ var LRStreetScan = (() => {
         skipped.push(clean(raw));
         continue;
       }
+      // "פתח תקווה, פתח תקווה" – שם העיר ולא רחוב (נוסף ממודעה שנשמרה בלי רחוב)
+      const loose = (value) => value.replace(/["'׳״]/g, "").replace(/וו/g, "ו").replace(/יי/g, "י");
+      if (loose(street) === loose(city)) continue;
       const key = cacheKey(street, city);
       if (seen.has(key)) continue;
       seen.add(key);

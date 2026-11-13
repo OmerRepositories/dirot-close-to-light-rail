@@ -88,3 +88,11 @@ test("blocked/favorite street rules ignore full vs short spelling of the city", 
   assert.equal(LRStreetFilter.match(rules, "שטמפר 5", "חולון"), null);
   assert.equal(LRStreetFilter.match(rules, "גוטמן 3", "פתח תקווה"), null); // לא כל המילים של הכלל
 });
+
+test("a favorite/blocked line whose street is the city itself is ignored", () => {
+  const rules = LRStreetFilter.parseRules(["פתח תקווה, פתח תקווה", "פתח תקוה, פתח תקווה", "שיפר, פתח תקווה"]);
+  assert.equal(rules.length, 1);
+  assert.equal(LRStreetFilter.match(rules, "פתח תקווה", "פתח תקווה"), null);
+  const { streets } = LRStreetScan.streetsToScan(["פתח תקווה, פתח תקווה", "שיפר, פתח תקווה"]);
+  assert.deepEqual(streets.map((street) => street.street), ["שיפר"]);
+});

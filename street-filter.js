@@ -21,6 +21,10 @@ var LRStreetFilter = (() => {
       const street = normalize(streetPart);
       if (!street) continue;
       const city = normalize(cityParts.join(","));
+      // "פתח תקווה, פתח תקווה": הרחוב הוא בעצם שם העיר (נוסף בטעות ממודעה שנשמרה בלי רחוב) –
+      // כלל כזה היה תופס כל מודעה בעיר שאין לה רחוב, אז מתעלמים ממנו
+      const sameAsCity = (value) => value.replace(/וו/g, "ו").replace(/יי/g, "י");
+      if (city && sameAsCity(street) === sameAsCity(city)) continue;
       rules.push({ street: street.split(" "), city });
     }
     return rules;

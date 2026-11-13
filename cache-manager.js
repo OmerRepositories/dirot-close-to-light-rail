@@ -3025,8 +3025,16 @@ function setFavoriteStreets(list) {
   favoriteStreets = Array.isArray(list) ? list.map(String).filter(Boolean) : [];
   favoriteStreetRules = LRStreetFilter.parseRules(favoriteStreets);
 }
+// הרחוב של המודעה (החלק הראשון בכתובת). מודעה שנשמרה בלי רחוב – הכתובת היא רק העיר ("פתח תקווה") –
+// אין לה רחוב: אחרת שם העיר נחשב רחוב, וכל המודעות בלי רחוב בעיר "נמצאות ברחוב מועדף"
 function recordStreetName(record) {
-  return String((record && record.address) || "").split(",")[0].trim();
+  const parts = String((record && record.address) || "").split(",").map((part) => part.trim());
+  const first = parts[0] || "";
+  if (!first) return "";
+  const cityKey = (value) => LRStreetFilter.normalize(value).replace(/וו/g, "ו").replace(/יי/g, "י");
+  const city = cityKey(record.city || "");
+  if (city && cityKey(first) === city) return "";
+  return first;
 }
 function favoriteStreetRule(record) {
   if (!favoriteStreetRules.length || !record) return null;
