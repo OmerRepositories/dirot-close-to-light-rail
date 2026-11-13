@@ -7,10 +7,10 @@
   const ID_RE = /\/realestate\/item\/[^/]+\/([^/?#]+)/;
   const MAX_FIBER_STEPS = 25;
 
-  function itemFor(link, id) {
+  function itemFor(link, id, maxSteps = MAX_FIBER_STEPS) {
     const key = Object.keys(link).find((name) => name.startsWith("__reactFiber$"));
     let fiber = key ? link[key] : null;
-    for (let step = 0; fiber && step < MAX_FIBER_STEPS; step++, fiber = fiber.return) {
+    for (let step = 0; fiber && step < maxSteps; step++, fiber = fiber.return) {
       const props = fiber.memoizedProps;
       if (!props || typeof props !== "object") continue;
       for (const value of Object.values(props)) {
@@ -75,12 +75,44 @@
     }
   }
 
+  // עמוד מודעה: כשעוברים ממודעה למודעה ("נכסים דומים") יד2 לא טוענת את הדף מחדש, ו-__NEXT_DATA__ נשאר
+  // של המודעה הקודמת. הנתונים של המודעה הנוכחית (לפי המזהה בכתובת) מועתקים ל-<html data-lr-current-item>.
+  const ITEM_PATH = /^\/realestate\/item\/[^/]+\/([^/?#]+)/;
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+)?$/;
+  function scanCurrentItem() {
+    const root = document.documentElement;
+    const match = location.pathname.match(ITEM_PATH);
+    const id = match && match[1];
+    if (!id) {
+      root.removeAttribute("data-lr-current-item");
+      delete root.dataset.lrCurrentItemId;
+      return;
+    }
+    if (root.dataset.lrCurrentItemId === id && root.hasAttribute("data-lr-current-item")) return;
+    const anchor = document.querySelector("h1") || document.querySelector('[data-testid="address"]');
+    const item = anchor ? itemFor(anchor, id, 60) : null;
+    if (!item) {
+      // המודעה החדשה עוד לא הוצגה – לא משאירים נתונים של מודעה אחרת
+      root.removeAttribute("data-lr-current-item");
+      delete root.dataset.lrCurrentItemId;
+      return;
+    }
+    const dates = {};
+    for (const name of ["createdAt", "updatedAt", "rebouncedAt"]) {
+      const value = item.dates && item.dates[name];
+      if (typeof value === "string" && ISO_DATE.test(value)) dates[name] = value;
+    }
+    root.setAttribute("data-lr-current-item", JSON.stringify({ ...sanitize(item, id), dates }));
+    root.dataset.lrCurrentItemId = id;
+  }
+
   let timer = null;
   const schedule = () => {
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
       try { scan(); } catch (error) { console.warn("[lightrail-ext] page data scan failed", error); }
+      try { scanCurrentItem(); } catch (error) { console.warn("[lightrail-ext] current item scan failed", error); }
     }, 250);
   };
   new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });

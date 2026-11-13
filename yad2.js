@@ -40,7 +40,12 @@ var LRYad2 = (() => {
   function domListing(id) {
     if (!/^[\w-]+$/.test(id) || typeof document.querySelector !== "function") return null;
     const link = document.querySelector(`a[data-lr-item-id="${id}"][data-lr-item]`);
-    const raw = link && link.getAttribute("data-lr-item");
+    let raw = link && link.getAttribute("data-lr-item");
+    // עמוד המודעה עצמה אחרי מעבר בלי טעינה מחדש: הנתונים שהסקריפט שבדף העתיק ל-<html>, רק אם הם של המודעה הזו
+    const page = document.documentElement;
+    if (!raw && page && page.dataset && page.dataset.lrCurrentItemId === id) {
+      raw = page.getAttribute("data-lr-current-item");
+    }
     if (!raw) return null;
     if (!domItemCache.has(raw)) {
       let parsed = null;
@@ -51,6 +56,13 @@ var LRYad2 = (() => {
       if (domItemCache.size > 500) domItemCache.delete(domItemCache.keys().next().value);
     }
     return domItemCache.get(raw);
+  }
+
+  // עמוד מודעה: האם כבר יש נתונים של המודעה הנוכחית (מנתוני הדף, או מהסקריפט שבדף אחרי מעבר בלי טעינה)
+  function currentItemReady() {
+    if (!/\/realestate\/item\//.test(location.pathname)) return true; // לא עמוד מודעה – אין למה לחכות
+    const id = listingId(document);
+    return Boolean(id && getPageListingsById().get(id));
   }
 
   function getPageListingsById() {
@@ -197,7 +209,21 @@ var LRYad2 = (() => {
     if (!address) return null;
     const street = address.street && address.street.text;
     const city = address.city && address.city.text;
-    if (!street || !city) return null;
+    if (!city) return null;
+    if (!street) {
+      // עמוד מודעה שהמפרסם לא ציין בה רחוב (רק שכונה): השכונה והעיר, והמיקום המדויק מהנתונים
+      if (root !== document) return null;
+      const coords = address.coords;
+      return {
+        street: "",
+        city,
+        hood: address.neighborhood && address.neighborhood.text,
+        coordinates:
+          coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)
+            ? { lat: coords.lat, lon: coords.lon }
+            : null,
+      };
+    }
     const number = address.house && address.house.number;
     const coords = address.coords;
     const escapedNumber = String(number || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -519,12 +545,30 @@ var LRYad2 = (() => {
     } else if (cardDetails) {
       parsed = cardDetails;
       coordinates = place ? place.coordinates : null;
+    } else if (place && !place.street) {
+      // בלי רחוב: חיפוש לפי השכונה (משוער), אבל המרחק מחושב מהמיקום המדויק שבנתונים
+      parsed = {
+        street: "",
+        city: place.city,
+        hood: place.hood || "",
+        queries: place.hood ? [{ q: `${place.hood}, ${place.city}`, approx: true, bias: false }] : [],
+      };
+      coordinates = place.coordinates;
     } else if (place) {
+      // הרחוב, העיר והשכונה מגיעים מהנתונים של יד2 כשדות נפרדים – לא מעבירים אותם דרך ניתוח הטקסט
+      // (שעלול לפסול רחוב אמיתי, למשל "מבצע יפתח 10")
       addressText = `${place.street}, ${place.hood || ""}, ${place.city}`;
-      parsed = LR.parseAddress(
-        addressText,
-        ctxCity
-      );
+      const streetOnly = place.street.replace(/\s+\d{1,4}\s*[א-ת]?$/, "");
+      const hasHouseNumber = streetOnly !== place.street;
+      parsed = {
+        street: place.street,
+        city: place.city,
+        hood: place.hood || "",
+        queries: [
+          { q: `${place.street}, ${place.city}`, approx: !hasHouseNumber, bias: false },
+          ...(hasHouseNumber ? [{ q: `${streetOnly}, ${place.city}`, approx: true, bias: false }] : []),
+        ],
+      };
       coordinates = place.coordinates;
     } else {
       const addressElement = root.querySelector(
@@ -674,5 +718,6 @@ var LRYad2 = (() => {
     readAmenities,
     isProjectPage,
     isProjectListingPage,
+    currentItemReady,
   };
 })();

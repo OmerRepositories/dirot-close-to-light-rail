@@ -1070,3 +1070,49 @@ test("Madlan project pages never geocode the full page text as an address", () =
   );
   assert.deepEqual(address.queries, []);
 });
+
+test("Yad2 listing page reached without a reload uses the current item copied to <html> (only for its own id)", () => {
+  const originalQuery = context.document.querySelector;
+  const originalRoot = context.document.documentElement;
+  const originalPath = context.location.pathname;
+  const items = {
+    l5yv6q8e: { token: "l5yv6q8e", address: {
+      city: { text: "פתח תקווה" }, street: { text: "מבצע יפתח" }, neighborhood: { text: "הדר המושבות החדשה / אם המושבות החדשה" },
+      house: { number: 10, floor: 7 }, coords: { lat: 32.101221, lon: 34.883189 } }, dates: { createdAt: "2026-03-25T10:00:00" } },
+    s3x5h8t9: { token: "s3x5h8t9", address: {
+      city: { text: "ראש העין" }, neighborhood: { text: "נופרים" }, house: { floor: 9 }, coords: { lat: 32.10653, lon: 34.946351 } } },
+  };
+  let current = "l5yv6q8e";
+  context.document.querySelector = () => null;
+  context.document.documentElement = {
+    get dataset() { return { lrCurrentItemId: current }; },
+    getAttribute: (name) => (name === "data-lr-current-item" ? JSON.stringify(items[current]) : null),
+  };
+  try {
+    context.location.pathname = "/realestate/item/center-and-sharon/l5yv6q8e";
+    assert.equal(context.LRYad2.currentItemReady(), true);
+    const parsed = context.LRYad2.readAddress(context.document, "", null, true);
+    assert.equal(parsed.street, "מבצע יפתח 10");
+    assert.equal(parsed.city, "פתח תקווה");
+    assert.equal(parsed.coordinates.lat, 32.101221);
+    assert.equal(context.LRYad2.listingExportData(context.document).listingCreatedAt, "2026-03-25T10:00:00");
+
+    // מודעה בלי רחוב (רק שכונה): לא ממציאים רחוב – חיפוש לפי השכונה, והמרחק מהמיקום המדויק
+    current = "s3x5h8t9";
+    context.location.pathname = "/realestate/item/center-and-sharon/s3x5h8t9";
+    const hoodOnly = context.LRYad2.readAddress(context.document, "", null, true);
+    assert.equal(hoodOnly.street, "");
+    assert.equal(hoodOnly.city, "ראש העין");
+    assert.equal(hoodOnly.hood, "נופרים");
+    assert.equal(hoodOnly.coordinates.lon, 34.946351);
+    assert.equal(hoodOnly.queries[0].approx, true);
+
+    // הנתונים ב-<html> עוד של המודעה הקודמת – לא משתמשים בהם, ומחכים
+    current = "l5yv6q8e";
+    assert.equal(context.LRYad2.currentItemReady(), false);
+  } finally {
+    context.document.querySelector = originalQuery;
+    context.document.documentElement = originalRoot;
+    context.location.pathname = originalPath;
+  }
+});

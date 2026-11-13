@@ -1124,6 +1124,14 @@
       const text = entry.getText();
       const root = entry.kind === "single" ? document : entry.card;
       const siteParser = PARSER;
+      // יד2, עמוד מודעה אחרי מעבר בלי טעינה: מחכים רגע לנתוני המודעה החדשה במקום לנחש מטקסט חלקי
+      if (
+        entry.kind === "single" && typeof siteParser.currentItemReady === "function" &&
+        !siteParser.currentItemReady() && entry.tries + 1 < maxTries
+      ) {
+        entry.tries++;
+        return setTimeout(attempt, 1000);
+      }
       const parsed = siteParser.readAddress(root, text, ctxCity(), entry.kind === "single");
       entry.listingId = siteParser.listingId(root);
       const { queries } = parsed;
