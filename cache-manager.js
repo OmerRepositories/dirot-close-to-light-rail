@@ -437,6 +437,7 @@ const columns = [
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
   { key: "publishedAt", label: "פורסמה", sortKey: "publishedAt", title: "תאריך הפרסום מהאתר. כשהאתר לא מסר אותו (כרטיס בתוצאות חיפוש) – מתי התוסף ראה את המודעה לראשונה, מסומן ב־~" },
+  { key: "firstSeenAt", label: "נוספה לתוסף", sortKey: "firstSeenAt", title: "מתי המודעה נשמרה בתוסף בפעם הראשונה. במודעות ישנות (לפני 1.73.0) – לפי המחיר הראשון שהתוסף ראה; בלי מחיר שמור התאריך לא ידוע" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
   { key: "broker", label: "יצירת קשר", sortKey: "broker", className: "broker-col", title: "משרד התיווך והסוכן (יד2 / מדלן / הומלס), או שם המפרסם וטלפון (פייסבוק). בחיפוש בעמודה אפשר כמה שמות או מספרים מופרדים בפסיק" },
   { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
@@ -895,6 +896,7 @@ function rowSortValue(key, record, priceRanks, sortKey = sort.key) {
   }
   if (sortKey === "cloud") return cloudState(key, record) || null;
   if (sortKey === "publishedAt") return publishedAtOf(record).at || null;
+  if (sortKey === "firstSeenAt") return firstSeenAt(record) || null;
   return record[sortKey];
 }
 
@@ -976,7 +978,9 @@ function matchesSearchDateFilters(record) {
     if (!input.value) continue;
     const field = input.dataset.searchDateMin || input.dataset.searchDateMax;
     const edge = input.dataset.searchDateMin ? "min" : "max";
-    const value = field === "publishedAt" ? publishedAtOf(record).at || null : record[field];
+    const value = field === "publishedAt"
+      ? publishedAtOf(record).at || null
+      : field === "firstSeenAt" ? firstSeenAt(record) || null : record[field];
     if (value === undefined || value === null || value === "") return false;
     let normalized = dateInputValue(value);
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -1412,6 +1416,12 @@ function renderRows() {
           td.title = published.seen
             ? "תאריך הפרסום באתר לא ידוע – זה היום שבו התוסף ראה את המודעה לראשונה"
             : "תאריך הפרסום מהאתר";
+        }
+      } else if (column.key === "firstSeenAt") {
+        const seen = firstSeenAt(record);
+        if (seen) {
+          td.textContent = displayDate(seen);
+          td.title = `נשמרה בתוסף לראשונה: ${new Date(seen).toLocaleString("he-IL")}`;
         }
       } else if (column.key === "priceHistory") {
         const history = validPriceHistory(record);
@@ -5848,7 +5858,7 @@ $("clearPriceHistory").addEventListener("click", clearPriceHistories);
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;
-  sort.direction = ["updatedAt", "publishedAt", "dealScore", "listingAgeDays", "sellerPressure"].includes(sort.key) ? -1 : 1;
+  sort.direction = ["updatedAt", "publishedAt", "firstSeenAt", "dealScore", "listingAgeDays", "sellerPressure"].includes(sort.key) ? -1 : 1;
   recordSorts = [];
   renderRows();
 });

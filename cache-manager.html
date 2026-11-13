@@ -252,6 +252,13 @@
             <input data-search-date-max="publishedAt" type="date" aria-label="תאריך פרסום מאוחר ביותר">
           </span>
         </label>
+        <label class="range-filter" title="מתי המודעה נשמרה בתוסף בפעם הראשונה">
+          <span>נוספה לתוסף</span>
+          <span class="range-inputs">
+            <input data-search-date-min="firstSeenAt" type="date" aria-label="נוספה לתוסף – מתאריך">
+            <input data-search-date-max="firstSeenAt" type="date" aria-label="נוספה לתוסף – עד תאריך">
+          </span>
+        </label>
         <label class="range-filter">
           <span>תאריך עדכון מודעה</span>
           <span class="range-inputs">
@@ -450,6 +457,7 @@
           <option value="">מיון לפי כותרת הטבלה</option>
           <option value="updatedAt">עודכנו לאחרונה</option>
           <option value="publishedAt">פורסמו לאחרונה</option>
+          <option value="firstSeenAt">נוספו לתוסף לאחרונה</option>
           <option value="dealScore">הכי שווה</option>
           <option value="rooms">מספר חדרים</option>
           <option value="price">מחיר: מהנמוך לגבוה</option>
