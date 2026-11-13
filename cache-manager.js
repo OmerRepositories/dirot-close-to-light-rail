@@ -6487,3 +6487,237 @@ $("refreshShownListings").addEventListener("click", () => {
   renderRefreshPlan();
   $("refreshScope").focus();
 });
+
+// ---------- סריקת רחובות מועדפים (יד2) – רשות, כבויה כברירת מחדל ----------
+// ההגדרות נשמרות במחשב הזה בלבד (כמו תזמון הרענון), כדי ששני מחשבים לא יסרקו את אותם רחובות.
+// הסריקה רצה מהעמוד הזה: כרטיסייה אחת ברקע עוברת על עמודי התוצאות של כל רחוב, וסקריפט התוכן שומר
+// את הכרטיסים. בהפעלה מתוזמנת background.js פותח את העמוד עם ?streetScan=1, ובסוף הוא נסגר.
+const STREET_SCAN_KEY = "lightrailStreetScan";
+const STREET_SCAN_RUNTIME_KEY = "lightrailStreetScanRuntime";
+const STREET_SCAN_IDS_KEY = "lightrailYad2StreetIds";
+const STREET_SCAN_ALARM = "lightrail-favorite-street-scan";
+const STREET_SCAN_LOAD_TIMEOUT_MS = 45000;
+const streetScan = { running: false, stopped: false, tabId: null, wake: null };
+
+function setStreetScanStatus(text, error = false) {
+  const status = $("streetScanStatus");
+  status.textContent = text;
+  status.dataset.error = error ? "true" : "false";
+}
+
+function updateStreetScanButtons() {
+  $("runStreetScan").disabled = streetScan.running;
+  $("stopStreetScan").disabled = !streetScan.running;
+}
+
+function streetScanFormSettings() {
+  return LRStreetScan.normalizeSettings({
+    enabled: $("streetScanEnabled").checked,
+    everyHours: $("streetScanHours").value,
+    maxPages: $("streetScanPages").value,
+    delaySeconds: $("streetScanDelay").value,
+  });
+}
+
+async function loadStreetScanSettings() {
+  try {
+    const [stored, runtime, alarm] = await Promise.all([
+      storageGet(STREET_SCAN_KEY),
+      storageGet(STREET_SCAN_RUNTIME_KEY),
+      chrome.alarms.get(STREET_SCAN_ALARM),
+    ]);
+    const settings = LRStreetScan.normalizeSettings(stored);
+    $("streetScanEnabled").checked = settings.enabled;
+    $("streetScanHours").value = String(settings.everyHours);
+    $("streetScanPages").value = String(settings.maxPages);
+    $("streetScanDelay").value = String(settings.delaySeconds);
+    if (streetScan.running) return;
+    const next = settings.enabled && alarm && Number.isFinite(alarm.scheduledTime)
+      ? ` · הבאה: ${new Date(alarm.scheduledTime).toLocaleString("he-IL")}`
+      : "";
+    const last = runtime && Number.isFinite(runtime.lastFinishedAt)
+      ? ` · סריקה אחרונה: ${new Date(runtime.lastFinishedAt).toLocaleString("he-IL")} – ${runtime.lastResult || "הסתיימה"}`
+      : "";
+    setStreetScanStatus(`${settings.enabled ? `הסריקה האוטומטית פעילה · כל ${settings.everyHours} שעות` : "סריקה אוטומטית כבויה"}${next}${last}`);
+  } catch (error) {
+    setStreetScanStatus(error.message || "טעינת ההגדרות נכשלה.", true);
+  }
+}
+
+async function saveStreetScanSettings() {
+  const settings = streetScanFormSettings();
+  $("saveStreetScan").disabled = true;
+  try {
+    await storageSet({ [STREET_SCAN_KEY]: { ...settings, updatedAt: Date.now() } });
+    const result = await chrome.runtime.sendMessage({ type: "lightrail:street-scan-schedule-updated" });
+    if (!result || !result.ok) throw new Error((result && result.error) || "עדכון התזמון נכשל.");
+    await loadStreetScanSettings();
+  } catch (error) {
+    setStreetScanStatus(error.message || "שמירת התזמון נכשלה.", true);
+  } finally {
+    $("saveStreetScan").disabled = false;
+  }
+}
+
+// ממתין להשהיה, אבל "עצירה" מעירה מיד
+function streetScanSleep(ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { streetScan.wake = null; resolve(); }, ms);
+    streetScan.wake = () => { clearTimeout(timer); streetScan.wake = null; resolve(); };
+  });
+}
+
+// פותח (או מעביר) את כרטיסיית הסריקה לכתובת ומחכה שתיטען
+function streetScanOpen(url) {
+  return new Promise((resolve, reject) => {
+    let sawLoading = false;
+    let tabId = streetScan.tabId;
+    let timer = null;
+    const onUpdated = (id, changeInfo) => {
+      if (id !== tabId) return;
+      if (changeInfo.status === "loading") sawLoading = true;
+      if (changeInfo.status === "complete" && sawLoading) finish();
+    };
+    const onRemoved = (id) => {
+      if (id === tabId) finish(new Error("כרטיסיית הסריקה נסגרה."));
+    };
+    function finish(error) {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.tabs.onRemoved.removeListener(onRemoved);
+      if (error) reject(error);
+      else resolve();
+    }
+    timer = setTimeout(() => finish(new Error("העמוד ביד2 לא נטען בזמן.")), STREET_SCAN_LOAD_TIMEOUT_MS);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.onRemoved.addListener(onRemoved);
+    const opened = (tab) => {
+      const error = chrome.runtime.lastError;
+      if (error || !tab) {
+        finish(new Error((error && error.message) || "לא ניתן לפתוח כרטיסייה."));
+        return;
+      }
+      tabId = tab.id;
+      streetScan.tabId = tab.id;
+      if (tab.status === "loading") sawLoading = true;
+    };
+    if (Number.isInteger(tabId)) chrome.tabs.update(tabId, { url }, opened);
+    else chrome.tabs.create({ url, active: false }, opened);
+  });
+}
+
+// הודעה לסקריפט התוכן בכרטיסייה; ניסיון חוזר כשהוא עוד לא מוכן
+async function streetScanAsk(message, retries = 8) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const result = await chrome.tabs.sendMessage(streetScan.tabId, message);
+      if (result) return result;
+    } catch {}
+    if (attempt < retries) await streetScanSleep(1000);
+  }
+  throw new Error("התוסף לא הגיב בעמוד של יד2 (אולי הוא כבוי באתר בהגדרות).");
+}
+
+async function runStreetScan({ scheduled = false } = {}) {
+  if (streetScan.running) return;
+  const settings = LRStreetScan.normalizeSettings(await storageGet(STREET_SCAN_KEY));
+  if (scheduled && !settings.enabled) {
+    await finishStreetScanRun("הסריקה האוטומטית בוטלה לפני שהתחילה.", scheduled);
+    return;
+  }
+  // "סריקה עכשיו" – לפי מה שמופיע בטופס (גם לפני שמירה)
+  const options = scheduled ? settings : streetScanFormSettings();
+  const { streets, skipped } = LRStreetScan.streetsToScan(favoriteStreets);
+  if (!streets.length) {
+    const message = skipped.length
+      ? "לרחובות המועדפים אין עיר – הוסיפו עיר אחרי פסיק (למשל \"ההגנה, פתח תקווה\")."
+      : "אין רחובות מועדפים. מסמנים רחוב ב־☆ בטבלת המודעות, או מוסיפים בהגדרות התוסף.";
+    setStreetScanStatus(message, true);
+    if (scheduled) await finishStreetScanRun(message, scheduled);
+    return;
+  }
+  Object.assign(streetScan, { running: true, stopped: false, tabId: null });
+  updateStreetScanButtons();
+  const totals = { streets: 0, pages: 0, cards: 0, added: 0, notFound: [], skipped };
+  let failure = "";
+  try {
+    const idsCache = (await storageGet(STREET_SCAN_IDS_KEY)) || {};
+    let first = true;
+    for (const [index, street] of streets.entries()) {
+      if (streetScan.stopped) break;
+      let ids = LRStreetScan.cachedIds(idsCache, street.key);
+      if (ids === undefined) {
+        setStreetScanStatus(`מחפש ביד2 את ${street.label}…`);
+        if (!Number.isInteger(streetScan.tabId)) await streetScanOpen("https://www.yad2.co.il/realestate/forsale");
+        const found = await streetScanAsk({ type: "lightrail:yad2-street-lookup", query: street.query });
+        if (!found.ok) throw new Error(`החיפוש ביד2 נכשל (${found.error || "שגיאה"}).`);
+        ids = LRStreetScan.pickStreet(found, street.street, street.city);
+        idsCache[street.key] = { ids, at: Date.now() };
+        await storageSet({ [STREET_SCAN_IDS_KEY]: idsCache });
+      }
+      if (!ids) {
+        totals.notFound.push(street.label);
+        continue;
+      }
+      let pages = 1;
+      for (let page = 1; page <= pages && !streetScan.stopped; page++) {
+        if (!first) await streetScanSleep(options.delaySeconds * 1000);
+        first = false;
+        if (streetScan.stopped) break;
+        setStreetScanStatus(`רחוב ${index + 1}/${streets.length}: ${street.label} · עמוד ${page}${pages > 1 ? `/${pages}` : ""}… (${totals.added} חדשות עד עכשיו)`);
+        await streetScanOpen(LRStreetScan.streetUrl(ids, page));
+        const result = await streetScanAsk({ type: "lightrail:street-scan-page" });
+        if (!result.ok) throw new Error(result.error || "העמוד לא נסרק.");
+        if (result.blocked) throw new Error("יד2 ביקשה אימות או שהעמוד לא נטען – הסריקה נעצרה (התוסף לא עוקף חסימות).");
+        if (page === 1) pages = LRStreetScan.pagesFor(result.totalPages, options.maxPages);
+        totals.pages++;
+        totals.cards += result.cards || 0;
+        totals.added += result.added || 0;
+      }
+      totals.streets++;
+    }
+  } catch (error) {
+    failure = error.message || String(error);
+  }
+  if (Number.isInteger(streetScan.tabId)) chrome.tabs.remove(streetScan.tabId).catch(() => {});
+  const summary = LRStreetScan.summary(totals);
+  const message = failure
+    ? `${failure} · ${summary}`
+    : `${streetScan.stopped ? "הסריקה נעצרה. " : ""}${summary}`;
+  Object.assign(streetScan, { running: false, tabId: null });
+  updateStreetScanButtons();
+  setStreetScanStatus(message, Boolean(failure));
+  if (totals.added) loadCache();
+  await finishStreetScanRun(message, scheduled);
+}
+
+async function finishStreetScanRun(message, scheduled) {
+  const runtime = (await storageGet(STREET_SCAN_RUNTIME_KEY).catch(() => null)) || {};
+  await storageSet({
+    [STREET_SCAN_RUNTIME_KEY]: { ...runtime, running: false, lastFinishedAt: Date.now(), lastResult: message },
+  }).catch(() => {});
+  if (!scheduled) return;
+  // עמוד שנפתח לסריקה המתוזמנת נסגר בסוף – אלא אם המשתמש עובד בו או שרענון רץ בו
+  setTimeout(() => {
+    if (document.visibilityState === "visible" || refreshQueue.length) return;
+    chrome.tabs.getCurrent((tab) => tab && chrome.tabs.remove(tab.id));
+  }, 5000);
+}
+
+$("saveStreetScan").addEventListener("click", saveStreetScanSettings);
+$("runStreetScan").addEventListener("click", () => runStreetScan());
+$("stopStreetScan").addEventListener("click", () => {
+  streetScan.stopped = true;
+  if (streetScan.wake) streetScan.wake();
+  setStreetScanStatus("עוצר אחרי העמוד הנוכחי…");
+});
+updateStreetScanButtons();
+loadStreetScanSettings();
+if (new URLSearchParams(location.search).get("streetScan") === "1") {
+  history.replaceState(null, "", location.pathname + location.hash);
+  // הרחובות המועדפים נטענים מהאחסון – מחכים להם לפני שמתחילים
+  chrome.storage.sync.get({ favoriteStreets: [] }).then((stored) => {
+    setFavoriteStreets(stored.favoriteStreets);
+    runStreetScan({ scheduled: true });
+  });
+}

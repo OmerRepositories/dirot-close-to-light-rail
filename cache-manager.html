@@ -780,6 +780,35 @@
         <p class="schedule-note">התזמון מופעל רק אחרי לחיצה על "שמירת תזמון". הוא פועל כשהדפדפן פתוח; כל מחזור פותח את כל המודעות השמורות או רק מודעות יד2 שלא נבדקו, בכרטיסייה אחת ובהשהיה שבחרת. הרענון ייתכן שיידחה כשהמחשב ישן. אפשר לעצור או להשהות מחזור פעיל, ולבטל את התזמון כאן בכל עת.</p>
       </div>
         </section>
+        <section class="tool-card" data-tone="green" aria-labelledby="streetScanTitle">
+          <h3 id="streetScanTitle"><span class="card-dot"></span>סריקת רחובות מועדפים (יד2)</h3>
+          <p class="card-text">פותח ביד2 את עמוד התוצאות של כל רחוב מועדף (☆) ושומר את המודעות שבו – כך מודעות חדשות ברחובות שמעניינים אותך נכנסות בלי לחפש ידנית. מסנני השמירה מההגדרות (מחיר, שטח, ערים) חלים גם כאן.</p>
+          <div class="schedule-settings">
+            <label class="schedule-toggle">
+              <input id="streetScanEnabled" type="checkbox">
+              <span>לסרוק את הרחובות המועדפים אוטומטית</span>
+            </label>
+            <label class="schedule-interval">
+              <span>כל כמה שעות? (1–168)</span>
+              <input id="streetScanHours" type="number" min="1" max="168" step="1" value="24">
+            </label>
+            <label class="schedule-interval" title="רחוב עם הרבה מודעות מתפרס על כמה עמודים (40 בעמוד). העמודים הראשונים הם החדשים">
+              <span>עד כמה עמודים לכל רחוב? (1–20)</span>
+              <input id="streetScanPages" type="number" min="1" max="20" step="1" value="5">
+            </label>
+            <label class="schedule-interval">
+              <span>השהיה בין עמודים (שניות, 10–300)</span>
+              <input id="streetScanDelay" type="number" min="10" max="300" step="1" value="20">
+            </label>
+            <div class="refresh-actions">
+              <button id="saveStreetScan" type="button">שמירת תזמון</button>
+              <button id="runStreetScan" class="primary" type="button">סריקה עכשיו</button>
+              <button id="stopStreetScan" type="button" disabled>עצירה</button>
+            </div>
+            <p id="streetScanStatus" role="status" aria-live="polite">סריקת רחובות כבויה.</p>
+            <p class="schedule-note">כבוי כברירת מחדל. הרחובות נלקחים מרשימת הרחובות המועדפים (שורה כמו "ההגנה, פתח תקווה"); רחוב בלי עיר לא נסרק. הסריקה פותחת כרטיסייה אחת ברקע, ונעצרת אם יד2 מבקשת אימות – התוסף לא עוקף חסימות. כרגע רק יד2.</p>
+          </div>
+        </section>
         <section class="tool-card walker-card" data-tone="amber">
           <h3><span class="card-dot"></span>דפדוף בעמודי חיפוש</h3>
           <p class="card-text">פותח עמודי חיפוש של יד2 או מדלן אחד אחרי השני, מחכה שהעמוד ייטען וגולל לאט עד למטה – כך כל המודעות בעמוד נאספות למידע השמור.</p>
@@ -1055,6 +1084,7 @@
   <script src="page-walker.js"></script>
   <script src="deals-core.js"></script>
   <script src="street-filter.js"></script>
+  <script src="street-scan-core.js"></script>
   <script src="sync-core.js"></script>
   <script src="whatsapp-message.js"></script>
   <script src="cache-export.js"></script>

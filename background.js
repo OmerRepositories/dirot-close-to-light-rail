@@ -135,6 +135,52 @@ chrome.runtime.onStartup.addListener(() => {
   });
 });
 
+// ---------- סריקת רחובות מועדפים (רשות, כבויה כברירת מחדל) ----------
+// כל N שעות (לבחירת המשתמש) פותחים ברקע את מנהל המידע עם ?streetScan=1; הוא סורק ונסגר בסוף.
+const STREET_SCAN_KEY = "lightrailStreetScan";
+const STREET_SCAN_RUNTIME_KEY = "lightrailStreetScanRuntime";
+const STREET_SCAN_ALARM = "lightrail-favorite-street-scan";
+
+async function syncStreetScanAlarm() {
+  const { [STREET_SCAN_KEY]: settings } = await chrome.storage.local.get(STREET_SCAN_KEY);
+  if (!settings || settings.enabled !== true) {
+    await chrome.alarms.clear(STREET_SCAN_ALARM);
+    return;
+  }
+  const hours = Math.max(1, Math.min(168, Math.round(Number(settings.everyHours) || 24)));
+  const period = hours * 60;
+  const existing = await chrome.alarms.get(STREET_SCAN_ALARM);
+  // אותו מרווח = לא מאפסים את הספירה (כל שמירה לא דוחה את הסריקה הבאה)
+  if (existing && existing.periodInMinutes === period) return;
+  await chrome.alarms.create(STREET_SCAN_ALARM, { periodInMinutes: period, delayInMinutes: period });
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  syncStreetScanAlarm().catch((error) => console.error("[lightrail-ext] failed to set street scan schedule", error));
+});
+chrome.runtime.onStartup.addListener(() => {
+  syncStreetScanAlarm().catch((error) => console.error("[lightrail-ext] failed to restore street scan schedule", error));
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== STREET_SCAN_ALARM) return;
+  (async () => {
+    const { [STREET_SCAN_KEY]: settings, [STREET_SCAN_RUNTIME_KEY]: runtime = {} } =
+      await chrome.storage.local.get([STREET_SCAN_KEY, STREET_SCAN_RUNTIME_KEY]);
+    if (!settings || settings.enabled !== true) return;
+    // סריקה קודמת עוד רצה (העמוד שלה פתוח ולא עברו 3 שעות) – לא פותחים עוד אחת
+    if (runtime.running === true && Number.isInteger(runtime.managerTabId) &&
+        Date.now() - (runtime.startedAt || 0) < 3 * 3600 * 1000) {
+      const tab = await chrome.tabs.get(runtime.managerTabId).catch(() => null);
+      if (tab) return;
+    }
+    const tab = await chrome.tabs.create({ url: chrome.runtime.getURL("cache-manager.html?streetScan=1#refresh"), active: false });
+    await chrome.storage.local.set({
+      [STREET_SCAN_RUNTIME_KEY]: { ...runtime, running: true, managerTabId: tab.id, startedAt: Date.now() },
+    });
+  })().catch((error) => console.error("[lightrail-ext] failed to start street scan", error));
+});
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== REFRESH_ALARM_NAME) return;
   Promise.all([
@@ -478,6 +524,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, reason: "error", error: String(err) }));
     return true; // תשובה אסינכרונית
+  }
+  if (msg && msg.type === "lightrail:street-scan-schedule-updated") {
+    syncStreetScanAlarm()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error.message || "עדכון התזמון נכשל." }));
+    return true;
   }
   if (msg && msg.type === "lightrail:refresh-schedule-updated") {
     syncRefreshAlarm()

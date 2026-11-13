@@ -131,6 +131,7 @@
   let nearRailOnlyForPage = false;
   let brokerageFilterBar = null;
   const projectCards = new Set();
+  let streetScanPage = null; // עמוד שנפתח בסריקת רחובות מועדפים (ראו runStreetScanPage)
 
   const io = new IntersectionObserver(
     (list) => {
@@ -1818,7 +1819,7 @@
     if (
       !CFG.saveListingData ||
       !listingCacheLoaded ||
-      (entry.kind === "list" && CFG.listingIndexingMode !== "encountered")
+      (entry.kind === "list" && CFG.listingIndexingMode !== "encountered" && !streetScanPage)
     ) return;
     const parser = PARSER;
     const root = entry.kind === "single" ? document : entry.card;
@@ -1954,6 +1955,7 @@
     }, previous);
     if (recordUnchanged(record, previous)) return;
     record.updatedAt = Date.now();
+    if (!listingCache[key] && streetScanPage) streetScanPage.added.add(key);
     putCacheRecord(key, record);
     saveListingCache();
   }
@@ -2187,7 +2189,7 @@
       if (entry.kind === "single") {
         rememberListingExportData(entry);
         collectDeals(entry);
-      } else if (CFG.listingIndexingMode === "encountered") {
+      } else if (CFG.listingIndexingMode === "encountered" || streetScanPage) {
         // כרטיס ברשימה: מנתחים ושומרים מחדש רק אם הטקסט שלו השתנה או שהרשומה חסרה במטמון
         const cardText = entry.getText();
         const cached = entry.listingId && listingCache[cacheKeyForListing(entry.listingId)];
@@ -2654,6 +2656,74 @@
     putCacheRecord(key, { ...previous, listingStatus: "removed", listingStatusCheckedAt: now, updatedAt: now });
     saveListingCache();
     return true;
+  }
+
+  // סריקת רחובות מועדפים (ממנהל המידע, רק כשהמשתמש הפעיל אותה): בעמוד תוצאות של רחוב ביד2
+  // הכרטיסים נשמרים גם כשבהגדרות נבחר "רק מודעות שפתחתי" – זו כל מטרת הסריקה. המסננים (מחיר, שטח,
+  // ערים) חלים כרגיל. streetScanPage (מוגדר למעלה) = { added } – המודעות החדשות שנשמרו בעמוד הזה
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function yad2FeedPages() {
+    try {
+      const data = JSON.parse(document.getElementById("__NEXT_DATA__").textContent);
+      const queries = data.props.pageProps.dehydratedState.queries;
+      const feed = queries.find((query) => /^realestate-forsale-feed$/.test(query.queryKey && query.queryKey[0]));
+      const pagination = feed && feed.state && feed.state.data && feed.state.data.pagination;
+      return pagination ? { total: Number(pagination.total) || 0, totalPages: Number(pagination.totalPages) || 0 } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function runStreetScanPage() {
+    if (!isRunning) return { ok: false, error: "התוסף כבוי באתר הזה (בהגדרות)." };
+    streetScanPage = streetScanPage || { added: new Set() };
+    const started = Date.now();
+    while (!listingCacheLoaded && Date.now() - started < 15000) await sleep(500);
+    const feed = yad2FeedPages();
+    // מחכים שמספר הכרטיסים יתייצב ושכולם יעברו שמירה (refreshAll רץ על כל הכרטיסים, גם אלה שלא בתצוגה)
+    let lastCount = -1;
+    let stable = 0;
+    while (Date.now() - started < 30000) {
+      scheduleRefresh();
+      await sleep(1500);
+      const count = [...entries.values()].filter((entry) => entry.kind === "list").length;
+      stable = count === lastCount ? stable + 1 : 0;
+      lastCount = count;
+      if (stable >= 2 && (count > 0 || Date.now() - started > 12000)) break;
+    }
+    scheduleRefresh();
+    await sleep(1200);
+    return {
+      ok: true,
+      cards: Math.max(0, lastCount),
+      added: streetScanPage.added.size,
+      totalPages: feed ? feed.totalPages : null,
+      total: feed ? feed.total : null,
+      // בלי נתוני תוצאות ובלי כרטיסים: כנראה עמוד אימות ("אני לא רובוט") או שגיאה – לא עוקפים
+      blocked: !feed && lastCount <= 0,
+    };
+  }
+
+  if (IS_YAD2) {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (!message || typeof message.type !== "string") return false;
+      if (message.type === "lightrail:yad2-street-lookup") {
+        const text = String(message.query || "").slice(0, 80);
+        fetch(`https://gw.yad2.co.il/address-autocomplete/realestate/v2?text=${encodeURIComponent(text)}`, { credentials: "include" })
+          .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
+          .then((json) => sendResponse({ ok: true, streets: Array.isArray(json && json.streets) ? json.streets : [] }))
+          .catch((error) => sendResponse({ ok: false, error: String(error && error.message || error) }));
+        return true;
+      }
+      if (message.type === "lightrail:street-scan-page") {
+        runStreetScanPage()
+          .then(sendResponse)
+          .catch((error) => sendResponse({ ok: false, error: String(error && error.message || error) }));
+        return true;
+      }
+      return false;
+    });
   }
 
   // דפדוף בעמודי חיפוש (ממנהל המידע): גלילה איטית עד סוף העמוד, כדי שכל הכרטיסים ייטענו וייאספו
