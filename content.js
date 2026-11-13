@@ -40,6 +40,8 @@
     indexCities: [], // ערים שנשמרות מתוצאות החיפוש (ריק = כל הערים)
     indexMinPrice: 0, // מחיר מינימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא)
     indexMaxPrice: 0, // מחיר מקסימלי לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא הגבלה)
+    indexMinSqm: 0, // שטח מינימלי (מ"ר) לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא)
+    indexMaxSqm: 0, // שטח מקסימלי (מ"ר) לשמירת מודעה חדשה מתוצאות החיפוש (0 = ללא הגבלה)
     requiredAmenities: ["secureRoom"],
     irrelevantMissingPct: 50, // סף "לא רלוונטית" (אחוז מאפייני חובה שחסרים בוודאות; 0 = כבוי)
     dealBreakerAmenities: [], // מאפיינים שחסרונם הופך מודעה ללא רלוונטית מיד
@@ -1843,6 +1845,9 @@
         if (!searchCardIndexable(parser, root, stats, listingMetadata, address)) return;
         if (CFG.indexMinPrice > 0 && stats.price < CFG.indexMinPrice) return;
         if (CFG.indexMaxPrice > 0 && stats.price > CFG.indexMaxPrice) return;
+        // שטח מחוץ לטווח שהמשתמש הגדיר – לא שומרים בכלל; בלי שטח בכרטיס אי אפשר לדעת, אז נשמרת
+        if (Number.isFinite(stats.sqm) && CFG.indexMinSqm > 0 && stats.sqm < CFG.indexMinSqm) return;
+        if (Number.isFinite(stats.sqm) && CFG.indexMaxSqm > 0 && stats.sqm > CFG.indexMaxSqm) return;
         if (!LRStreetFilter.cityAllowed(CFG.indexCities, address.city)) return;
       }
     }
@@ -2530,7 +2535,7 @@
   }
 
   // טוענים את ההגדרות לפני שמתחילים, ומעדכנים את הדף מיד כשהמשתמש משנה הגדרה
-  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "irrelevantMissingPct", "dealsPages"];
+  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "indexMinSqm", "indexMaxSqm", "irrelevantMissingPct", "dealsPages"];
   // רצפת שפיות קבועה למחיר מכרטיס חיפוש: מסננת שכירות וכרטיסים שעוד נטענים
   const SEARCH_INDEX_MIN_PRICE = 100000;
   const AMENITY_LABELS = {

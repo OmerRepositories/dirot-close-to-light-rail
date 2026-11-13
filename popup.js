@@ -19,6 +19,8 @@ const DEFAULTS = {
   listingIndexingMode: "encountered",
   indexCities: [],
   indexMinPrice: 0,
+  indexMinSqm: 0,
+  indexMaxSqm: 0,
   indexMaxPrice: 0,
   requiredAmenities: ["secureRoom"],
   irrelevantMissingPct: 50,
@@ -107,7 +109,7 @@ for (const tab of tabs) {
   });
 }
 
-const numberKeys = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice"];
+const numberKeys = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "indexMinSqm", "indexMaxSqm"];
 const boolKeys = [
   "requireRail",
   "calculatePpsm",
@@ -360,6 +362,8 @@ function syncDisabled() {
   $("indexMinPrice").disabled = !$("saveListingData").checked;
   $("indexCities").disabled = !$("saveListingData").checked;
   $("indexMaxPrice").disabled = !$("saveListingData").checked;
+  $("indexMinSqm").disabled = !$("saveListingData").checked;
+  $("indexMaxSqm").disabled = !$("saveListingData").checked;
   $("dealsPages").disabled = !$("saveListingData").checked;
 }
 

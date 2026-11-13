@@ -301,6 +301,15 @@
           <span data-icon="⬆️">מחיר מקסימלי לשמירה מתוצאות החיפוש (₪)</span>
           <input type="number" data-thousands id="indexMaxPrice" min="0" step="10000" placeholder="ריק = ללא הגבלה">
         </label>
+        <label class="field">
+          <span data-icon="📐">שטח מינימלי לשמירה מתוצאות החיפוש (מ"ר)</span>
+          <input type="number" id="indexMinSqm" min="0" step="5" placeholder="ריק = ללא מינימום">
+        </label>
+        <label class="field">
+          <span data-icon="📏">שטח מקסימלי לשמירה מתוצאות החיפוש (מ"ר)</span>
+          <input type="number" id="indexMaxSqm" min="0" step="5" placeholder="ריק = ללא הגבלה">
+        </label>
+        <p class="small">מודעה שהשטח שלה לא מופיע בכרטיס נשמרת בכל זאת (אי אפשר לדעת אם היא בטווח).</p>
         <p class="small">מודעה חדשה מהחיפוש נשמרת רק אם יש לה קישור, מחיר בטווח שהגדרת (ותמיד לפחות ₪100,000, כדי לסנן כרטיסים שעוד נטענים), רחוב או עיר, ושטח או מספר חדרים. מודעות להשכרה לא נשמרות אף פעם. היא תסומן "לא נבדקה · מהחיפוש בלבד" עד שתפתח/י את עמוד המודעה או תרענן/י אותה.</p>
       </div>
       <label class="field">
