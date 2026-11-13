@@ -5700,6 +5700,15 @@ rows.addEventListener("keydown", (event) => {
 const FILTER_TOGGLES = [
   { button: "toggleListingFilters", panel: "listingSideFilters", page: "listingsPanel", key: "lrListingFiltersHidden" },
   { button: "toggleSearchFilters", panel: "searchSideFilters", page: "listingSearchPanel", key: "lrSearchFiltersHidden" },
+  // עסקאות: הגרפים מצוירים לפי הרוחב – אחרי הסתרה/הצגה מציירים אותם מחדש ברוחב החדש
+  {
+    button: "toggleDealsFilters", panel: "dealsSideFilters", page: "dealsPanel", key: "lrDealsFiltersHidden",
+    onToggle: () => {
+      if (activeTab !== "deals") return;
+      dealsStatsKey = "";
+      renderDeals();
+    },
+  },
 ];
 // מוסתר = גם כותרת העמוד וההסבר מתקפלים, כדי שהטבלה תקבל את כל הרוחב והגובה
 function setSideFiltersHidden(toggle, hidden) {
@@ -5716,7 +5725,10 @@ for (const toggle of FILTER_TOGGLES) {
   try {
     if (localStorage.getItem(toggle.key) === "1") setSideFiltersHidden(toggle, true);
   } catch {}
-  $(toggle.button).addEventListener("click", () => setSideFiltersHidden(toggle, !$(toggle.panel).hidden));
+  $(toggle.button).addEventListener("click", () => {
+    setSideFiltersHidden(toggle, !$(toggle.panel).hidden);
+    if (toggle.onToggle) toggle.onToggle();
+  });
 }
 
 for (const id of ["searchInput", "siteFilter", "typeFilter"]) {

@@ -542,7 +542,7 @@
         <button id="exportDealsCsv" class="export-results" type="button" title="מוריד קובץ CSV עם כל העסקאות שעונות על המסננים (לא רק אלה שמוצגות בטבלה)">⬇ ייצוא העסקאות ל־CSV</button>
       </div>
       <div class="side-layout">
-      <aside class="side-filters" aria-label="סינון ומיון">
+      <aside id="dealsSideFilters" class="side-filters" aria-label="סינון ומיון">
       <div class="listing-search-grid">
         <label class="search-field">
           <span>רחוב או כתובת</span>
@@ -626,6 +626,7 @@
         <p class="side-sort-hint">אפשר גם ללחוץ על כותרות העמודות בטבלה. עד 3 עמודות, לפי הסדר.</p>
       </section>
       </aside>
+      <button id="toggleDealsFilters" class="filters-rail" type="button" aria-pressed="false" aria-controls="dealsSideFilters" title="הסתרה או הצגה של תפריט הסינון וכותרת העמוד – כדי שלטבלה ולגרפים יהיה כמה שיותר מקום"><span>⇥ הסתר סינונים</span></button>
       <div class="side-main">
       <p id="dealsSummary" class="deals-summary" role="status" aria-live="polite"></p>
       <div id="dealsStats" class="deals-stats" hidden></div>
