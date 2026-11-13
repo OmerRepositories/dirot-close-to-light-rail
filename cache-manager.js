@@ -5520,14 +5520,16 @@ rows.addEventListener("keydown", (event) => {
 // הסתרת תפריט הסינון בעמוד המודעות – יותר מקום לטבלה; הבחירה נזכרת במחשב הזה
 // (גם בעמוד "חיפוש מודעה" – כל עמוד עם בחירה משלו)
 const FILTER_TOGGLES = [
-  { button: "toggleListingFilters", panel: "listingSideFilters", key: "lrListingFiltersHidden" },
-  { button: "toggleSearchFilters", panel: "searchSideFilters", key: "lrSearchFiltersHidden" },
+  { button: "toggleListingFilters", panel: "listingSideFilters", page: "listingsPanel", key: "lrListingFiltersHidden" },
+  { button: "toggleSearchFilters", panel: "searchSideFilters", page: "listingSearchPanel", key: "lrSearchFiltersHidden" },
 ];
+// מוסתר = גם כותרת העמוד וההסבר מתקפלים, כדי שהטבלה תקבל את כל הרוחב והגובה
 function setSideFiltersHidden(toggle, hidden) {
   $(toggle.panel).hidden = hidden;
+  $(toggle.page).classList.toggle("filters-collapsed", hidden);
   const button = $(toggle.button);
   button.setAttribute("aria-pressed", String(hidden));
-  button.textContent = hidden ? "⇤ הצג סינונים" : "⇥ הסתר סינונים";
+  button.querySelector("span").textContent = hidden ? "⇤ הצג סינונים" : "⇥ הסתר סינונים";
   try {
     localStorage.setItem(toggle.key, hidden ? "1" : "0");
   } catch {}

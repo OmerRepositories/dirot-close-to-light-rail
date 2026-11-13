@@ -128,7 +128,6 @@
         </div>
         <span class="heading-actions">
           <span id="searchResultCount" class="record-count" aria-live="polite"></span>
-          <button id="toggleSearchFilters" type="button" aria-pressed="false" aria-controls="searchSideFilters" title="הסתרה או הצגה של תפריט הסינון והמיון, כדי שלטבלה יהיה יותר מקום">⇥ הסתר סינונים</button>
           <button id="exportSearchCsv" class="export-results" type="button" title="מוריד קובץ CSV עם המודעות שמוצגות כרגע לפי המסננים">⬇ ייצוא התוצאות ל־CSV</button>
         </span>
       </div>
@@ -274,6 +273,7 @@
         <button id="clearListingSearch" type="button">ניקוי כל המסננים</button>
       </div>
       </aside>
+      <button id="toggleSearchFilters" class="filters-rail" type="button" aria-pressed="false" aria-controls="searchSideFilters" title="הסתרה או הצגה של תפריט הסינון וכותרת העמוד – כדי שלטבלה יהיה כמה שיותר מקום"><span>⇥ הסתר סינונים</span></button>
       <div class="side-main">
       <p id="searchPresetChip" class="search-preset-chip" hidden><span></span> <button id="clearSearchPreset" type="button" aria-label="הסרת הסינון מלוח הבקרה">✕ הסרה</button></p>
       <div id="searchResultsHost"></div>
@@ -405,7 +405,6 @@
           <h2>מודעות ופרויקטים</h2>
           <p>כל מה שנשמר מיד2 וממדלן. לחיצה על שורה פותחת עריכה; לחיצה על הכותרת פותחת את המודעה.</p>
         </div>
-        <button id="toggleListingFilters" type="button" aria-pressed="false" aria-controls="listingSideFilters" title="הסתרה או הצגה של תפריט הסינון והמיון, כדי שלטבלה יהיה יותר מקום">⇥ הסתר סינונים</button>
         <button id="togglePriceHistory" type="button" aria-pressed="false" aria-controls="recordsTable" title="הרחבה או צמצום של היסטוריית המחירים בכל השורות">הצג היסטוריה מלאה</button>
 
         <button id="refreshShownListings" type="button" title="פותח את מסך הרענון עם המודעות שמוצגות עכשיו בטבלה (אחרי החיפוש והסינון שעשית כאן)">🔄 רענון המודעות שמוצגות</button>
@@ -494,6 +493,7 @@
       </div>
     </div>
       </aside>
+      <button id="toggleListingFilters" class="filters-rail" type="button" aria-pressed="false" aria-controls="listingSideFilters" title="הסתרה או הצגה של תפריט הסינון וכותרת העמוד – כדי שלטבלה יהיה כמה שיותר מקום"><span>⇥ הסתר סינונים</span></button>
       <div class="side-main" id="listingsMain">
       <div class="table-wrap">
         <table id="recordsTable">

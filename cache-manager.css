@@ -674,7 +674,7 @@ pre {
 #saveStatus { color: var(--ok); font-size: 13px; }
 #saveStatus[data-error="true"] { color: var(--danger); }
 
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .filter-grid { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
 }
 @media (max-width: 950px) {
@@ -1237,3 +1237,35 @@ th.site-col { min-width: 52px; }
 /* עמודות קצרות (מ"ר, חדרים, קומה) – צרות יותר */
 th.narrow-col { min-width: 58px; }
 .side-filters[hidden] { display: none; }
+
+/* ---------- פס הסתרת הסינונים (1.72.1): פס צר לאורך הטבלה במקום כפתור בכותרת ---------- */
+.filters-rail {
+  display: flex;
+  align-self: stretch;
+  flex: 0 0 22px;
+  width: 22px;
+  min-height: 0;
+  margin-inline: -4px;
+  padding: 8px 0;
+  align-items: flex-start;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  background: var(--surface-alt);
+  font-size: 12px;
+  cursor: pointer;
+}
+.filters-rail span { writing-mode: vertical-rl; white-space: nowrap; }
+.filters-rail:hover, .filters-rail:focus-visible { border-color: var(--action); color: var(--action); background: var(--action-soft); }
+.heading-actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
+/* סינונים מוסתרים: גם הכותרת וההסבר מתקפלים – נשארים רק כפתורי הפעולה בשורה אחת */
+.filters-collapsed > .panel-head > div:first-child,
+.filters-collapsed > .search-panel-heading > div:first-child { display: none; }
+.filters-collapsed > .panel-head, .filters-collapsed > .search-panel-heading { justify-content: flex-end; align-items: center; margin-bottom: 6px; }
+#listingsPanel.filters-collapsed .panel-head > div:first-child { display: none; }
+.listing-search-panel.filters-collapsed { padding-top: 8px; }
+@media (max-width: 1000px) {
+  .filters-rail { flex: none; width: auto; margin: 0; padding: 4px 10px; justify-content: center; }
+  .filters-rail span { writing-mode: horizontal-tb; }
+}
