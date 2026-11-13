@@ -37,10 +37,12 @@ var LRStreetFilter = (() => {
   function match(rules, street, city) {
     const streetWords = normalize(street).split(" ").filter(Boolean);
     if (!streetWords.length || !rules.length) return null;
-    const normalizedCity = normalize(city);
+    // עיר: כתיב מלא/חסר לא משנה ("פתח תקוה" = "פתח תקווה"), וגם "תל אביב" מתאים ל"תל אביב יפו"
+    const cityKey = (value) => normalize(value).replace(/וו/g, "ו").replace(/יי/g, "י");
+    const normalizedCity = cityKey(city);
     for (const rule of rules) {
       if (!containsWords(streetWords, rule.street)) continue;
-      if (rule.city && normalizedCity && !normalizedCity.includes(rule.city)) continue;
+      if (rule.city && normalizedCity && !normalizedCity.includes(cityKey(rule.city))) continue;
       return rule;
     }
     return null;

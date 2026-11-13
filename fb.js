@@ -9,7 +9,10 @@
     highlight: true,
     disableFacebook: false,
     saveListingData: true,
+    blockedStreets: [],
+    skipBlockedStreets: false, // רשות: פוסט על רחוב חסום לא נשמר
   };
+  let blockedStreetRules = [];
   const CFG = { ...DEFAULTS, MIN_SAMPLES: 5, ROOT_MARGIN: "600px" };
 
   const entries = new Map(); // article -> entry
@@ -156,6 +159,11 @@
     entry.savedInput = input;
     const context = groupContext(entry.article);
     const address = LR.parseFreeAddress(text, context);
+    // רחוב חסום (כשהמשתמש בחר גם לא לשמור) – הפוסט לא נשמר
+    if (
+      CFG.skipBlockedStreets && blockedStreetRules.length && address.street &&
+      LRStreetFilter.match(blockedStreetRules, address.street, address.city || context || "")
+    ) return;
     const parsed = entry.parsed;
     const roomsFloor = LR.extractRoomsFloorFree(text);
     const res = entry.res && entry.res.ok ? entry.res : null;
@@ -725,6 +733,11 @@
   function applySettings(s) {
     for (const k of Object.keys(DEFAULTS)) {
       if (!(k in s)) continue;
+      if (k === "blockedStreets") {
+        CFG[k] = Array.isArray(s[k]) ? s[k].map(String) : [];
+        blockedStreetRules = typeof LRStreetFilter !== "undefined" ? LRStreetFilter.parseRules(CFG[k]) : [];
+        continue;
+      }
       CFG[k] = NUM_KEYS.includes(k) ? Math.max(0, Number(s[k]) || 0) : Boolean(s[k]);
     }
   }

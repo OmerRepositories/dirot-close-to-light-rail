@@ -50,6 +50,7 @@
     showListingAge: true, // להציג כמה זמן המודעה באוויר
     hideAds: true, // להסתיר פרסומות (באנרים של Google ופרויקטים ממומנים) ביד2
     blockedStreets: [], // רחובות שמודעות עליהם לא יוצגו לעולם
+    skipBlockedStreets: false, // רשות: גם לא לשמור מודעות חדשות ברחובות החסומים
     dealsPages: 10, // כמה עמודים (1000 עסקאות כל אחד) לקרוא מעסקאות האמת ביד2; 0 = כבוי, 10 = כל העמודים
   };
   const CFG = {
@@ -1836,6 +1837,12 @@
     const listingMetadata = parser.listingExportData(root);
     const address = parser.readAddress(root, text, ctxCity(), entry.kind === "single");
     const fromSearch = entry.kind === "list";
+    // רחוב חסום (כשהמשתמש בחר גם לא לשמור): מודעה חדשה לא נשמרת – לא מכרטיס חיפוש ולא מעמוד מודעה.
+    // מודעה שכבר שמורה ממשיכה להתעדכן; בלי שם רחוב בכרטיס אי אפשר לדעת, אז היא נשמרת
+    if (
+      CFG.skipBlockedStreets && !listingCache[key] && blockedStreetRules.length && address.street &&
+      LRStreetFilter.match(blockedStreetRules, address.street, address.city || "")
+    ) return;
     // עמוד שלא נראה כמו מודעה (חסימת בוט / קפצ'ה / שגיאה / עמוד שעוד לא נטען) לא נשמר:
     // אחרת הוא היה דורס את הכותרת, הכתובת וסימון התיווך השמורים, ו"מעדכן" את המודעה גם בסנכרון
     if (!fromSearch && !looksLikeListingPage(stats, listingMetadata, address)) return;

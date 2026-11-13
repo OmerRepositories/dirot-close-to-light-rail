@@ -80,3 +80,11 @@ test("resolved street ids are cached for a month, including not-found streets", 
   assert.equal(LRStreetScan.cachedIds(cache, "c", now), undefined);
   assert.equal(LRStreetScan.cachedIds(cache, "missing", now), undefined);
 });
+
+test("blocked/favorite street rules ignore full vs short spelling of the city", () => {
+  const rules = LRStreetFilter.parseRules(["דוד מאיר גוטמן, פתח תקווה", "שטמפר, פתח תקוה"]);
+  assert.ok(LRStreetFilter.match(rules, "דוד מאיר גוטמן 11", "פתח תקוה"));
+  assert.ok(LRStreetFilter.match(rules, "שטמפר 5", "פתח תקווה"));
+  assert.equal(LRStreetFilter.match(rules, "שטמפר 5", "חולון"), null);
+  assert.equal(LRStreetFilter.match(rules, "גוטמן 3", "פתח תקווה"), null); // לא כל המילים של הכלל
+});
