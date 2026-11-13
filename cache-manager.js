@@ -2709,8 +2709,56 @@ function handleTabKeydown(event) {
   tabs[nextIndex].click();
 }
 
+// העמודות שממיינים לפיהן בולטות (רקע וכותרת מודגשים). עמודת המיון הראשונה גם "צפה": נשארת במקום,
+// צמודה לעמודה הקבועה (אם יש), כשגוללים את הטבלה ימינה ושמאלה. נעשה בגיליון סגנון אחד לכל טבלה
+// (nth-child), כך שגם שורות שנוספות בגלילה מקבלות את הסגנון בלי לעבור על כל תא.
+const sortedColumnStyles = new Map();
+function markSortedColumns(table, selector, columnNumbers, { pinAfterFirst = false } = {}) {
+  let entry = sortedColumnStyles.get(selector);
+  if (!entry) {
+    const style = document.createElement("style");
+    document.head.appendChild(style);
+    entry = { style, observer: null, last: "" };
+    sortedColumnStyles.set(selector, entry);
+  }
+  const numbers = columnNumbers.filter((number) => Number.isInteger(number) && number > 0);
+  const primary = numbers[0];
+  // העמודה הראשונה (כתובת) כבר קבועה בצד – העמודה הצפה נצמדת אחריה
+  const firstHeader = pinAfterFirst ? table.querySelector("thead tr:first-child > th:first-child") : null;
+  const offset = firstHeader ? Math.round(firstHeader.getBoundingClientRect().width) : 0;
+  const pin = primary && !(pinAfterFirst && primary === 1);
+  const css = numbers.map((number, index) => `
+${selector} thead th:nth-child(${number}) { color: var(--ink); background: color-mix(in srgb, var(--action) ${index ? 10 : 18}%, var(--surface-alt)); }
+${selector} thead th:nth-child(${number}) .sort-button { color: var(--action); font-weight: 800; }
+${selector} tbody td:nth-child(${number}) { background-color: color-mix(in srgb, var(--action) ${index ? 4 : 8}%, var(--surface)); ${index ? "" : "font-weight: 700;"} }`).join("") +
+    (pin ? `
+${selector} thead th:nth-child(${primary}), ${selector} tbody td:nth-child(${primary}) { position: sticky; right: ${offset}px; box-shadow: inset 2px 0 0 var(--action), inset -2px 0 0 var(--action); }
+${selector} tbody td:nth-child(${primary}) { z-index: 1; }
+${selector} thead th:nth-child(${primary}) { z-index: 3; }` : "");
+  if (css !== entry.last) {
+    entry.style.textContent = css;
+    entry.last = css;
+  }
+  // רוחב עמודת הכתובת משתנה כשנוספות שורות – מעדכנים את מיקום העמודה הצפה
+  if (pinAfterFirst && firstHeader && !entry.observer && typeof ResizeObserver === "function") {
+    let frame = 0;
+    entry.observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => entry.rerender && entry.rerender());
+    });
+    entry.observer.observe(firstHeader);
+  }
+  entry.rerender = () => markSortedColumns(table, selector, columnNumbers, { pinAfterFirst });
+}
+
 function renderHeaderSortState() {
   const order = recordSortOrder();
+  const columnNumbers = order.map((item) => {
+    const button = document.querySelector(`#gridHead .sort-button[data-sort="${CSS.escape(item.key)}"]`);
+    const cell = button && button.closest("th");
+    return cell ? cell.cellIndex + 1 : 0;
+  });
+  markSortedColumns($("recordsTable"), "#recordsTable", columnNumbers, { pinAfterFirst: true });
   for (const button of document.querySelectorAll(".sort-button[data-sort]")) {
     const index = order.findIndex((item) => item.key === button.dataset.sort);
     button.setAttribute(
@@ -4469,6 +4517,14 @@ function renderDeals() {
   }
   const order = dealsSortOrder();
   renderDealsSortBox(order);
+  const dealsTable = document.querySelector("#dealsPanel .deals-table");
+  if (dealsTable) {
+    markSortedColumns(dealsTable, "#dealsPanel .deals-table", order.map((sort) => {
+      const button = dealsTable.querySelector(`[data-deals-sort="${CSS.escape(sort.key)}"]`);
+      const cell = button && button.closest("th");
+      return cell ? cell.cellIndex + 1 : 0;
+    }));
+  }
   for (const button of document.querySelectorAll("[data-deals-sort]")) {
     const index = order.findIndex((sort) => sort.key === button.dataset.dealsSort);
     const active = index >= 0;
