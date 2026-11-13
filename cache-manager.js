@@ -4196,7 +4196,8 @@ let dealsStore = {};
 async function loadDeals() {
   try {
     const store = await LRDeals.loadAll(chrome.storage.local);
-    dealsStore = store;
+    // עסקאות בלי שכונה מקבלות (בתצוגה בלבד, לא בשמירה) את השכונה של רוב העסקאות באותה כתובת בדיוק
+    dealsStore = LRDeals.withInferredHoods(store);
     dealsTotal = Object.keys(store).length;
     $("dealsCount").textContent = dealsTotal.toLocaleString("he-IL");
     dealsIndex = LRDeals.buildIndex(store);
@@ -4496,7 +4497,8 @@ function renderDeals() {
     };
     cell(deal.date ? deal.date.split("-").reverse().join(".") : "");
     cell(`${deal.street} ${deal.house}, ${deal.city}`, "deal-address");
-    cell(deal.neighborhood || "");
+    const hoodCell = cell(deal.neighborhood ? `${deal.neighborhood}${deal.neighborhoodInferred ? " ≈" : ""}` : "");
+    if (deal.neighborhoodInferred) hoodCell.title = "השכונה לא צוינה בעסקה הזו – נלקחה מרוב העסקאות באותה כתובת בדיוק (אותה עיר, רחוב ומספר בית)";
     cell(Number.isFinite(deal.rooms) ? deal.rooms : "");
     cell(Number.isFinite(deal.sqm) ? deal.sqm : "");
     cell(Number.isFinite(deal.floor) ? (Number.isFinite(deal.totalFloors) ? `${deal.floor}/${deal.totalFloors}` : deal.floor) : "");

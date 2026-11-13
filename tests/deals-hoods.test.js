@@ -51,3 +51,25 @@ test("hood series accepts the [key, deal] pairs that filterDeals returns", () =>
   assert.equal(series.count, 4);
   assert.equal(series.years.length, 2);
 });
+
+test("missing neighborhoods are filled only from a majority at the exact same address", () => {
+  const at = (city, street, house, neighborhood) => ({ city, street, house, neighborhood, date: "2024-01-01", price: 2000000, sqm: 100 });
+  const input = {
+    a: at("פתח תקווה", "בלוי", "28", "כפר גנים"),
+    b: at("פתח תקווה", "בלוי", "28", "כפר גנים"),
+    c: at("פתח תקווה", "בלוי", "28", "מרכז העיר"),
+    d: at("פתח תקוה", "בלוי", "28", null), // אותה כתובת, כתיב אחר של העיר
+    e: at("פתח תקווה", "בלוי", "30", null), // מספר בית אחר – לא משלימים
+    f: at("רמת גן", "בלוי", "28", null), // עיר אחרת – לא משלימים
+    g: at("פתח תקווה", "בלוי", "", null), // בלי מספר בית – לא משלימים
+    h: at("חולון", "סוקולוב", "5", "א"),
+    i: at("חולון", "סוקולוב", "5", "ב"),
+    j: at("חולון", "סוקולוב", "5", null), // תיקו – אין רוב, לא משלימים
+  };
+  const out = Deals.withInferredHoods(input);
+  assert.equal(out.d.neighborhood, "כפר גנים");
+  assert.equal(out.d.neighborhoodInferred, true);
+  for (const key of ["e", "f", "g", "j"]) assert.equal(out[key].neighborhood, null, key);
+  assert.equal(out.a, input.a); // עסקאות עם שכונה לא משתנות
+  assert.equal(input.d.neighborhood, null); // המאגר המקורי לא משתנה
+});

@@ -848,6 +848,46 @@ var LRDeals = (() => {
     return dealHoodId({ city: text.slice(0, cut), neighborhood: text.slice(cut + 1) });
   }
 
+  // השכונה של עסקה בלי שכונה – רק לפי עסקאות באותה כתובת בדיוק (אותה עיר, אותו רחוב ואותו מספר בית),
+  // וכשלשכונה אחת יש רוב מוחלט (יותר ממחצית) מהעסקאות בכתובת שהשכונה שלהן ידועה. בלי מספר בית – לא מנחשים.
+  // מחזיר מאגר חדש (לא משנה את השמור): עסקה שהושלמה מקבלת neighborhood + neighborhoodInferred: true
+  function withInferredHoods(store) {
+    const placeOf = (deal) => {
+      const street = normStreet(deal.street);
+      const house = normHouse(deal.house);
+      return street && house ? `${hoodCity(deal.city)}|${street}|${house}` : "";
+    };
+    const votes = new Map();
+    for (const deal of Object.values(store || {})) {
+      if (!deal || !deal.neighborhood) continue;
+      const place = placeOf(deal);
+      const hood = normHood(deal.neighborhood);
+      if (!place || !hood) continue;
+      if (!votes.has(place)) votes.set(place, new Map());
+      const counts = votes.get(place);
+      const entry = counts.get(hood) || { count: 0, name: String(deal.neighborhood).trim() };
+      entry.count++;
+      counts.set(hood, entry);
+    }
+    const winners = new Map();
+    for (const [place, counts] of votes) {
+      let total = 0;
+      let best = null;
+      for (const entry of counts.values()) {
+        total += entry.count;
+        if (!best || entry.count > best.count) best = entry;
+      }
+      if (best && best.count * 2 > total) winners.set(place, best.name);
+    }
+    if (!winners.size) return store || {};
+    const out = {};
+    for (const [key, deal] of Object.entries(store || {})) {
+      const name = deal && !deal.neighborhood ? winners.get(placeOf(deal)) : null;
+      out[key] = name ? { ...deal, neighborhood: name, neighborhoodInferred: true } : deal;
+    }
+    return out;
+  }
+
   // השוואת שכונות: לכל שכונה שנבחרה – חציון המחיר למ״ר בכל שנה (רק שנים עם minCount עסקאות לפחות,
   // כדי שעסקה בודדת לא תיראה כמו מגמה). hoods: ["עיר|שכונה", …] בסדר הבחירה
   function hoodSeries(deals, hoods, { minCount = 2 } = {}) {
@@ -969,6 +1009,7 @@ var LRDeals = (() => {
     hoodId,
     dealHoodId,
     hoodSeries,
+    withInferredHoods,
     placeKey,
   };
 })();
