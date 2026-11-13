@@ -1945,6 +1945,8 @@
       ),
       // "search" = נשמרה רק מכרטיס בתוצאות החיפוש (מידע חלקי); "page" = עמוד המודעה נפתח
       indexedFrom: fromSearch ? previous.indexedFrom || "search" : "page",
+      // הפעם הראשונה שהתוסף ראה את המודעה (ל"פורסמה" כשהאתר לא מוסר תאריך פרסום)
+      firstSeenAt: previous.firstSeenAt || (listingCache[key] ? undefined : Date.now()),
       brokerOffice: (broker && broker.office) || previous.brokerOffice || undefined,
       brokerAgent: (broker && broker.agent) || previous.brokerAgent || undefined,
       ...(fromSearch ? {} : visitedPageStatus(parser, previous)),

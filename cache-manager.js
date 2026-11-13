@@ -436,6 +436,7 @@ const columns = [
   { key: "floor", label: "קומה", sortKey: "floor", className: "narrow-col", title: "קומת הדירה מתוך מספר הקומות בבניין (מנתוני יד2)" },
   { key: "railMeters", label: "רכבת (מ׳)", sortKey: "railMeters", title: "מרחק בקו אווירי; עשוי להיות משוער" },
   { key: "listingStatus", label: "סטטוס מודעה", sortKey: "listingStatus", title: "נבדק ברענון הדרגתי של יד2" },
+  { key: "publishedAt", label: "פורסמה", sortKey: "publishedAt", title: "תאריך הפרסום מהאתר. כשהאתר לא מסר אותו (כרטיס בתוצאות חיפוש) – מתי התוסף ראה את המודעה לראשונה, מסומן ב־~" },
   { key: "notes", label: "הערה אישית", sortKey: "notes", className: "notes-column", title: "הערות שהוספת למודעה; לחיצה על השורה פותחת את מסך העריכה" },
   { key: "broker", label: "יצירת קשר", sortKey: "broker", className: "broker-col", title: "משרד התיווך והסוכן (יד2 / מדלן / הומלס), או שם המפרסם וטלפון (פייסבוק). בחיפוש בעמודה אפשר כמה שמות או מספרים מופרדים בפסיק" },
   { key: "cloud", label: "ענן", sortKey: "cloud", className: "cloud-col", title: "האם הגרסה שבמחשב הזה כבר נשמרה במסד הנתונים המרוחק (מוצג רק כשסנכרון אונליין פעיל)" },
@@ -893,6 +894,7 @@ function rowSortValue(key, record, priceRanks, sortKey = sort.key) {
     return pressure ? pressure.score : null;
   }
   if (sortKey === "cloud") return cloudState(key, record) || null;
+  if (sortKey === "publishedAt") return publishedAtOf(record).at || null;
   return record[sortKey];
 }
 
@@ -901,6 +903,7 @@ function matchesBooleanFilter(record, filterKey, filterValue) {
   let value;
   if (filterKey === "brokerage") value = record.brokerage;
   else if (filterKey === "railApprox") value = record.railApprox;
+  else if (filterKey === "favoriteStreet") value = Boolean(favoriteStreetRule(record));
   else value = amenityValue(record, filterKey.slice("amenity:".length));
   const actual = typeof value === "boolean" ? String(value) : "unknown";
   return actual === filterValue;
@@ -973,7 +976,7 @@ function matchesSearchDateFilters(record) {
     if (!input.value) continue;
     const field = input.dataset.searchDateMin || input.dataset.searchDateMax;
     const edge = input.dataset.searchDateMin ? "min" : "max";
-    const value = record[field];
+    const value = field === "publishedAt" ? publishedAtOf(record).at || null : record[field];
     if (value === undefined || value === null || value === "") return false;
     let normalized = dateInputValue(value);
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -1402,6 +1405,14 @@ function renderRows() {
         td.appendChild(renderBoolean(amenityValue(record, column.amenity)));
       } else if (column.key === "updatedAt") {
         td.textContent = displayDate(record.updatedAt);
+      } else if (column.key === "publishedAt") {
+        const published = publishedAtOf(record);
+        if (published.at) {
+          td.textContent = `${published.seen ? "~" : ""}${displayDate(published.at)}`;
+          td.title = published.seen
+            ? "תאריך הפרסום באתר לא ידוע – זה היום שבו התוסף ראה את המודעה לראשונה"
+            : "תאריך הפרסום מהאתר";
+        }
       } else if (column.key === "priceHistory") {
         const history = validPriceHistory(record);
         td.className = "price-history-cell";
@@ -2236,12 +2247,22 @@ async function copyListingText(key, button, change = null) {
 
 // הפעם הראשונה שהתוסף ראה מחיר למודעה (לא נקודות מהאתר, שיכולות להיות ישנות בהרבה)
 function firstSeenAt(record) {
-  let first = 0;
+  // נשמר ברשומה מאז 1.73.0 כשהמודעה נשמרת לראשונה; ברשומות ישנות – לפי היסטוריית המחיר
+  let first = Number.isFinite(record.firstSeenAt) && record.firstSeenAt > 0 ? record.firstSeenAt : 0;
   for (const point of Array.isArray(record.priceHistory) ? record.priceHistory : []) {
     if (!point || point.src === "site" || !Number.isFinite(point.at)) continue;
     if (!first || point.at < first) first = point.at;
   }
   return first;
+}
+
+// מתי המודעה עלתה: תאריך הפרסום מהאתר כשידוע, אחרת הפעם הראשונה שהתוסף ראה אותה
+// (בסריקה קבועה של רחובות מועדפים זה בערך יום העלייה). seen = התאריך הוא "נראתה לראשונה"
+function publishedAtOf(record) {
+  const created = record.listingCreatedAt ? Date.parse(record.listingCreatedAt) : NaN;
+  if (Number.isFinite(created)) return { at: created, seen: false };
+  const seen = firstSeenAt(record);
+  return { at: seen || 0, seen: Boolean(seen) };
 }
 
 const ROOMS_BUCKETS = ["1–2", "2.5–3", "3.5–4", "4.5–5", "5.5+", "לא ידוע"];
@@ -5827,7 +5848,7 @@ $("clearPriceHistory").addEventListener("click", clearPriceHistories);
 $("sortSelect").addEventListener("change", () => {
   if (!$("sortSelect").value) return;
   sort.key = $("sortSelect").value;
-  sort.direction = ["updatedAt", "dealScore", "listingAgeDays", "sellerPressure"].includes(sort.key) ? -1 : 1;
+  sort.direction = ["updatedAt", "publishedAt", "dealScore", "listingAgeDays", "sellerPressure"].includes(sort.key) ? -1 : 1;
   recordSorts = [];
   renderRows();
 });

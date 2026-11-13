@@ -161,6 +161,14 @@
             <option value="facebook">פייסבוק</option>
           </select>
         </label>
+        <label class="search-choice" title="הרחובות שסימנת ב־☆ (או שהוגדרו בהגדרות התוסף)">
+          <span>רחובות מועדפים</span>
+          <select data-search-boolean="favoriteStreet">
+            <option value="">כל הרחובות</option>
+            <option value="true">רחובות מועדפים בלבד</option>
+            <option value="false">בלי רחובות מועדפים</option>
+          </select>
+        </label>
         <label class="search-choice">
           <span>סוג רשומה</span>
           <select id="listingSearchType">
@@ -237,11 +245,11 @@
             <input data-search-range-max="pricePerSqm" type="number" data-thousands min="0" step="any" placeholder="עד" aria-label="מחיר למטר מקסימלי לחיפוש">
           </span>
         </label>
-        <label class="range-filter">
-          <span>תאריך פרסום</span>
+        <label class="range-filter" title="תאריך הפרסום מהאתר; כשהוא לא ידוע (נשמרה מתוצאות חיפוש) – מתי התוסף ראה את המודעה לראשונה">
+          <span>תאריך פרסום / נוספה</span>
           <span class="range-inputs">
-            <input data-search-date-min="listingCreatedAt" type="date" aria-label="תאריך פרסום מוקדם ביותר">
-            <input data-search-date-max="listingCreatedAt" type="date" aria-label="תאריך פרסום מאוחר ביותר">
+            <input data-search-date-min="publishedAt" type="date" aria-label="תאריך פרסום מוקדם ביותר">
+            <input data-search-date-max="publishedAt" type="date" aria-label="תאריך פרסום מאוחר ביותר">
           </span>
         </label>
         <label class="range-filter">
@@ -441,6 +449,7 @@
         <select id="sortSelect">
           <option value="">מיון לפי כותרת הטבלה</option>
           <option value="updatedAt">עודכנו לאחרונה</option>
+          <option value="publishedAt">פורסמו לאחרונה</option>
           <option value="dealScore">הכי שווה</option>
           <option value="rooms">מספר חדרים</option>
           <option value="price">מחיר: מהנמוך לגבוה</option>
