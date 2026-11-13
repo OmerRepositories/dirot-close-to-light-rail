@@ -513,12 +513,17 @@ var LRDeals = (() => {
     const { words, numbers, houseRange } = parseDealsQuery(filters.query);
     const city = filters.city ? normCity(filters.city) : "";
     const hood = filters.neighborhood ? normHood(filters.neighborhood) : "";
+    // כמה שכונות: ["עיר|שכונה", …] – עסקה עוברת אם היא באחת מהן (אותו שם שכונה בעיר אחרת לא נחשב)
+    const hoodIds = Array.isArray(filters.neighborhoods) && filters.neighborhoods.length
+      ? new Set(filters.neighborhoods.map(hoodId).filter(Boolean))
+      : null;
     const range = (name) => filters[name] || {};
     const out = [];
     for (const [key, deal] of Object.entries(store || {})) {
       if (!deal || typeof deal !== "object") continue;
       if (city && normCity(deal.city) !== city) continue;
       if (hood && normHood(deal.neighborhood) !== hood) continue;
+      if (hoodIds && !hoodIds.has(dealHoodId(deal))) continue;
       const sources = deal.sources || [];
       if (filters.source === "both" ? sources.length < 2 : filters.source && !sources.includes(filters.source)) continue;
       if (words.length) {
@@ -829,6 +834,55 @@ var LRDeals = (() => {
     };
   }
 
+  // "עיר|שכונה" (כפי שנבחרה ברשימה) -> מפתח מנורמל להשוואה. כתיב מלא/חסר של העיר לא משנה
+  // ("פתח תקוה" = "פתח תקווה")
+  const hoodCity = (city) => normCity(city).replace(/וו/g, "ו").replace(/יי/g, "י");
+  function dealHoodId(deal) {
+    const hood = deal && deal.neighborhood ? normHood(deal.neighborhood) : "";
+    return hood ? `${hoodCity(deal.city)}|${hood}` : "";
+  }
+  function hoodId(value) {
+    const text = String(value || "");
+    const cut = text.indexOf("|");
+    if (cut < 0) return "";
+    return dealHoodId({ city: text.slice(0, cut), neighborhood: text.slice(cut + 1) });
+  }
+
+  // השוואת שכונות: לכל שכונה שנבחרה – חציון המחיר למ״ר בכל שנה (רק שנים עם minCount עסקאות לפחות,
+  // כדי שעסקה בודדת לא תיראה כמו מגמה). hoods: ["עיר|שכונה", …] בסדר הבחירה
+  function hoodSeries(deals, hoods, { minCount = 2 } = {}) {
+    const series = [];
+    const byId = new Map();
+    for (const value of Array.isArray(hoods) ? hoods : []) {
+      const id = hoodId(value);
+      if (!id || byId.has(id)) continue;
+      const cut = String(value).indexOf("|");
+      const entry = { id, city: String(value).slice(0, cut), neighborhood: String(value).slice(cut + 1), years: new Map(), count: 0 };
+      byId.set(id, entry);
+      series.push(entry);
+    }
+    for (const deal of Array.isArray(deals) ? deals : []) {
+      if (!deal || !deal.neighborhood) continue;
+      const entry = byId.get(dealHoodId(deal));
+      const year = Number(String(deal.date || "").slice(0, 4));
+      const ppsm = dealPpsm(deal);
+      if (!entry || !(year > 1990) || !Number.isFinite(ppsm)) continue;
+      if (!entry.years.has(year)) entry.years.set(year, []);
+      entry.years.get(year).push(ppsm);
+      entry.count++;
+    }
+    return series.map((entry) => ({
+      id: entry.id,
+      city: entry.city,
+      neighborhood: entry.neighborhood,
+      count: entry.count,
+      years: [...entry.years]
+        .filter(([, values]) => values.length >= minCount)
+        .map(([year, values]) => ({ year, medianPpsm: Math.round(median(values)), count: values.length }))
+        .sort((a, b) => a.year - b.year),
+    }));
+  }
+
   // עסקאות לפי עיר ולפי שכונה בשנים האחרונות (ללוח הבקרה). years: כמה שנים כולל השנה הנוכחית.
   function dealsByArea(store, { years = 3, now = Date.now() } = {}) {
     const lastYear = new Date(now).getFullYear();
@@ -910,6 +964,9 @@ var LRDeals = (() => {
     analyzeDeals,
     quantile,
     dealsByArea,
+    hoodId,
+    dealHoodId,
+    hoodSeries,
     placeKey,
   };
 })();

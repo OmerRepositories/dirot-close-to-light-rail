@@ -552,10 +552,13 @@
           <span>עיר</span>
           <select id="dealsCity"><option value="">כל הערים</option></select>
         </label>
-        <label class="search-choice" title="רק עסקאות שהשכונה שלהן ידועה (מדלן לרוב לא מציינת שכונה)">
-          <span>שכונה</span>
-          <select id="dealsHood"><option value="">כל השכונות</option></select>
-        </label>
+        <div class="search-choice multi-choice" title="רק עסקאות שהשכונה שלהן ידועה (מדלן לרוב לא מציינת שכונה). אפשר לבחור כמה שכונות – הגרף ישווה ביניהן בצבעים שונים">
+          <span id="dealsHoodLabel">שכונות</span>
+          <details id="dealsHood" class="multi-select" data-multi-select data-empty="כל השכונות">
+            <summary aria-labelledby="dealsHoodLabel">כל השכונות</summary>
+            <div id="dealsHoods" class="multi-options multi-options-scroll" role="group" aria-labelledby="dealsHoodLabel"></div>
+          </details>
+        </div>
         <label class="search-choice">
           <span>מקור</span>
           <select id="dealsSource">

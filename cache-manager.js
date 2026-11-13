@@ -4347,7 +4347,8 @@ function readDealsFilters() {
   const filters = {
     query: $("dealsQuery").value,
     city: $("dealsCity").value,
-    neighborhood: $("dealsHood").value,
+    // ["עיר|שכונה", …] – בסדר הסימון, כדי שצבע כל שכונה בגרף יישאר קבוע
+    neighborhoods: dealsHoodOrder.filter((value) => multiSelectValues("dealsHood").includes(value)),
     source: $("dealsSource").value,
   };
   for (const input of document.querySelectorAll("[data-deals-min], [data-deals-max]")) {
@@ -4375,9 +4376,14 @@ function fillDealsCities() {
 }
 
 // שכונות לבחירה: של העיר שנבחרה (או של כל הערים, עם שם העיר). שכונה שנכתבה בכמה צורות מופיעה פעם אחת.
+// בחירה מרובה: ערך כל תיבה = "עיר|שכונה". dealsHoodOrder = סדר הסימון (הצבע בגרף נקבע לפיו)
 let dealsHoodsKey = "";
+let dealsHoodOrder = [];
+function syncDealsHoodOrder() {
+  const checked = multiSelectValues("dealsHood");
+  dealsHoodOrder = [...dealsHoodOrder.filter((value) => checked.includes(value)), ...checked.filter((value) => !dealsHoodOrder.includes(value))];
+}
 function fillDealsHoods() {
-  const select = $("dealsHood");
   const cityValue = $("dealsCity").value;
   const key = `${dealsVersion}|${cityValue}`;
   if (dealsHoodsKey === key) return;
@@ -4388,34 +4394,50 @@ function fillDealsHoods() {
     if (!deal || !deal.neighborhood) continue;
     const dealCity = LRDeals.normCity(deal.city);
     if (city && dealCity !== city) continue;
-    const id = `${dealCity}|${LRDeals.normHood(deal.neighborhood)}`;
+    const id = LRDeals.dealHoodId(deal);
     const item = hoods.get(id) || { name: String(deal.neighborhood).trim(), city: deal.city, count: 0 };
     item.count++;
     hoods.set(id, item);
   }
-  const current = select.value;
-  const currentNorm = current ? LRDeals.normHood(current) : "";
-  const items = [...hoods.values()].sort((a, b) =>
+  // מה שסומן נשאר מסומן (לפי השם המנורמל), גם כשהרשימה נבנית מחדש
+  const checkedIds = new Set(multiSelectValues("dealsHood").map(LRDeals.hoodId));
+  const items = [...hoods.entries()].sort(([, a], [, b]) =>
     a.name.localeCompare(b.name, "he") || String(a.city).localeCompare(String(b.city), "he"));
-  select.replaceChildren(new Option("כל השכונות", ""), ...items.map((item) => {
-    const option = new Option(`${item.name}${city ? "" : ` · ${item.city}`} (${item.count.toLocaleString("he-IL")})`, item.name);
-    option.dataset.city = item.city || "";
-    return option;
+  const keptValues = new Map();
+  $("dealsHoods").replaceChildren(...items.map(([id, item]) => {
+    const value = `${item.city}|${item.name}`;
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = value;
+    input.dataset.label = city ? item.name : `${item.name} (${item.city})`;
+    input.checked = checkedIds.has(id);
+    if (input.checked) keptValues.set(id, value);
+    const count = document.createElement("span");
+    count.className = "multi-count";
+    count.textContent = `(${item.count.toLocaleString("he-IL")})`;
+    label.append(input, ` ${item.name}${city ? "" : ` · ${item.city}`} `, count);
+    return label;
   }));
-  const keep = currentNorm && items.find((item) => LRDeals.normHood(item.name) === currentNorm);
-  select.value = keep ? keep.name : "";
+  dealsHoodOrder = dealsHoodOrder.map((value) => keptValues.get(LRDeals.hoodId(value))).filter(Boolean);
+  syncDealsHoodOrder();
+  updateMultiSelectSummary($("dealsHood"));
 }
 
-// בוחר שכונה (ואת העיר שלה, אם לא נבחרה עיר)
+// בוחר שכונה אחת בלבד (לחיצה על שורה בטבלאות); שם ריק = כל השכונות
 function setDealsHood(name, city = "") {
-  if (city && !$("dealsCity").value) {
-    $("dealsCity").value = [...$("dealsCity").options].some((option) => option.value === city) ? city : "";
-  }
   fillDealsHoods();
   const wanted = name ? LRDeals.normHood(name) : "";
-  const option = wanted ? [...$("dealsHood").options].find((item) => item.value && LRDeals.normHood(item.value) === wanted) : null;
-  $("dealsHood").value = option ? option.value : "";
-  return Boolean(option);
+  const wantedCity = city ? LRDeals.normCity(city) : $("dealsCity").value ? LRDeals.normCity($("dealsCity").value) : "";
+  const input = wanted
+    ? [...$("dealsHoods").querySelectorAll("input")].find((item) => {
+        const id = LRDeals.hoodId(item.value);
+        return id.endsWith(`|${wanted}`) && (!wantedCity || id.startsWith(`${wantedCity}|`));
+      })
+    : null;
+  setMultiSelectValues("dealsHood", input ? [input.value] : []);
+  dealsHoodOrder = input ? [input.value] : [];
+  return Boolean(input);
 }
 
 function renderDeals() {
@@ -4559,7 +4581,9 @@ function dealsInPeriod(list, years) {
 
 function dealsFiltersActive(filters) {
   return Object.entries(filters).some(([name, value]) =>
-    name === "query" ? String(value || "").trim() !== "" : typeof value === "object" ? true : Boolean(value)
+    name === "query"
+      ? String(value || "").trim() !== ""
+      : Array.isArray(value) ? value.length > 0 : typeof value === "object" ? true : Boolean(value)
   );
 }
 
@@ -4728,6 +4752,92 @@ function dealsPpsmChart(stats, width) {
     hideDealsTip();
   });
   return { svg, outside };
+}
+
+// השוואת שכונות: קו של חציון המחיר למ״ר בכל שנה, צבע קבוע לכל שכונה לפי סדר הסימון (עד 8).
+// הקו נשבר בשנה בלי מספיק עסקאות. עם עד 4 שכונות – השם כתוב גם בסוף כל קו (לא רק צבע).
+const HOOD_SERIES_MAX = 8;
+function dealsHoodsChart(series, width) {
+  const shown = series.filter((item) => item.years.length);
+  const labelled = shown.length <= 4;
+  const W = width, H = 300, M = { top: 16, right: labelled ? 118 : 18, bottom: 30, left: 64 };
+  const allYears = shown.flatMap((item) => item.years);
+  const firstYear = Math.min(...allYears.map((row) => row.year));
+  const lastYear = Math.max(...allYears.map((row) => row.year));
+  let low = Math.min(...allYears.map((row) => row.medianPpsm));
+  let high = Math.max(...allYears.map((row) => row.medianPpsm));
+  const padding = Math.max((high - low) * 0.1, high * 0.03);
+  low = Math.max(0, low - padding);
+  high += padding;
+  const ticks = niceTicks(low, high);
+  low = Math.min(low, ticks[0]);
+  high = Math.max(high, ticks[ticks.length - 1]);
+  const span = Math.max(1, lastYear - firstYear);
+  const x = (year) => M.left + ((year - firstYear) / span) * (W - M.left - M.right);
+  const y = (v) => H - M.bottom - ((v - low) / (high - low)) * (H - M.top - M.bottom);
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "deals-chart hoods-chart", role: "img", "aria-label": "השוואת שכונות: חציון המחיר למ״ר בכל שנה, קו לכל שכונה" });
+  for (const tick of ticks) {
+    svg.append(
+      svgEl("line", { x1: M.left, x2: W - M.right, y1: y(tick), y2: y(tick), class: "grid" }),
+      svgEl("text", { x: M.left - 8, y: y(tick) + 4, "text-anchor": "end", class: "axis" }, shortShekels(tick))
+    );
+  }
+  const yearStep = Math.ceil((lastYear - firstYear + 1) / 12);
+  for (let year = firstYear; year <= lastYear; year++) {
+    if ((year - firstYear) % yearStep) continue;
+    svg.append(svgEl("text", { x: x(year), y: H - 10, "text-anchor": "middle", class: "axis" }, String(year)));
+  }
+  const labels = [];
+  shown.forEach((item) => {
+    const slot = series.indexOf(item) + 1;
+    const group = svgEl("g", { class: `hood-series hood-series-${slot}` });
+    const segments = [];
+    for (const row of item.years) {
+      const segment = segments[segments.length - 1];
+      if (segment && row.year === segment[segment.length - 1].year + 1) segment.push(row);
+      else segments.push([row]);
+    }
+    for (const segment of segments) {
+      if (segment.length > 1) {
+        group.append(svgEl("polyline", { points: segment.map((row) => `${x(row.year)},${y(row.medianPpsm)}`).join(" "), class: "hood-line" }));
+      }
+    }
+    for (const row of item.years) group.append(svgEl("circle", { cx: x(row.year), cy: y(row.medianPpsm), r: 4, class: "hood-dot" }));
+    svg.append(group);
+    const last = item.years[item.years.length - 1];
+    labels.push({ y: y(last.medianPpsm), x: x(last.year), text: item.neighborhood });
+  });
+  if (labelled) {
+    // שמות בסוף הקווים, מורחקים זה מזה כדי שלא יעלו אחד על השני
+    labels.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 15);
+    for (const label of labels) {
+      const text = label.text.length > 16 ? `${label.text.slice(0, 15)}…` : label.text;
+      svg.append(svgEl("text", { x: W - M.right + 8, y: label.y + 4, class: "hood-label" }, text));
+    }
+  }
+  const cross = svgEl("line", { y1: M.top, y2: H - M.bottom, class: "crosshair", visibility: "hidden" });
+  const hit = svgEl("rect", { x: M.left, y: M.top, width: W - M.left - M.right, height: H - M.top - M.bottom, class: "hit" });
+  svg.append(cross, hit);
+  hit.addEventListener("pointermove", (event) => {
+    const box = svg.getBoundingClientRect();
+    const px = ((event.clientX - box.left) / box.width) * W;
+    const year = Math.max(firstYear, Math.min(lastYear, Math.round(firstYear + ((px - M.left) / (W - M.left - M.right)) * span)));
+    cross.setAttribute("x1", x(year));
+    cross.setAttribute("x2", x(year));
+    cross.setAttribute("visibility", "visible");
+    const rows = [[`שנת ${year}`, "", false]];
+    for (const item of shown) {
+      const row = item.years.find((entry) => entry.year === year);
+      rows.push([item.neighborhood, row ? `${displayPrice(row.medianPpsm)} · ${row.count.toLocaleString("he-IL")} עסקאות` : "—", Boolean(row)]);
+    }
+    showDealsTip(event, rows);
+  });
+  hit.addEventListener("pointerleave", () => {
+    cross.setAttribute("visibility", "hidden");
+    hideDealsTip();
+  });
+  return svg;
 }
 
 // מחיר חציוני לפי שנה: עמודה לכל שנה, מאפס
@@ -4967,6 +5077,41 @@ function renderDealsStats(list) {
 
   if (overview) {
     parts.push(el("p", "deals-card-note", "סקירה של כל העסקאות שנאספו. חפשו עיר, רחוב או שכונה (או לחצו על שורה בטבלאות) כדי לראות גם גרף של כל העסקאות."));
+  }
+  // כמה שכונות שסומנו: קו בצבע אחר לכל שכונה, מקרא וטבלה (השם תמיד כתוב – לא רק צבע)
+  const pickedHoods = Array.isArray(filters.neighborhoods) ? filters.neighborhoods : [];
+  if (pickedHoods.length >= 2) {
+    const series = LRDeals.hoodSeries(list, pickedHoods.slice(0, HOOD_SERIES_MAX));
+    const box = card(
+      "השוואת שכונות – מחיר למ״ר לאורך זמן",
+      `חציון המחיר למ״ר בכל שנה (רק שנים עם 2 עסקאות לפחות בשכונה).${pickedHoods.length > HOOD_SERIES_MAX ? ` מוצגות ${HOOD_SERIES_MAX} השכונות הראשונות שסומנו.` : ""}`
+    );
+    if (series.some((item) => item.years.length)) box.append(dealsHoodsChart(series, chartWidth));
+    else box.append(el("p", "deals-card-note", "אין מספיק עסקאות עם מחיר ושטח בשכונות שנבחרו כדי לצייר מגמה."));
+    const key = el("div", "split-legend deals-chart-key");
+    series.forEach((item, index) => {
+      const entry = el("span", "legend-item");
+      entry.append(
+        el("i", `hood-key hood-series-${index + 1}`),
+        el("span", "", `${item.neighborhood} · ${item.city} (${item.count.toLocaleString("he-IL")} עסקאות)`)
+      );
+      key.append(entry);
+    });
+    box.append(key);
+    const years = [...new Set(series.flatMap((item) => item.years.map((row) => row.year)))].sort((a, b) => b - a);
+    if (years.length) {
+      box.append(dealsStatsTable([
+        { label: "שנה", value: (row) => row.year, className: "city-name" },
+        ...series.map((item) => ({
+          label: item.neighborhood,
+          value: (row) => {
+            const point = item.years.find((entry) => entry.year === row.year);
+            return point ? `${displayPrice(point.medianPpsm)} (${point.count})` : null;
+          },
+        })),
+      ], years.map((year) => ({ year }))));
+    }
+    parts.push(box);
   }
   const chartYears = stats.byYear.filter((row) => Number.isFinite(row.medianPpsm));
   // גרף הנקודות מצייר כל עסקה – עם עשרות אלפי עסקאות הוא מכביד, אז רק בחיפוש ממוקד
@@ -5668,9 +5813,8 @@ $("dealsTab").addEventListener("keydown", handleTabKeydown);
 $("dealsQuery").addEventListener("input", scheduleDealsRender);
 for (const id of ["dealsCity", "dealsSource"]) $(id).addEventListener("change", scheduleDealsRender);
 $("dealsHood").addEventListener("change", () => {
-  // שכונה מרשימת "כל הערים" בוחרת גם את העיר שלה (אותו שם שכונה יכול להיות בכמה ערים)
-  const option = $("dealsHood").selectedOptions[0];
-  if (option && option.value && option.dataset.city && !$("dealsCity").value) setDealsHood(option.value, option.dataset.city);
+  // אפשר לבחור שכונות מכמה ערים (כל תיבה היא "עיר|שכונה"), כדי להשוות ביניהן
+  syncDealsHoodOrder();
   scheduleDealsRender();
 });
 document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => {
@@ -5691,7 +5835,8 @@ $("dealsSortAdd").addEventListener("change", (event) => {
 $("clearDealsSearch").addEventListener("click", () => {
   $("dealsQuery").value = "";
   $("dealsCity").value = "";
-  $("dealsHood").value = "";
+  setMultiSelectValues("dealsHood", []);
+  dealsHoodOrder = [];
   $("dealsSource").value = "";
   document.querySelectorAll("[data-deals-min], [data-deals-max]").forEach((input) => { input.value = ""; });
   dealsSort = []; // גם המיונים חוזרים לברירת המחדל
