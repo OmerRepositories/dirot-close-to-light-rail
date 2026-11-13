@@ -5928,7 +5928,8 @@ function scheduleAddressPreview() {
 let addressDealsMemo = { version: -1, deals: null };
 async function addressExportDeals() {
   if (addressDealsMemo.version !== dealsVersion || !addressDealsMemo.deals) {
-    addressDealsMemo = { version: dealsVersion, deals: await LRDeals.loadAll(chrome.storage.local) };
+    // כמו בחיפוש העסקאות: עסקה בלי שכונה מקבלת את השכונה של רוב העסקאות באותה כתובת בדיוק
+    addressDealsMemo = { version: dealsVersion, deals: LRDeals.withInferredHoods(await LRDeals.loadAll(chrome.storage.local)) };
   }
   return addressDealsMemo.deals;
 }
@@ -5971,9 +5972,9 @@ async function runAddressExport(download) {
           list.append(el("li", "", `${entry.street}, ${entry.city}: ${n(entry.listings)} מודעות, ${n(entry.deals)} עסקאות` +
             (entry.houses.length ? ` · בתים: ${entry.houses.join(", ")}` : "")));
         }
-        row.append(el("div", "address-similar-title", "רחובות דומים שקיימים במידע:"), list);
+        row.append(el("div", "address-similar-title", item.hood ? "שכונות דומות שקיימות במידע:" : "רחובות דומים שקיימים במידע:"), list);
       } else if (!found) {
-        row.append(el("div", "address-similar-title", "אין במידע רחוב עם השם הזה בעיר הזו."));
+        row.append(el("div", "address-similar-title", item.hood ? "אין במידע שכונה עם השם הזה בעיר הזו." : "אין במידע רחוב עם השם הזה בעיר הזו."));
       }
       return row;
     }));

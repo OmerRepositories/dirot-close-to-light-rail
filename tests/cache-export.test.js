@@ -735,3 +735,24 @@ test("address export: a short street name finds the full one ('בלוי' → 'ה
   assert.equal(counted.csv, "");
   assert.equal(counted.totals.deals, 2);
 });
+
+test("address export: a neighborhood line exports its listings and deals (city spelling, partial name)", async () => {
+  global.LRDeals = require("../deals-core.js");
+  const cache = {
+    "yad2:a": { title: "A", address: "בלוי 28, פתח תקווה", city: "פתח תקווה", neighborhood: "הדר המושבות החדשה / אם המושבות החדשה", price: 2_000_000 },
+    "yad2:b": { title: "B", address: "ההגנה 3, פתח תקוה", city: "פתח תקוה", neighborhood: "כפר גנים", price: 2_100_000 },
+    "yad2:c": { title: "C", address: "סוקולוב 3, חולון", city: "חולון", neighborhood: "כפר גנים", price: 2_200_000 },
+    "yad2:d": { title: "D", address: "רוטשילד 3, פתח תקווה", city: "פתח תקווה", price: 2_300_000 },
+  };
+  const deals = {
+    k1: { city: "פתח תקווה", street: "ההגנה", house: "5", neighborhood: "כפר גנים", date: "2025-03-01", price: 1_800_000, sqm: 90 },
+    k2: { city: "פתח תקווה", street: "ההגנה", house: "7", neighborhood: null, date: "2025-03-01", price: 1_800_000, sqm: 90 },
+  };
+  const result = await CacheExport.buildAddressCsv({
+    cache, deals, addresses: ["שכונה: כפר גנים, פתח תקווה", "שכונה אם המושבות החדשה", "שכונה: נווה עוז, פתח תקווה"],
+  });
+  assert.deepEqual(result.counts.map((item) => [item.listings, item.deals]), [[1, 1], [1, 0], [0, 0]]);
+  assert.equal(result.counts[0].hood, true);
+  assert.ok(result.counts[2].similar.every((entry) => !entry.listings && !entry.deals) || result.counts[2].similar.length === 0);
+  assert.equal(CacheExport.parseAddressQuery("שכונה:"), null);
+});

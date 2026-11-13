@@ -907,6 +907,16 @@ var LRCacheExport = (() => {
   function parseAddressQuery(line) {
     const label = String(line || "").trim();
     if (!label) return null;
+    // שורת שכונה: "שכונה: כפר גנים, פתח תקווה" (העיר לא חובה). כל המילים צריכות להופיע בשם השכונה,
+    // כך ש"אם המושבות החדשה" מוצא גם "הדר המושבות החדשה / אם המושבות החדשה"
+    const hoodLine = label.match(/^שכונ(?:ה|ת)\s*[:：\-–]?\s*(.+)$/);
+    if (hoodLine) {
+      const [hoodPart, ...cityParts] = hoodLine[1].split(",");
+      const words = streetWords(hoodPart).filter((word) => /[א-תa-z0-9]/i.test(word));
+      if (!words.length) return null;
+      const city = cityParts.join(" ").trim();
+      return { label, hood: true, words, city: city ? looseCity(city) : "", house: null };
+    }
     const [streetPart, ...rest] = label.split(",");
     const city = rest.join(" ").trim();
     const text = streetPart.trim();
@@ -933,7 +943,11 @@ var LRCacheExport = (() => {
     return query.words.every((word) => words.includes(word));
   }
 
-  function addressMatches(query, { city, streetText, house }) {
+  function addressMatches(query, { city, streetText, house, neighborhood }) {
+    if (query && query.hood) {
+      return Boolean(neighborhood) && streetMatches(query, neighborhood) &&
+        (!query.city || looseCity(city) === query.city);
+    }
     if (!query || !streetMatches(query, streetText)) return false;
     if (query.city && looseCity(city) !== query.city) return false;
     if (!query.house) return true;
@@ -948,7 +962,7 @@ var LRCacheExport = (() => {
     const queries = addresses.map(parseAddressQuery).filter(Boolean);
     const recordLabels = new Map();
     const dealLabels = new Map();
-    const counts = queries.map((query) => ({ label: query.label, listings: 0, deals: 0 }));
+    const counts = queries.map((query) => ({ label: query.label, hood: Boolean(query.hood), listings: 0, deals: 0 }));
     const add = (map, key, label) => map.set(key, map.has(key) ? `${map.get(key)} | ${label}` : label);
     const subset = {};
     // כתובת בלי תוצאות: אילו רחובות דומים כן קיימים (ואילו מספרי בתים יש בהם) – כדי שיהיה ברור למה
@@ -968,8 +982,10 @@ var LRCacheExport = (() => {
       const place = LRDeals.listingPlace(record);
       const first = String(record.address || "").split(",")[0];
       const streetText = first.replace(/\s+\d{1,4}\s*[א-ת]?\s*$/, "");
-      const where = { city: record.city, streetText, house: place.house };
-      queries.forEach((_query, index) => noteNear(index, record.city, streetText, place.house, "listings"));
+      const where = { city: record.city, streetText, house: place.house, neighborhood: record.neighborhood };
+      queries.forEach((query, index) => query.hood
+        ? noteNear(index, record.city, record.neighborhood, "", "listings")
+        : noteNear(index, record.city, streetText, place.house, "listings"));
       queries.forEach((query, index) => {
         if (!addressMatches(query, where)) return;
         add(recordLabels, key, query.label);
@@ -979,8 +995,10 @@ var LRCacheExport = (() => {
     }
     const dealSubset = [];
     for (const [key, deal] of dealEntries(deals)) {
-      const where = { city: deal.city, streetText: deal.street, house: deal.house };
-      queries.forEach((_query, index) => noteNear(index, deal.city, deal.street, deal.house, "deals"));
+      const where = { city: deal.city, streetText: deal.street, house: deal.house, neighborhood: deal.neighborhood };
+      queries.forEach((query, index) => query.hood
+        ? noteNear(index, deal.city, deal.neighborhood, "", "deals")
+        : noteNear(index, deal.city, deal.street, deal.house, "deals"));
       let matched = false;
       queries.forEach((query, index) => {
         if (!addressMatches(query, where)) return;
