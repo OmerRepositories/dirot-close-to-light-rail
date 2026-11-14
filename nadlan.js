@@ -13,7 +13,7 @@
   let stopRequested = false;
   let readTimer = null;
   const savedKeys = new Set();
-  let totals = { found: 0, added: 0 };
+  let totals = { found: 0, added: 0, pages: 0 };
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const fmt = (value) => Number(value || 0).toLocaleString("he-IL");
@@ -42,13 +42,16 @@
   const rowCells = (row) => [...row.children].map((cell) => cell.textContent.replace(/\s+/g, " ").trim());
 
   // כתיבה לאחסון של עיר גדולה היא כבדה, ולכן בסריקה ארוכה העסקאות נאספות ונכתבות בקבוצות
-  const FLUSH_EVERY = 300;
+  const FLUSH_EVERY = 100;
+  const FLUSH_MS = 20000;
+  let lastFlushAt = Date.now();
   let pending = [];
   let writing = Promise.resolve();
   function flush() {
     if (!pending.length) return writing;
     const items = pending;
     pending = [];
+    lastFlushAt = Date.now();
     writing = writing.then(() => LRDeals.saveItems(chrome.storage.local, items)).then((merged) => {
       totals.found += items.length;
       totals.added += merged.added;
@@ -73,7 +76,7 @@
         }
       }
     }
-    if (!batch || pending.length >= FLUSH_EVERY) flush();
+    if (!batch || pending.length >= FLUSH_EVERY || (pending.length && Date.now() - lastFlushAt > FLUSH_MS)) flush();
   }
 
   function scheduleRead() {
@@ -103,7 +106,10 @@
     const context = pageContext();
     if (!context || typeof LRDeals.loadCity !== "function") return;
     try {
-      known = new Set(Object.keys(await LRDeals.loadCity(chrome.storage.local, context.city)));
+      // "ידוע" = עסקה שכבר נאספה מהאתר הזה בעבר. עסקאות שהגיעו רק מיד2/מדלן לא נחשבות, כי הן מכסות
+      // רק חלק מההיסטוריה – אחרת הסריקה הראשונה הייתה נעצרת אחרי כמה עמודים
+      const store = await LRDeals.loadCity(chrome.storage.local, context.city);
+      known = new Set(Object.keys(store).filter((key) => (store[key].sources || []).includes("nadlan")));
     } catch {}
   }
 
@@ -127,6 +133,7 @@
     const stopAfter = Math.max(0, Number(cfg.nadlanStopAfterKnown) || 0);
     const context = pageContext();
     let pages = 1;
+    totals.pages++;
     let quietPages = 0;
     let lastDate = "9999-99-99";
     let descending = true;
@@ -146,7 +153,8 @@
       readTables({ batch: true });
       const pager = pagerOf(root);
       const next = root.querySelector("button.nextBtn");
-      if (!next || next.disabled || (pager && pager.page >= pager.total) || pages >= maxPages) return "done";
+      if (!next || next.disabled || (pager && pager.page >= pager.total)) return "done";
+      if (pages >= maxPages) return "cap";
       const before = firstRowText(table);
       next.click();
       const startedAt = Date.now();
@@ -156,6 +164,7 @@
         await sleep(300);
       }
       pages++;
+      totals.pages++;
       setStatus(`טבלה ${index + 1} מתוך ${count} · עמוד ${pages} מתוך ${Math.min(maxPages, pager ? pager.total : maxPages)} · נשמרו ${fmt(totals.found + pending.length)}`);
       await sleep(Math.max(1, Number(cfg.nadlanDelaySeconds) || 3) * 1000);
     }
@@ -174,10 +183,12 @@
     renderPanel();
     let outcome = "done";
     let caughtUp = false;
+    let capped = false;
     await loadKnown();
     for (let i = 0; i < tables.length && !stopRequested; i++) {
       outcome = await scanTable(tables[i], i, tables.length);
       if (outcome === "caught-up") caughtUp = true;
+      if (outcome === "cap") capped = true;
       if (outcome === "stuck") break;
     }
     scanning = false;
@@ -187,13 +198,15 @@
       outcome === "stuck"
         ? `העמוד לא התקדם – נעצרנו (ייתכן שהאתר מבקש אימות). נשמרו ${fmt(totals.found)} עסקאות.`
         : caughtUp && !stopRequested
-          ? `הגענו לעסקאות שכבר שמורות – הסריקה הסתיימה. נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`
+          ? `הגענו לעסקאות שכבר נאספו מהאתר – הסריקה הסתיימה. נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`
+        : capped && !stopRequested
+          ? `נעצרנו במגבלת העמודים (${cfg.nadlanMaxPages}) – יש עוד עמודים בעיר. אפשר להגדיל את המגבלה בחלון התוסף. נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות).`
         : stopRequested
           ? `נעצר. נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות).`
           : `הסריקה הסתיימה: ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`
     );
     renderPanel();
-    return outcome === "stuck" ? "stuck" : stopRequested ? "stopped" : caughtUp ? "caught-up" : "done";
+    return outcome === "stuck" ? "stuck" : stopRequested ? "stopped" : capped ? "cap" : caughtUp ? "caught-up" : "done";
   }
 
   // סריקה מתוזמנת: הרקע פותח את העמוד עם lrScan=1, והעמוד סורק ומדווח בסוף כדי שהלשונית תיסגר
@@ -206,7 +219,7 @@
       let outcome = "no-table";
       if (dealTables().length) outcome = await scanAll();
       try {
-        chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-done", outcome, found: totals.found, added: totals.added });
+        chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-done", outcome, found: totals.found, added: totals.added, pages: totals.pages });
       } catch {}
     })();
   }
@@ -269,6 +282,11 @@
     scheduleRead();
     autoScanIfRequested();
   }
+
+  // סוגרים את הלשונית באמצע סריקה – שומרים מה שנאסף עד עכשיו
+  window.addEventListener("pagehide", () => {
+    if (pending.length) flush();
+  });
 
   function stop() {
     stopRequested = true;

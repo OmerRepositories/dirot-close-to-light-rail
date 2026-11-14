@@ -170,6 +170,25 @@ const NADLAN_RUNTIME_KEY = "lightrailNadlanScanRuntime";
 const NADLAN_SETTINGS = { readNadlan: false, nadlanSchedule: false, nadlanEveryHours: 24, nadlanCities: "" };
 const NADLAN_TAB_MAX_MS = 6 * 3600 * 1000;
 
+function nadlanCityNames(text) {
+  const names = {};
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const match = line.match(/^\s*(\d{1,6})\s*(.*)$/);
+    if (match && match[2].trim()) names[match[1]] = match[2].trim();
+  }
+  return names;
+}
+
+const NADLAN_REASONS = {
+  done: "עד סוף העמודים",
+  "caught-up": "עד עסקאות שכבר נאספו",
+  cap: "עצרה במגבלת העמודים",
+  stuck: "נתקעה (ייתכן אימות באתר)",
+  "no-table": "העמוד לא נטען",
+  closed: "הלשונית נסגרה",
+  stopped: "נעצרה",
+};
+
 function nadlanCityIds(text) {
   const ids = [];
   for (const line of String(text || "").split(/\r?\n/)) {
@@ -199,13 +218,13 @@ async function openNextNadlanCity() {
     const failed = results.filter((item) => item.outcome === "stuck" || item.outcome === "no-table" || item.outcome === "closed");
     const found = results.reduce((sum, item) => sum + (item.found || 0), 0);
     const added = results.reduce((sum, item) => sum + (item.added || 0), 0);
-    const failedText = failed.length ? ` · נכשלו: ${failed.map((item) => item.id).join(", ")}` : "";
+    const lines = results.map((item) => `${item.name || item.id}: ${item.pages || 0} עמודים · ${NADLAN_REASONS[item.outcome] || item.outcome} · ${item.found || 0} עסקאות (${item.added || 0} חדשות)`);
     await chrome.storage.local.set({
       [NADLAN_RUNTIME_KEY]: {
         running: false,
         lastFinishedAt: Date.now(),
         lastFailed: failed.length > 0,
-        lastResult: `נסרקו ${results.length - failed.length} מתוך ${results.length} ערים · ${found} עסקאות (${added} חדשות)${failedText}`,
+        lastResult: `${results.length} ערים · ${found} עסקאות (${added} חדשות) — ${lines.join(" | ")}`,
       },
     });
     return;
@@ -216,7 +235,7 @@ async function openNextNadlanCity() {
     active: false,
   });
   await chrome.storage.local.set({
-    [NADLAN_RUNTIME_KEY]: { running: true, queue: rest, tabId: tab.id, startedAt: Date.now(), results: Array.isArray(runtime.results) ? runtime.results : [], currentId: id },
+    [NADLAN_RUNTIME_KEY]: { running: true, queue: rest, tabId: tab.id, startedAt: Date.now(), results: Array.isArray(runtime.results) ? runtime.results : [], currentId: id, names: runtime.names || {} },
   });
 }
 
@@ -231,7 +250,7 @@ async function startNadlanScan() {
     const tab = Number.isInteger(runtime.tabId) ? await chrome.tabs.get(runtime.tabId).catch(() => null) : true;
     if (tab) return { ok: false, error: "סריקה כבר רצה." };
   }
-  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids, results: [], startedAt: Date.now() } });
+  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids, results: [], startedAt: Date.now(), names: nadlanCityNames(settings.nadlanCities) } });
   await openNextNadlanCity();
   return { ok: true };
 }
@@ -252,7 +271,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   (async () => {
     const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
     if (runtime.running !== true || runtime.tabId !== tabId) return;
-    const results = [...(runtime.results || []), { id: runtime.currentId, outcome: "closed", found: 0, added: 0 }];
+    const results = [...(runtime.results || []), { id: runtime.currentId, name: (runtime.names || {})[runtime.currentId], outcome: "closed", found: 0, added: 0, pages: 0 }];
     await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results } });
     setTimeout(() => openNextNadlanCity().catch(() => {}), 5000);
   })().catch(() => {});
@@ -270,7 +289,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
       if (runtime.tabId !== sender.tab.id) return;
-      const results = [...(runtime.results || []), { id: runtime.currentId, outcome: msg.outcome, found: msg.found || 0, added: msg.added || 0 }];
+      const results = [...(runtime.results || []), { id: runtime.currentId, name: (runtime.names || {})[runtime.currentId], outcome: msg.outcome, found: msg.found || 0, added: msg.added || 0, pages: msg.pages || 0 }];
       // מנקים את מזהה הלשונית לפני הסגירה, כדי שהסגירה לא תיחשב כסגירה ע"י המשתמש
       await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results } });
       await chrome.tabs.remove(sender.tab.id).catch(() => {});
