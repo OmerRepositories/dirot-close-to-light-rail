@@ -33,6 +33,7 @@ const DEFAULTS = {
   skipBlockedStreets: false,
   favoriteStreets: [],
   dealsPages: 10,
+  dealsRefetchHours: 24,
   showPurchaseTax: true,
   purchaseTaxTrack: "single",
   purchaseTaxTracks: null,
@@ -42,6 +43,7 @@ const DEFAULTS = {
 };
 
 const DEALS_PAGE_OPTIONS = [0, 1, 2, 3, 5, 10];
+const DEALS_REFETCH_OPTIONS = [0, 6, 12, 24, 72, 168];
 
 const AMENITIES = [
   ["parking", "חניה"],
@@ -273,6 +275,7 @@ function fill(s) {
   $("listingIndexingMode").value =
     s.listingIndexingMode === "opened" ? "opened" : "encountered";
   $("dealsPages").value = String(DEALS_PAGE_OPTIONS.includes(Number(s.dealsPages)) ? Number(s.dealsPages) : 10);
+  $("dealsRefetchHours").value = String(DEALS_REFETCH_OPTIONS.includes(Number(s.dealsRefetchHours)) ? Number(s.dealsRefetchHours) : 24);
   const missingPct = String(Number.isFinite(Number(s.irrelevantMissingPct)) ? Number(s.irrelevantMissingPct) : 50);
   $("irrelevantMissingPct").value = [...$("irrelevantMissingPct").options].some((o) => o.value === missingPct)
     ? missingPct
@@ -367,6 +370,7 @@ function syncDisabled() {
   $("indexMinSqm").disabled = !$("saveListingData").checked;
   $("indexMaxSqm").disabled = !$("saveListingData").checked;
   $("dealsPages").disabled = !$("saveListingData").checked;
+  $("dealsRefetchHours").disabled = !$("saveListingData").checked;
 }
 
 function read() {
@@ -381,6 +385,7 @@ function read() {
   out.listingIndexingMode =
     $("listingIndexingMode").value === "opened" ? "opened" : "encountered";
   out.dealsPages = DEALS_PAGE_OPTIONS.includes(Number($("dealsPages").value)) ? Number($("dealsPages").value) : 10;
+  out.dealsRefetchHours = DEALS_REFETCH_OPTIONS.includes(Number($("dealsRefetchHours").value)) ? Number($("dealsRefetchHours").value) : 24;
   out.irrelevantMissingPct = Number($("irrelevantMissingPct").value) || 0;
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
@@ -424,6 +429,7 @@ for (const k of [...numberKeys, ...boolKeys]) {
 }
 $("listingIndexingMode").addEventListener("change", save);
 $("dealsPages").addEventListener("change", save);
+$("dealsRefetchHours").addEventListener("change", save);
 $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("favoriteStreets").addEventListener("input", save);

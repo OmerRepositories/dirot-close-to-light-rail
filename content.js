@@ -52,6 +52,7 @@
     blockedStreets: [], // רחובות שמודעות עליהם לא יוצגו לעולם
     skipBlockedStreets: false, // רשות: גם לא לשמור מודעות חדשות ברחובות החסומים
     dealsPages: 10, // כמה עמודים (1000 עסקאות כל אחד) לקרוא מעסקאות האמת ביד2; 0 = כבוי, 10 = כל העמודים
+    dealsRefetchHours: 24, // כל כמה שעות לרענן את עסקאות האמת של אותה שכונה (0 = בכל כניסה למודעה)
   };
   const CFG = {
     ...DEFAULTS,
@@ -1598,7 +1599,6 @@
   // ---------- עסקאות אמת באזור (טבלה נפרדת, LRDeals) ----------
   // יד2: בקשה אחת לאותו API שהעמוד משתמש בו, לשנים האחרונות, לכל היותר פעם ביום לכל שכונה.
   // מדלן: קוראים את מה שהסקריפט שבתוך הדף העתיק מטבלת העסקאות שכבר נטענה.
-  const DEALS_REFETCH_MS = 24 * 60 * 60 * 1000;
   const DEALS_PAGE_DELAY_MS = 1500;
   let dealsWrite = Promise.resolve();
   let yad2DealsRequested = false;
@@ -1765,10 +1765,11 @@
       chrome.storage.local.get(LRDeals.FETCH_LOG_KEY, async (stored) => {
         const log = (stored && stored[LRDeals.FETCH_LOG_KEY]) || {};
         const lastFetched = Number(log[query.throttleKey]) || 0;
-        if (Date.now() - lastFetched < DEALS_REFETCH_MS) {
+        const refetchMs = Math.min(30 * 24, Number(CFG.dealsRefetchHours)) * 60 * 60 * 1000;
+        if (Date.now() - lastFetched < refetchMs) {
           const days = Math.floor((Date.now() - lastFetched) / 86400000);
           dealsToast(
-            `עסקאות האמת באזור כבר נטענו ${days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`} – מתעדכנות פעם ביום`,
+            `עסקאות האמת באזור כבר נטענו ${days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`} – הרענון הבא לפי ההגדרה בחלון התוסף`,
             { state: "done", hideAfterMs: 3500 }
           );
           return;
@@ -2581,7 +2582,7 @@
   }
 
   // טוענים את ההגדרות לפני שמתחילים, ומעדכנים את הדף מיד כשהמשתמש משנה הגדרה
-  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "indexMinSqm", "indexMaxSqm", "irrelevantMissingPct", "dealsPages"];
+  const NUM_KEYS = ["maxPpsm", "belowMedianPct", "nearM", "indexMinPrice", "indexMaxPrice", "indexMinSqm", "indexMaxSqm", "irrelevantMissingPct", "dealsPages", "dealsRefetchHours"];
   // רצפת שפיות קבועה למחיר מכרטיס חיפוש: מסננת שכירות וכרטיסים שעוד נטענים
   const SEARCH_INDEX_MIN_PRICE = 100000;
   const AMENITY_LABELS = {
