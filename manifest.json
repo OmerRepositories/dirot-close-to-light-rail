@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "קרבה לרכבת הקלה – יד2, מדלן, הומלס וקומו",
   "description": "מציג על מודעות נדל\"ן ביד2, מדלן, הומלס, קומו ופייסבוק את המרחק לרכבת הקלה ואת המחיר למ\"ר.",
-  "version": "1.90.1",
+  "version": "1.91.0",
   "permissions": ["storage", "unlimitedStorage", "clipboardWrite", "alarms", "scripting"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "icons": {
@@ -43,6 +43,12 @@
       "matches": ["https://www.nadlan.gov.il/*"],
       "js": ["deals-core.js", "nadlan.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.nadlan.gov.il/*"],
+      "js": ["nadlan-page-data.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
     },
     {
       "matches": ["https://www.yad2.co.il/*"],

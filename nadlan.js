@@ -142,6 +142,48 @@
     readTimer = setTimeout(onTableChange, SETTLE_MS);
   }
 
+  // ---------- עסקאות שהעמוד כבר הוריד (מ-nadlan-page-data.js) ----------
+  const SITE_MAX_PAGES = 50;
+  let lastBatch = null;
+  let settlementNames = null;
+  async function settlementName(id) {
+    if (!settlementNames) {
+      settlementNames = new Map();
+      try {
+        const stored = (await chrome.storage.local.get("lightrailNadlanSettlements")).lightrailNadlanSettlements;
+        for (const item of (stored && stored.items) || []) settlementNames.set(String(item[0]), item[1]);
+      } catch {}
+    }
+    return settlementNames.get(String(id)) || "";
+  }
+  window.addEventListener("message", async (event) => {
+    if (event.source !== window || !event.data || event.data.source !== "lightrail-nadlan-data") return;
+    if (!cfg.readNadlan || typeof LRDeals === "undefined" || !Array.isArray(event.data.deals)) return;
+    const context = pageContext();
+    let added = 0;
+    let noAddress = 0;
+    for (const row of event.data.deals.slice(0, 1000)) {
+      const city = (context && context.city) || (await settlementName(row && row.settlmentID));
+      const item = LRDeals.fromNadlanData(row, city);
+      if (!item) {
+        noAddress++;
+        continue;
+      }
+      if (!savedKeys.has(item.key)) {
+        savedKeys.add(item.key);
+        pending.push(item);
+        added++;
+      }
+    }
+    lastBatch = { count: event.data.deals.length, totalRows: Number(event.data.totalRows) || 0, noAddress, at: Date.now() };
+    noAddressRows.clear();
+    for (let i = 0; i < noAddress; i++) noAddressRows.add(i);
+    if (!scanning && added) {
+      await flush();
+      setStatus(`נקלטו בבת אחת כל ${fmt(lastBatch.count)} העסקאות של התצוגה (עמודים 1–${Math.ceil(lastBatch.count / 10)}) ✓ ${fmt(totals.added)} חדשות${lastBatch.totalRows > lastBatch.count ? ` · האתר מציג עד 500 לכל תצוגה (מתוך ${fmt(lastBatch.totalRows)})` : ""}`);
+    }
+  });
+
   // ---------- סריקה אוטומטית של עמודי הטבלאות ----------
   const tableRoot = (table) => (table.parentElement && table.parentElement.parentElement) || table;
   const firstRowText = (table) => {
@@ -186,7 +228,8 @@
 
   async function scanTable(table, index, count) {
     const root = tableRoot(table);
-    const maxPages = fullMode ? 1000000 : Math.max(1, Number(cfg.nadlanMaxPages) || 20);
+    // האתר מציג עד 500 עסקאות (50 עמודים) לכל תצוגה; אחרי עמוד 50 נפתח טופס "צור קשר" במקום עמוד נוסף
+    const maxPages = Math.min(SITE_MAX_PAGES, fullMode ? SITE_MAX_PAGES : Math.max(1, Number(cfg.nadlanMaxPages) || 20));
     // 0 = תמיד לעבור על כל העמודים; N = לעצור אחרי N עמודים רצופים בלי עסקאות חדשות (הטבלה ממוינת מהחדש לישן)
     const stopAfter = fullMode ? 0 : Math.max(0, Number(cfg.nadlanStopAfterKnown) || 0);
     const context = pageContext();
@@ -212,7 +255,7 @@
       const pager = pagerOf(root);
       const next = root.querySelector("button.nextBtn");
       if (!next || next.disabled || (pager && pager.page >= pager.total)) return "done";
-      if (pages >= maxPages) return "cap";
+      if (pages >= maxPages) return pages >= SITE_MAX_PAGES ? "site-limit" : "cap";
       const before = firstRowText(table);
       next.click();
       const startedAt = Date.now();
@@ -240,6 +283,16 @@
     scanning = true;
     stopRequested = false;
     renderPanel();
+    // הדרך המהירה: כל העסקאות של התצוגה (עד 500) כבר ירדו לעמוד – שומרים את כולן בבת אחת, בלי לדפדף
+    for (let i = 0; i < 20 && !lastBatch && !stopRequested; i++) await sleep(500);
+    if (lastBatch && !stopRequested) {
+      await flush();
+      scanning = false;
+      totals.pages = Math.ceil(lastBatch.count / 10);
+      setStatus(`נשמרו כל ${fmt(lastBatch.count)} העסקאות שהאתר מציג בתצוגה הזו ✓ (${fmt(totals.added)} חדשות)${lastBatch.totalRows > lastBatch.count ? ` · האתר מציג עד 500 עסקאות לכל תצוגה (מתוך ${fmt(lastBatch.totalRows)})` : ""}`);
+      renderPanel();
+      return lastBatch.totalRows > lastBatch.count ? "site-limit" : "done";
+    }
     let outcome = "done";
     let caughtUp = false;
     let capped = false;

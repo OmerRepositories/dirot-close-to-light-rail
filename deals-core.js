@@ -182,6 +182,32 @@ var LRDeals = (() => {
     }, "nadlan");
   }
 
+  // עסקה מהנתונים שהעמוד של האתר הממשלתי כבר הוריד (עד 500 לכל תצוגה). השדות כמו בטבלה, ובנוסף
+  // שכונה, שנת בנייה ומספר קומות בבניין. עסקה בלי כתובת ("0", רק גוש/חלקה) לא מקבלת מפתח.
+  function fromNadlanData(row, city) {
+    if (!row || typeof row !== "object" || !city) return null;
+    const address = String(row.address || "").replace(/\s+/g, " ").trim();
+    const match = address.match(/^(.*?)\s+(\d{1,4}\s*[א-ת]?)$/);
+    const date = String(row.dealDate || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match || !date) return null;
+    const type = String(row.dealNature || "").trim();
+    const positive = (value) => (Number(value) > 0 ? Number(value) : null);
+    return build({
+      city,
+      street: match[1],
+      house: match[2],
+      neighborhood: row.neighborhoodName ? String(row.neighborhoodName).trim() : null,
+      date: `${date[3]}-${date[2].padStart(2, "0")}-${date[1].padStart(2, "0")}`,
+      price: String(row.dealAmount === undefined || row.dealAmount === null ? "" : row.dealAmount).replace(/[^\d]/g, ""),
+      sqm: positive(row.assetArea),
+      rooms: positive(row.roomNum),
+      floor: nadlanFloor(row.floor),
+      totalFloors: positive(row.buildingFloors),
+      buildYear: positive(row.yearBuilt),
+      propertyType: type && type !== "לא ידוע" ? type : null,
+    }, "nadlan");
+  }
+
   // מיזוג עסקה קיימת עם חדשה: איחוד מקורות, השלמת שדות חסרים (לא דורסים ערך קיים)
   function mergeDeal(existing, incoming, now) {
     if (!existing) return { deal: { ...incoming, firstSeenAt: now, updatedAt: now }, changed: true };
@@ -1033,6 +1059,7 @@ var LRDeals = (() => {
     fromYad2,
     fromMadlan,
     fromNadlan,
+    fromNadlanData,
     nadlanFloor,
     mergeDeal,
     mergeAll,
