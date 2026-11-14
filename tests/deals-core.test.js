@@ -471,11 +471,14 @@ test("collapseDeals merges the same deal across sources (street spelling / one-d
   assert.ok(Object.values(out).some((d) => d.price === 2839960));
 });
 
-test("collapseDeals needs sqm or floor to actually match, not just price and date", () => {
-  const store = {
-    a: { city: "חולון", street: "סוקולוב", house: "5", date: "2025-01-01", price: 2000000, sources: ["yad2"] },
-    b: { city: "חולון", street: "סוקולוב", house: "5", date: "2025-01-01", price: 2000000, sources: ["madlan"] },
-  };
-  // לשתיהן אין קומה ואין שטח – אין עוגן, לא ממזגים
-  assert.equal(Deals.collapseDeals(store).merged, 0);
+test("collapseDeals requires BOTH floor and sqm present and equal", () => {
+  const base = { city: "חולון", street: "סוקולוב", house: "5", date: "2025-01-01", price: 2000000, floor: 3, sqm: 90 };
+  // חסר שטח באחת – לא ממזגים
+  assert.equal(Deals.collapseDeals({ a: { ...base, sources: ["yad2"] }, b: { ...base, sqm: null, sources: ["madlan"] } }).merged, 0);
+  // חסרה קומה באחת – לא ממזגים
+  assert.equal(Deals.collapseDeals({ a: { ...base, sources: ["yad2"] }, b: { ...base, floor: null, sources: ["madlan"] } }).merged, 0);
+  // שטח שונה – לא ממזגים
+  assert.equal(Deals.collapseDeals({ a: { ...base, sources: ["yad2"] }, b: { ...base, sqm: 91, sources: ["madlan"] } }).merged, 0);
+  // שניהם קיימים ושווים – ממזגים
+  assert.equal(Deals.collapseDeals({ a: { ...base, sources: ["yad2"] }, b: { ...base, street: "הרב סוקולוב", sources: ["madlan"] } }).merged, 1);
 });

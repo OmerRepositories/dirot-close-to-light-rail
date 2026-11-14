@@ -974,11 +974,11 @@ var LRDeals = (() => {
     if (dayGap(a.date, b.date) > 1) return false;
     const floorA = dealField(a, "floor"), floorB = dealField(b, "floor");
     const sqmA = dealField(a, "sqm"), sqmB = dealField(b, "sqm");
-    if (!bothOrNoneEqual(floorA, floorB) || !bothOrNoneEqual(sqmA, sqmB) || !bothOrNoneEqual(dealField(a, "rooms"), dealField(b, "rooms"))) return false;
-    // עוגן חזק: חייבת להיות התאמה ממש של שטח או של קומה, לא רק מחיר+תאריך
-    const sqmMatch = sqmA !== null && sqmB !== null && Number(sqmA) === Number(sqmB);
-    const floorMatch = floorA !== null && floorB !== null && Number(floorA) === Number(floorB);
-    return sqmMatch || floorMatch;
+    // גם הקומה וגם השטח חייבים להיות קיימים בשתי הרשומות ושווים – אחרת זו דירה אחרת, לא ממזגים
+    if (floorA === null || floorB === null || Number(floorA) !== Number(floorB)) return false;
+    if (sqmA === null || sqmB === null || Number(sqmA) !== Number(sqmB)) return false;
+    if (!bothOrNoneEqual(dealField(a, "rooms"), dealField(b, "rooms"))) return false;
+    return true;
   }
   const MERGE_FIELDS = ["street", "house", "neighborhood", "floor", "floorNumber", "totalFloors", "buildYear", "sqm", "rooms", "propertyType"];
   const dealRichness = (deal) => MERGE_FIELDS.filter((field) => dealField(deal, field) !== null).length;
