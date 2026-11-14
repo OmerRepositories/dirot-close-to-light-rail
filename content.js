@@ -1596,9 +1596,9 @@
   }
 
   // ---------- עסקאות אמת באזור (טבלה נפרדת, LRDeals) ----------
-  // יד2: בקשה אחת לאותו API שהעמוד משתמש בו, לשנים האחרונות, לכל היותר פעם בשבוע לכל רחוב.
+  // יד2: בקשה אחת לאותו API שהעמוד משתמש בו, לשנים האחרונות, לכל היותר פעם ביום לכל שכונה.
   // מדלן: קוראים את מה שהסקריפט שבתוך הדף העתיק מטבלת העסקאות שכבר נטענה.
-  const DEALS_REFETCH_MS = 7 * 24 * 60 * 60 * 1000;
+  const DEALS_REFETCH_MS = 24 * 60 * 60 * 1000;
   const DEALS_PAGE_DELAY_MS = 1500;
   let dealsWrite = Promise.resolve();
   let yad2DealsRequested = false;
@@ -1768,7 +1768,7 @@
         if (Date.now() - lastFetched < DEALS_REFETCH_MS) {
           const days = Math.floor((Date.now() - lastFetched) / 86400000);
           dealsToast(
-            `עסקאות האמת באזור כבר נטענו ${days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`} – מתעדכנות פעם בשבוע`,
+            `עסקאות האמת באזור כבר נטענו ${days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`} – מתעדכנות פעם ביום`,
             { state: "done", hideAfterMs: 3500 }
           );
           return;
