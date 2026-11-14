@@ -7194,3 +7194,122 @@ function featureRefresh(...features) {
     for (const feature of features) renderFeature(feature);
   } catch {}
 }
+
+// ---------- בחירת ערים לסריקת עסקאות מהאתר הממשלתי ----------
+// רשימת היישובים הרשמית (id + שם + אוכלוסייה) נטענת מאתר הנדל"ן הממשלתי ונשמרת מקומית.
+const NADLAN_SETTLEMENTS_KEY = "lightrailNadlanSettlements";
+const NADLAN_SETTLEMENTS_URL = "https://data.nadlan.gov.il/api/index/setl_types.json";
+let nadlanSettlements = [];
+
+function parseNadlanCities(text) {
+  const cities = [];
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const match = line.match(/^\s*(\d{1,6})\s*(.*)$/);
+    if (match && !cities.some((city) => city.id === match[1])) cities.push({ id: match[1], name: match[2].trim() });
+  }
+  return cities;
+}
+
+const cityLabel = (city) => {
+  const known = nadlanSettlements.find((item) => String(item[0]) === city.id);
+  return (known && known[1]) || city.name || `יישוב ${city.id}`;
+};
+
+async function loadNadlanSettlements() {
+  const stored = (await chrome.storage.local.get(NADLAN_SETTLEMENTS_KEY))[NADLAN_SETTLEMENTS_KEY];
+  if (stored && Array.isArray(stored.items) && stored.items.length) {
+    nadlanSettlements = stored.items;
+    return;
+  }
+  // עוד לא נטענה בעמוד של האתר – ננסה לקרוא ישירות (אם האתר מאפשר)
+  try {
+    const response = await fetch(NADLAN_SETTLEMENTS_URL);
+    if (!response.ok) throw new Error(String(response.status));
+    const data = await response.json();
+    const items = Object.entries(data)
+      .filter(([, value]) => value && value.SETL_NAME)
+      .map(([id, value]) => [Number(id), String(value.SETL_NAME), Number(value.POPULATION) || 0])
+      .sort((a, b) => b[2] - a[2]);
+    nadlanSettlements = items;
+    await chrome.storage.local.set({ [NADLAN_SETTLEMENTS_KEY]: { at: Date.now(), items } });
+  } catch {
+    nadlanSettlements = [];
+  }
+}
+
+async function renderNadlanSettings() {
+  const sync = await chrome.storage.sync.get({ readNadlan: false, nadlanSchedule: false, nadlanEveryHours: 24, nadlanCities: "" });
+  $("nadlanReadEnabled").checked = Boolean(sync.readNadlan);
+  $("nadlanScheduleEnabled").checked = Boolean(sync.nadlanSchedule);
+  $("nadlanScheduleEnabled").disabled = !sync.readNadlan;
+  $("nadlanEveryHoursSelect").value = String([6, 12, 24, 72, 168].includes(Number(sync.nadlanEveryHours)) ? Number(sync.nadlanEveryHours) : 24);
+  const cities = parseNadlanCities(sync.nadlanCities);
+  const chips = $("nadlanCityChips");
+  chips.replaceChildren(...cities.map((city) => {
+    const item = document.createElement("li");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `הסרת ${cityLabel(city)}`);
+    remove.addEventListener("click", () => saveNadlanCities(cities.filter((other) => other.id !== city.id)));
+    item.append(`${cityLabel(city)} (${city.id})`, remove);
+    return item;
+  }));
+  $("nadlanCityNote").textContent = cities.length
+    ? `${cities.length} ערים יסרקו. רק הערים האלה – שום עיר אחרת לא נסרקת.`
+    : "לא נבחרו ערים – הסריקה המתוזמנת לא תרוץ עד שתוסיף עיר.";
+  if (!nadlanSettlements.length) {
+    $("nadlanCityNote").textContent += " רשימת הישובים עוד לא נטענה: פתחו פעם אחת את nadlan.gov.il כשהשמירה מסומנת.";
+  }
+}
+
+async function saveNadlanCities(cities) {
+  await chrome.storage.sync.set({ nadlanCities: cities.map((city) => `${city.id} ${cityLabel(city)}`).join("\n") });
+  renderNadlanSettings();
+}
+
+function renderNadlanResults() {
+  const query = $("nadlanCitySearch").value.trim();
+  const list = $("nadlanCityResults");
+  if (!query || !nadlanSettlements.length) {
+    list.hidden = true;
+    list.replaceChildren();
+    return;
+  }
+  const normalized = query.replace(/["'׳״\-־]/g, "").replace(/\s+/g, " ");
+  const matches = nadlanSettlements
+    .filter((item) => String(item[1]).replace(/["'׳״\-־]/g, "").replace(/\s+/g, " ").includes(normalized))
+    .slice(0, 8);
+  list.replaceChildren(...matches.map((item) => {
+    const row = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    const name = document.createElement("span");
+    name.textContent = item[1];
+    const pop = document.createElement("span");
+    pop.className = "city-pop";
+    pop.textContent = item[2] ? `${item[2].toLocaleString("he-IL")} תושבים` : "";
+    button.append(name, pop);
+    button.addEventListener("click", async () => {
+      const sync = await chrome.storage.sync.get({ nadlanCities: "" });
+      const cities = parseNadlanCities(sync.nadlanCities);
+      if (!cities.some((city) => city.id === String(item[0]))) cities.push({ id: String(item[0]), name: item[1] });
+      $("nadlanCitySearch").value = "";
+      renderNadlanResults();
+      saveNadlanCities(cities);
+    });
+    row.append(button);
+    return row;
+  }));
+  list.hidden = matches.length === 0;
+}
+
+$("nadlanCitySearch").addEventListener("input", renderNadlanResults);
+$("nadlanReadEnabled").addEventListener("change", () => chrome.storage.sync.set({ readNadlan: $("nadlanReadEnabled").checked }));
+$("nadlanScheduleEnabled").addEventListener("change", () => chrome.storage.sync.set({ nadlanSchedule: $("nadlanScheduleEnabled").checked }));
+$("nadlanEveryHoursSelect").addEventListener("change", () => chrome.storage.sync.set({ nadlanEveryHours: Number($("nadlanEveryHoursSelect").value) }));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "sync" && (changes.readNadlan || changes.nadlanSchedule || changes.nadlanEveryHours || changes.nadlanCities)) renderNadlanSettings();
+  if (area === "local" && changes[NADLAN_SETTLEMENTS_KEY]) loadNadlanSettlements().then(renderNadlanSettings);
+});
+loadNadlanSettlements().then(renderNadlanSettings);

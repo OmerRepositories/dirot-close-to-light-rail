@@ -893,7 +893,36 @@
         <section class="tool-card" data-feature="nadlan" data-state="off">
           <h3><span class="card-dot"></span>סריקת עסקאות מאתר הנדל״ן הממשלתי<span class="state-badge" data-badge="nadlan"></span></h3>
           <p class="state-line" data-state-line="nadlan"></p>
-          <p class="card-text">פותח ברקע את עמוד העסקאות של כל עיר ברשימה באתר nadlan.gov.il, עובר על העמודים (מהחדש לישן) ושומר את העסקאות. כל ההגדרות – הפעלה, ערים, תדירות, מגבלת עמודים ומתי לעצור – נמצאות בחלון התוסף (סמל התוסף ב-Chrome).</p>
+          <p class="card-text">סורק רק את הערים שבחרת למטה (לא את כל הישובים): פותח ברקע את עמוד העסקאות של כל עיר באתר nadlan.gov.il, עובר על העמודים מהחדש לישן ושומר את העסקאות. מגבלת העמודים, ההפרש ביניהם ומתי לעצור – בחלון התוסף (סמל התוסף ב-Chrome).</p>
+          <div class="schedule-settings">
+            <label class="schedule-toggle">
+              <input id="nadlanReadEnabled" type="checkbox">
+              <span>לאפשר שמירת עסקאות מהאתר הממשלתי</span>
+            </label>
+            <label class="schedule-toggle">
+              <input id="nadlanScheduleEnabled" type="checkbox">
+              <span>לרענן את הערים שבחרתי אוטומטית</span>
+            </label>
+            <label class="schedule-interval">
+              <span>כל כמה זמן?</span>
+              <select id="nadlanEveryHoursSelect">
+                <option value="6">כל 6 שעות</option>
+                <option value="12">כל 12 שעות</option>
+                <option value="24">פעם ביום</option>
+                <option value="72">כל 3 ימים</option>
+                <option value="168">פעם בשבוע</option>
+              </select>
+            </label>
+            <div class="city-picker">
+              <label class="schedule-interval">
+                <span>הוספת עיר (חיפוש לפי שם)</span>
+                <input id="nadlanCitySearch" type="search" autocomplete="off" placeholder="למשל: רמת גן">
+              </label>
+              <ul id="nadlanCityResults" class="city-results" hidden></ul>
+              <p id="nadlanCityNote" class="schedule-note"></p>
+              <ul id="nadlanCityChips" class="city-chips" aria-label="ערים שנבחרו לסריקה"></ul>
+            </div>
+          </div>
           <div class="refresh-actions">
             <button id="runNadlanScan" class="primary" type="button">הרצה עכשיו</button>
           </div>

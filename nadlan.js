@@ -241,8 +241,26 @@
     panel.append(title, statusEl, button);
   }
 
+  // רשימת היישובים הרשמית של האתר (id, שם, אוכלוסייה) – לבחירת ערים בעמוד הרענון. נטענת פעם בחודש
+  const SETTLEMENTS_KEY = "lightrailNadlanSettlements";
+  async function ensureSettlementIndex() {
+    try {
+      const stored = (await chrome.storage.local.get(SETTLEMENTS_KEY))[SETTLEMENTS_KEY];
+      if (stored && Array.isArray(stored.items) && stored.items.length && Date.now() - (stored.at || 0) < 30 * 24 * 3600 * 1000) return;
+      const response = await fetch("https://data.nadlan.gov.il/api/index/setl_types.json");
+      if (!response.ok) return;
+      const data = await response.json();
+      const items = Object.entries(data)
+        .filter(([, value]) => value && value.SETL_NAME)
+        .map(([id, value]) => [Number(id), String(value.SETL_NAME), Number(value.POPULATION) || 0])
+        .sort((x, y) => y[2] - x[2]);
+      if (items.length) await chrome.storage.local.set({ [SETTLEMENTS_KEY]: { at: Date.now(), items } });
+    } catch {}
+  }
+
   function start() {
     if (observer) return;
+    ensureSettlementIndex();
     renderPanel();
     observer = new MutationObserver(() => {
       if (!scanning) scheduleRead();
