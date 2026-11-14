@@ -445,3 +445,37 @@ test("loadCity reads one city, including deals still in the old key", async () =
   assert.equal(await Deals.hasAny(fakeArea({ other: 1 })), false);
   assert.ok(Deals.isDealsKey(Deals.shardKey("בת ים")) && Deals.isDealsKey("lightrailDeals") && !Deals.isDealsKey("lightrailDealsFetched"));
 });
+
+test("collapseDeals merges the same deal across sources (street spelling / one-day gap), keeps the richest", () => {
+  const store = {
+    // אותה עסקה: מדלן בלי "הרב", ללא קומות בבניין ושנה
+    "madlan": { city: "פתח תקווה", street: "בלוי משה", house: "28", date: "2026-05-19", price: 2840000, sqm: 112, rooms: 5, floor: 8, sources: ["madlan"] },
+    // נדל"ן ממשלתי + יד2: כתיב מלא, עם קומות בבניין ושנה
+    "nadlan": { city: "פתח תקווה", street: "הרב משה בלוי", house: "28", date: "2026-05-19", price: 2840000, sqm: 112, rooms: 5, floor: 8, totalFloors: 10, buildYear: 2028, neighborhood: "שיפר", sources: ["nadlan", "yad2"] },
+    // עסקה אחרת: אותו מחיר ויום סמוך אבל קומה ושטח שונים – לא ממזגים
+    "other": { city: "פתח תקווה", street: "הרב משה בלוי", house: "28", date: "2026-05-18", price: 2840000, sqm: 106, rooms: 5, floor: 2, sources: ["nadlan"] },
+    // מחיר שונה בכמה שקלים – עסקה נפרדת
+    "cheaper": { city: "פתח תקווה", street: "הרב משה בלוי", house: "28", date: "2026-05-19", price: 2839960, sqm: 112, rooms: 5, floor: 8, sources: ["nadlan"] },
+  };
+  const { store: out, merged } = Deals.collapseDeals(store);
+  assert.equal(merged, 1);
+  assert.equal(Object.keys(out).length, 3);
+  const rep = Object.values(out).find((d) => d.mergedFrom);
+  assert.equal(rep.mergedFrom, 2);
+  assert.deepEqual(rep.sources, ["madlan", "nadlan", "yad2"]);
+  assert.equal(rep.totalFloors, 10); // נלקח מהרשומה העשירה
+  assert.equal(rep.buildYear, 2028);
+  assert.equal(rep.neighborhood, "שיפר");
+  // העסקה בקומה אחרת והעסקה במחיר אחר נשארו בנפרד
+  assert.ok(Object.values(out).some((d) => d.floor === 2 && !d.mergedFrom));
+  assert.ok(Object.values(out).some((d) => d.price === 2839960));
+});
+
+test("collapseDeals needs sqm or floor to actually match, not just price and date", () => {
+  const store = {
+    a: { city: "חולון", street: "סוקולוב", house: "5", date: "2025-01-01", price: 2000000, sources: ["yad2"] },
+    b: { city: "חולון", street: "סוקולוב", house: "5", date: "2025-01-01", price: 2000000, sources: ["madlan"] },
+  };
+  // לשתיהן אין קומה ואין שטח – אין עוגן, לא ממזגים
+  assert.equal(Deals.collapseDeals(store).merged, 0);
+});

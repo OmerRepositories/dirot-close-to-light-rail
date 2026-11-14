@@ -1709,7 +1709,7 @@
       if (!store) return;
       const record = listingCache[cacheKeyForListing(entry.listingId)];
       if (!record) return;
-      const index = LRDeals.buildIndex(store);
+      const index = LRDeals.buildIndex(LRDeals.collapseDeals(store).store);
       const ppsmValue = LRCacheData.pricePerSqm(record);
       entry.realDeals = LRDeals.compareListing(record, index, ppsmValue);
       entry.realDealsAll = LRDeals.compareListingAll(record, index, ppsmValue);

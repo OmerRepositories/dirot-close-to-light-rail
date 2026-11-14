@@ -952,6 +952,87 @@ var LRDeals = (() => {
     return out;
   }
 
+  // תוארים שלפעמים נכתבים לפני שם הרחוב ולפעמים לא ("הרב משה בלוי" = "משה בלוי"). cleanText כבר הסיר גרשיים
+  const STREET_TITLES = new Set(["הרב", "רב", "רבי", "הרבי", "מרן", "האדמור", "האדמור", "פרופ", "פרופסור", "דר", "הדר", "דוקטור", "עוד", "האלוף", "הגאון", "ר", "מר"]);
+  const streetLoose = memoText((street) =>
+    cleanText(street)
+      .split(" ")
+      .filter((word) => word && !STREET_PREFIXES.has(word) && !STREET_TITLES.has(word))
+      .sort()
+      .join(" ")
+  );
+  const dealField = (deal, field) => (deal[field] === null || deal[field] === undefined || deal[field] === "" ? null : deal[field]);
+  const bothOrNoneEqual = (a, b) => a === null || b === null || Number(a) === Number(b);
+  const dayGap = (a, b) => {
+    const ta = Date.parse(normDate(a)), tb = Date.parse(normDate(b));
+    return Number.isFinite(ta) && Number.isFinite(tb) ? Math.abs(ta - tb) / 86400000 : 99;
+  };
+  // אותה עסקה משני מקורות? אותו מחיר בדיוק, אותו בית, קומה ושטח, ותאריך בהפרש של עד יום. ההבדל היחיד
+  // מותר בכתיב הרחוב או ביום (תאריך חתימה מול רישום). קומה/שטח שונים = דירות שונות – לא ממזגים.
+  function sameDeal(a, b) {
+    if (Math.round(Number(a.price)) !== Math.round(Number(b.price))) return false;
+    if (dayGap(a.date, b.date) > 1) return false;
+    const floorA = dealField(a, "floor"), floorB = dealField(b, "floor");
+    const sqmA = dealField(a, "sqm"), sqmB = dealField(b, "sqm");
+    if (!bothOrNoneEqual(floorA, floorB) || !bothOrNoneEqual(sqmA, sqmB) || !bothOrNoneEqual(dealField(a, "rooms"), dealField(b, "rooms"))) return false;
+    // עוגן חזק: חייבת להיות התאמה ממש של שטח או של קומה, לא רק מחיר+תאריך
+    const sqmMatch = sqmA !== null && sqmB !== null && Number(sqmA) === Number(sqmB);
+    const floorMatch = floorA !== null && floorB !== null && Number(floorA) === Number(floorB);
+    return sqmMatch || floorMatch;
+  }
+  const MERGE_FIELDS = ["street", "house", "neighborhood", "floor", "floorNumber", "totalFloors", "buildYear", "sqm", "rooms", "propertyType"];
+  const dealRichness = (deal) => MERGE_FIELDS.filter((field) => dealField(deal, field) !== null).length;
+  function mergeGroup(group) {
+    group.sort((x, y) => {
+      const r = dealRichness(y.deal) - dealRichness(x.deal);
+      if (r) return r;
+      const s = (y.deal.sources || []).length - (x.deal.sources || []).length;
+      if (s) return s;
+      return (y.deal.updatedAt || 0) - (x.deal.updatedAt || 0);
+    });
+    const base = { ...group[0].deal };
+    const sources = new Set(base.sources || []);
+    for (const { deal } of group.slice(1)) {
+      for (const field of MERGE_FIELDS) if (dealField(base, field) === null && dealField(deal, field) !== null) base[field] = deal[field];
+      for (const source of deal.sources || []) sources.add(source);
+      if (deal.firstSeenAt && (!base.firstSeenAt || deal.firstSeenAt < base.firstSeenAt)) base.firstSeenAt = deal.firstSeenAt;
+      if (deal.updatedAt && (!base.updatedAt || deal.updatedAt > base.updatedAt)) base.updatedAt = deal.updatedAt;
+    }
+    base.sources = [...sources].sort();
+    if (group.length > 1) base.mergedFrom = group.length;
+    return { key: group[0].key, deal: base };
+  }
+  // ממזג עסקאות כפולות (תצוגה/ייצוא/חישוב בלבד – לא משנה את המידע השמור). מחזיר store חדש
+  function collapseDeals(store) {
+    const buckets = new Map();
+    for (const [key, deal] of Object.entries(store || {})) {
+      if (!deal) continue;
+      const bucket = `${hoodCity(deal.city)}|${streetLoose(deal.street)}|${normHouse(deal.house)}`;
+      if (!buckets.has(bucket)) buckets.set(bucket, []);
+      buckets.get(bucket).push({ key, deal });
+    }
+    const out = {};
+    let merged = 0;
+    for (const items of buckets.values()) {
+      const used = new Array(items.length).fill(false);
+      for (let i = 0; i < items.length; i++) {
+        if (used[i]) continue;
+        const group = [items[i]];
+        used[i] = true;
+        for (let j = i + 1; j < items.length; j++) {
+          if (!used[j] && sameDeal(items[i].deal, items[j].deal)) {
+            group.push(items[j]);
+            used[j] = true;
+          }
+        }
+        const result = mergeGroup(group);
+        if (group.length > 1) merged += group.length - 1;
+        out[result.key] = result.deal;
+      }
+    }
+    return { store: out, merged };
+  }
+
   // השוואת שכונות: לכל שכונה שנבחרה – חציון המחיר למ״ר בכל שנה (רק שנים עם minCount עסקאות לפחות,
   // כדי שעסקה בודדת לא תיראה כמו מגמה). hoods: ["עיר|שכונה", …] בסדר הבחירה
   function hoodSeries(deals, hoods, { minCount = 2 } = {}) {
@@ -1077,6 +1158,7 @@ var LRDeals = (() => {
     dealHoodId,
     hoodSeries,
     withInferredHoods,
+    collapseDeals,
     placeKey,
   };
 })();

@@ -4283,11 +4283,16 @@ let dealsStore = {};
 async function loadDeals() {
   try {
     const store = await LRDeals.loadAll(chrome.storage.local);
+    // אותה עסקה משני מקורות (כתיב רחוב/יום שונה) ממוזגת לרשומה אחת – לתצוגה ולחישוב בלבד, לא בשמירה
+    const collapsed = LRDeals.collapseDeals(store);
     // עסקאות בלי שכונה מקבלות (בתצוגה בלבד, לא בשמירה) את השכונה של רוב העסקאות באותה כתובת בדיוק
-    dealsStore = LRDeals.withInferredHoods(store);
-    dealsTotal = Object.keys(store).length;
+    dealsStore = LRDeals.withInferredHoods(collapsed.store);
+    dealsTotal = Object.keys(collapsed.store).length;
     $("dealsCount").textContent = dealsTotal.toLocaleString("he-IL");
-    dealsIndex = LRDeals.buildIndex(store);
+    $("dealsCount").title = collapsed.merged
+      ? `${collapsed.merged.toLocaleString("he-IL")} כפילויות מוזגו (אותה עסקה משני מקורות, סה״כ ${Object.keys(store).length.toLocaleString("he-IL")} רשומות לפני מיזוג)`
+      : "";
+    dealsIndex = LRDeals.buildIndex(collapsed.store);
   } catch (error) {
     console.warn("[lightrail-ext] failed to load real deals", error);
     dealsIndex = null;
@@ -4600,7 +4605,8 @@ function renderDeals() {
     cell(displayPrice(deal.price));
     cell(displayPrice(LRDeals.dealPpsm(deal)));
     cell(Number.isFinite(deal.buildYear) ? deal.buildYear : "");
-    cell((deal.sources || []).map((source) => (source === "yad2" ? "יד2" : source === "madlan" ? "מדלן" : source === "nadlan" ? "נדל״ן ממשלתי" : source)).join(" + "), "deal-sources");
+    const sourcesCell = cell((deal.sources || []).map((source) => (source === "yad2" ? "יד2" : source === "madlan" ? "מדלן" : source === "nadlan" ? "נדל״ן ממשלתי" : source)).join(" + ") + (deal.mergedFrom ? " ⇄" : ""), "deal-sources");
+    if (deal.mergedFrom) sourcesCell.title = `אותה עסקה אוחדה מ-${deal.mergedFrom} רשומות (אותו מחיר, בית, קומה ושטח; הבדל בכתיב הרחוב או ביום)`;
     const listingsCell = cell("", "deal-listings");
     const count = places.get(LRDeals.placeKey(deal.city, deal.street, deal.house)) || 0;
     if (count) {
@@ -5475,12 +5481,13 @@ async function exportCache(format) {
         : `מכין קובץ ${formatName}…`;
     };
     if (format === "excel") {
-      const deals = await LRDeals.loadAll(chrome.storage.local);
+      const deals = LRDeals.collapseDeals(await LRDeals.loadAll(chrome.storage.local)).store;
       LRCacheExport.downloadExcel(await LRCacheExport.buildExcel(stored, progress, Date.now(), deals));
     } else if (format === "csv") {
       LRCacheExport.downloadCsv(await LRCacheExport.buildCsv(stored, progress));
     } else if (format === "full") {
-      const [deals, settings] = await Promise.all([LRDeals.loadAll(chrome.storage.local), storageGetAll("sync")]);
+      const [rawDeals, settings] = await Promise.all([LRDeals.loadAll(chrome.storage.local), storageGetAll("sync")]);
+      const deals = LRDeals.collapseDeals(rawDeals).store;
       LRCacheExport.downloadCsv(
         await LRCacheExport.buildFullCsv({ cache: stored, deals, settings }, progress),
         new Date(),
@@ -6047,7 +6054,7 @@ let addressDealsMemo = { version: -1, deals: null };
 async function addressExportDeals() {
   if (addressDealsMemo.version !== dealsVersion || !addressDealsMemo.deals) {
     // כמו בחיפוש העסקאות: עסקה בלי שכונה מקבלת את השכונה של רוב העסקאות באותה כתובת בדיוק
-    addressDealsMemo = { version: dealsVersion, deals: LRDeals.withInferredHoods(await LRDeals.loadAll(chrome.storage.local)) };
+    addressDealsMemo = { version: dealsVersion, deals: LRDeals.withInferredHoods(LRDeals.collapseDeals(await LRDeals.loadAll(chrome.storage.local)).store) };
   }
   return addressDealsMemo.deals;
 }
