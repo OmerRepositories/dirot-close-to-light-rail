@@ -37,6 +37,10 @@ const DEFAULTS = {
   readNadlan: false,
   nadlanDelaySeconds: 3,
   nadlanMaxPages: 20,
+  nadlanStopAfterKnown: 2,
+  nadlanSchedule: false,
+  nadlanEveryHours: 24,
+  nadlanCities: "",
   showPurchaseTax: true,
   purchaseTaxTrack: "single",
   purchaseTaxTracks: null,
@@ -133,6 +137,7 @@ const boolKeys = [
   "hideAds",
   "skipBlockedStreets",
   "readNadlan",
+  "nadlanSchedule",
   "hideIrrelevant",
   "showPriceChange",
   "showListingAge",
@@ -281,7 +286,10 @@ function fill(s) {
   $("dealsPages").value = String(DEALS_PAGE_OPTIONS.includes(Number(s.dealsPages)) ? Number(s.dealsPages) : 10);
   $("dealsRefetchHours").value = String(DEALS_REFETCH_OPTIONS.includes(Number(s.dealsRefetchHours)) ? Number(s.dealsRefetchHours) : 24);
   $("nadlanDelaySeconds").value = String([2, 3, 5, 10].includes(Number(s.nadlanDelaySeconds)) ? Number(s.nadlanDelaySeconds) : 3);
-  $("nadlanMaxPages").value = String([5, 20, 50, 500].includes(Number(s.nadlanMaxPages)) ? Number(s.nadlanMaxPages) : 20);
+  $("nadlanMaxPages").value = String([5, 20, 50, 200, 1000, 10000].includes(Number(s.nadlanMaxPages)) ? Number(s.nadlanMaxPages) : 20);
+  $("nadlanStopAfterKnown").value = String([0, 1, 2, 3, 5].includes(Number(s.nadlanStopAfterKnown)) ? Number(s.nadlanStopAfterKnown) : 2);
+  $("nadlanEveryHours").value = String([6, 12, 24, 72, 168].includes(Number(s.nadlanEveryHours)) ? Number(s.nadlanEveryHours) : 24);
+  if (document.activeElement !== $("nadlanCities")) $("nadlanCities").value = typeof s.nadlanCities === "string" ? s.nadlanCities : "";
   const missingPct = String(Number.isFinite(Number(s.irrelevantMissingPct)) ? Number(s.irrelevantMissingPct) : 50);
   $("irrelevantMissingPct").value = [...$("irrelevantMissingPct").options].some((o) => o.value === missingPct)
     ? missingPct
@@ -393,7 +401,10 @@ function read() {
   out.dealsPages = DEALS_PAGE_OPTIONS.includes(Number($("dealsPages").value)) ? Number($("dealsPages").value) : 10;
   out.dealsRefetchHours = DEALS_REFETCH_OPTIONS.includes(Number($("dealsRefetchHours").value)) ? Number($("dealsRefetchHours").value) : 24;
   out.nadlanDelaySeconds = [2, 3, 5, 10].includes(Number($("nadlanDelaySeconds").value)) ? Number($("nadlanDelaySeconds").value) : 3;
-  out.nadlanMaxPages = [5, 20, 50, 500].includes(Number($("nadlanMaxPages").value)) ? Number($("nadlanMaxPages").value) : 20;
+  out.nadlanMaxPages = [5, 20, 50, 200, 1000, 10000].includes(Number($("nadlanMaxPages").value)) ? Number($("nadlanMaxPages").value) : 20;
+  out.nadlanStopAfterKnown = [0, 1, 2, 3, 5].includes(Number($("nadlanStopAfterKnown").value)) ? Number($("nadlanStopAfterKnown").value) : 2;
+  out.nadlanEveryHours = [6, 12, 24, 72, 168].includes(Number($("nadlanEveryHours").value)) ? Number($("nadlanEveryHours").value) : 24;
+  out.nadlanCities = $("nadlanCities").value.slice(0, 2000);
   out.irrelevantMissingPct = Number($("irrelevantMissingPct").value) || 0;
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
@@ -440,6 +451,14 @@ $("dealsPages").addEventListener("change", save);
 $("dealsRefetchHours").addEventListener("change", save);
 $("nadlanDelaySeconds").addEventListener("change", save);
 $("nadlanMaxPages").addEventListener("change", save);
+$("nadlanStopAfterKnown").addEventListener("change", save);
+$("nadlanEveryHours").addEventListener("change", save);
+$("nadlanCities").addEventListener("input", save);
+$("nadlanScanNow").addEventListener("click", () => {
+  chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-now" }, (response) => {
+    flash(response && response.ok ? "✓ הסריקה התחילה ברקע" : (response && response.error) || "לא ניתן להתחיל");
+  });
+});
 $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("favoriteStreets").addEventListener("input", save);

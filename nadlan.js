@@ -3,7 +3,7 @@
 // עצמו הציג לגולש, ובלחיצה על "סרוק" לוחץ "הבא" כמו שהגולש היה עושה, בהפרש זמן שהמשתמש בחר.
 // נעצר מיד אם העמוד לא מתקדם (למשל אימות מול האתר) – את האימות פותר הגולש בעצמו.
 (() => {
-  const DEFAULTS = { readNadlan: false, nadlanDelaySeconds: 3, nadlanMaxPages: 20 };
+  const DEFAULTS = { readNadlan: false, nadlanDelaySeconds: 3, nadlanMaxPages: 20, nadlanStopAfterKnown: 2 };
   const SETTLE_MS = 800;
   const PAGE_WAIT_MS = 12000;
   let cfg = { ...DEFAULTS };
@@ -24,7 +24,7 @@
     let neighborhood = "";
     for (const heading of document.querySelectorAll("h1, h2, h3")) {
       const text = heading.textContent.replace(/\s+/g, " ").trim();
-      let match = text.match(/^עסקאות בכתובת .+,\s*([^,]+)$/);
+      let match = text.match(/^עסקאות בכתובת .+,\s*([^,]+)$/) || text.match(/^עסקאות ביישוב (.+)$/);
       if (match && !city) city = match[1].trim();
       match = text.match(/^עסקאות נוספות בשכונה (.+?) לפי רחובות$/);
       if (match && !neighborhood) neighborhood = match[1].trim();
@@ -41,27 +41,39 @@
 
   const rowCells = (row) => [...row.children].map((cell) => cell.textContent.replace(/\s+/g, " ").trim());
 
-  function readTables() {
+  // כתיבה לאחסון של עיר גדולה היא כבדה, ולכן בסריקה ארוכה העסקאות נאספות ונכתבות בקבוצות
+  const FLUSH_EVERY = 300;
+  let pending = [];
+  let writing = Promise.resolve();
+  function flush() {
+    if (!pending.length) return writing;
+    const items = pending;
+    pending = [];
+    writing = writing.then(() => LRDeals.saveItems(chrome.storage.local, items)).then((merged) => {
+      totals.found += items.length;
+      totals.added += merged.added;
+      setStatus(`נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`);
+    }, (error) => console.warn("[lightrail-ext] failed to save nadlan deals", error));
+    return writing;
+  }
+
+  function readTables({ batch = false } = {}) {
     if (!cfg.readNadlan || typeof LRDeals === "undefined") return;
     const context = pageContext();
     if (!context) {
-      setStatus("לא זוהתה עיר בעמוד – לא נשמרו עסקאות (נתמכים עמודי כתובת)");
+      setStatus("לא זוהתה עיר בעמוד – לא נשמרו עסקאות (נתמכים עמודי כתובת ועמודי יישוב)");
       return;
     }
-    const items = [];
     for (const table of dealTables()) {
       for (const row of table.querySelectorAll("tbody tr")) {
         const item = LRDeals.fromNadlan(rowCells(row), context);
-        if (item && !savedKeys.has(item.key)) items.push(item);
+        if (item && !savedKeys.has(item.key)) {
+          savedKeys.add(item.key);
+          pending.push(item);
+        }
       }
     }
-    if (!items.length) return;
-    for (const item of items) savedKeys.add(item.key);
-    LRDeals.saveItems(chrome.storage.local, items).then((merged) => {
-      totals.found += items.length;
-      totals.added += merged.added;
-      setStatus(`נשמרו ${fmt(totals.found)} עסקאות בעמוד הזה (${fmt(totals.added)} חדשות) ✓`);
-    }, (error) => console.warn("[lightrail-ext] failed to save nadlan deals", error));
+    if (!batch || pending.length >= FLUSH_EVERY) flush();
   }
 
   function scheduleRead() {
@@ -84,12 +96,54 @@
     return null;
   }
 
+  // עסקאות שהיו שמורות לפני הסריקה (לעיר של העמוד) – כדי לזהות מתי הגענו למה שכבר נאסף
+  let known = new Set();
+  async function loadKnown() {
+    known = new Set();
+    const context = pageContext();
+    if (!context || typeof LRDeals.loadCity !== "function") return;
+    try {
+      known = new Set(Object.keys(await LRDeals.loadCity(chrome.storage.local, context.city)));
+    } catch {}
+  }
+
+  // תאריכי העסקאות בעמוד הנוכחי של הטבלה (ISO), וכמה מהן עדיין לא שמורות
+  function pageStats(table, context) {
+    const dates = [];
+    let fresh = 0;
+    for (const row of table.querySelectorAll("tbody tr")) {
+      const item = LRDeals.fromNadlan(rowCells(row), context);
+      if (!item) continue;
+      dates.push(item.deal.date);
+      if (!known.has(item.key)) fresh++;
+    }
+    return { dates, fresh };
+  }
+
   async function scanTable(table, index, count) {
     const root = tableRoot(table);
     const maxPages = Math.max(1, Number(cfg.nadlanMaxPages) || 20);
+    // 0 = תמיד לעבור על כל העמודים; N = לעצור אחרי N עמודים רצופים בלי עסקאות חדשות (הטבלה ממוינת מהחדש לישן)
+    const stopAfter = Math.max(0, Number(cfg.nadlanStopAfterKnown) || 0);
+    const context = pageContext();
     let pages = 1;
+    let quietPages = 0;
+    let lastDate = "9999-99-99";
+    let descending = true;
     while (!stopRequested) {
-      readTables();
+      if (stopAfter && context && descending) {
+        const { dates, fresh } = pageStats(table, context);
+        for (const date of dates) {
+          if (date > lastDate) descending = false;
+          lastDate = date;
+        }
+        quietPages = fresh ? 0 : quietPages + 1;
+        if (descending && quietPages >= stopAfter) {
+          readTables({ batch: true });
+          return "caught-up";
+        }
+      }
+      readTables({ batch: true });
       const pager = pagerOf(root);
       const next = root.querySelector("button.nextBtn");
       if (!next || next.disabled || (pager && pager.page >= pager.total) || pages >= maxPages) return "done";
@@ -102,7 +156,7 @@
         await sleep(300);
       }
       pages++;
-      setStatus(`טבלה ${index + 1} מתוך ${count} · עמוד ${pages}${pager ? ` מתוך ${pager.total}` : ""} · נשמרו ${fmt(totals.found)}`);
+      setStatus(`טבלה ${index + 1} מתוך ${count} · עמוד ${pages} מתוך ${Math.min(maxPages, pager ? pager.total : maxPages)} · נשמרו ${fmt(totals.found + pending.length)}`);
       await sleep(Math.max(1, Number(cfg.nadlanDelaySeconds) || 3) * 1000);
     }
     return "stopped";
@@ -119,20 +173,42 @@
     stopRequested = false;
     renderPanel();
     let outcome = "done";
+    let caughtUp = false;
+    await loadKnown();
     for (let i = 0; i < tables.length && !stopRequested; i++) {
       outcome = await scanTable(tables[i], i, tables.length);
+      if (outcome === "caught-up") caughtUp = true;
       if (outcome === "stuck") break;
     }
     scanning = false;
     readTables();
+    await flush();
     setStatus(
       outcome === "stuck"
         ? `העמוד לא התקדם – נעצרנו (ייתכן שהאתר מבקש אימות). נשמרו ${fmt(totals.found)} עסקאות.`
+        : caughtUp && !stopRequested
+          ? `הגענו לעסקאות שכבר שמורות – הסריקה הסתיימה. נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`
         : stopRequested
           ? `נעצר. נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות).`
           : `הסריקה הסתיימה: ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`
     );
     renderPanel();
+    return outcome === "stuck" ? "stuck" : stopRequested ? "stopped" : caughtUp ? "caught-up" : "done";
+  }
+
+  // סריקה מתוזמנת: הרקע פותח את העמוד עם lrScan=1, והעמוד סורק ומדווח בסוף כדי שהלשונית תיסגר
+  let autoScanStarted = false;
+  function autoScanIfRequested() {
+    if (autoScanStarted || !/[?&]lrScan=1(&|$)/.test(location.search)) return;
+    autoScanStarted = true;
+    (async () => {
+      for (let i = 0; i < 40 && !dealTables().length; i++) await sleep(500);
+      let outcome = "no-table";
+      if (dealTables().length) outcome = await scanAll();
+      try {
+        chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-done", outcome, found: totals.found, added: totals.added });
+      } catch {}
+    })();
   }
 
   // ---------- חלון קטן בפינה ----------
@@ -173,6 +249,7 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
     scheduleRead();
+    autoScanIfRequested();
   }
 
   function stop() {

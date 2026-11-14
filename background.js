@@ -162,6 +162,97 @@ chrome.runtime.onStartup.addListener(() => {
   syncStreetScanAlarm().catch((error) => console.error("[lightrail-ext] failed to restore street scan schedule", error));
 });
 
+// ---------- סריקת עסקאות מאתר הנדל"ן הממשלתי (רשות, כבויה כברירת מחדל) ----------
+// כל N שעות (לבחירת המשתמש) פותחים ברקע את עמוד היישוב של כל עיר ברשימה עם lrScan=1. התוסף שבעמוד סורק
+// לפי ההגדרות ומדווח בסיום; אז הלשונית נסגרת ונפתחת העיר הבאה.
+const NADLAN_ALARM = "lightrail-nadlan-scan";
+const NADLAN_RUNTIME_KEY = "lightrailNadlanScanRuntime";
+const NADLAN_SETTINGS = { readNadlan: false, nadlanSchedule: false, nadlanEveryHours: 24, nadlanCities: "" };
+const NADLAN_TAB_MAX_MS = 6 * 3600 * 1000;
+
+function nadlanCityIds(text) {
+  const ids = [];
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const match = line.match(/^\s*(\d{1,6})(?:\D|$)/);
+    if (match && !ids.includes(match[1])) ids.push(match[1]);
+  }
+  return ids.slice(0, 50);
+}
+
+async function syncNadlanAlarm() {
+  const settings = await chrome.storage.sync.get(NADLAN_SETTINGS);
+  if (!settings.readNadlan || !settings.nadlanSchedule || !nadlanCityIds(settings.nadlanCities).length) {
+    await chrome.alarms.clear(NADLAN_ALARM);
+    return;
+  }
+  const hours = Math.max(1, Math.min(168, Math.round(Number(settings.nadlanEveryHours) || 24)));
+  const existing = await chrome.alarms.get(NADLAN_ALARM);
+  if (existing && existing.periodInMinutes === hours * 60) return;
+  await chrome.alarms.create(NADLAN_ALARM, { periodInMinutes: hours * 60, delayInMinutes: hours * 60 });
+}
+
+async function openNextNadlanCity() {
+  const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
+  const queue = Array.isArray(runtime.queue) ? runtime.queue : [];
+  if (!queue.length) {
+    await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: false, finishedAt: Date.now() } });
+    return;
+  }
+  const [id, ...rest] = queue;
+  const tab = await chrome.tabs.create({
+    url: `https://www.nadlan.gov.il/?view=settlement&id=${id}&page=deals&lrScan=1`,
+    active: false,
+  });
+  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: rest, tabId: tab.id, startedAt: Date.now() } });
+}
+
+async function startNadlanScan() {
+  const settings = await chrome.storage.sync.get(NADLAN_SETTINGS);
+  if (!settings.readNadlan) return { ok: false, error: "סמנו קודם את השמירה מהאתר הממשלתי." };
+  const ids = nadlanCityIds(settings.nadlanCities);
+  if (!ids.length) return { ok: false, error: "לא הוגדרו ערים לסריקה." };
+  const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
+  if (runtime.running === true && Number.isInteger(runtime.tabId) && Date.now() - (runtime.startedAt || 0) < NADLAN_TAB_MAX_MS) {
+    const tab = await chrome.tabs.get(runtime.tabId).catch(() => null);
+    if (tab) return { ok: false, error: "סריקה כבר רצה." };
+  }
+  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids } });
+  await openNextNadlanCity();
+  return { ok: true };
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  syncNadlanAlarm().catch((error) => console.error("[lightrail-ext] nadlan schedule", error));
+});
+chrome.runtime.onStartup.addListener(() => {
+  syncNadlanAlarm().catch((error) => console.error("[lightrail-ext] nadlan schedule", error));
+});
+chrome.storage.sync.onChanged.addListener((changes) => {
+  if (Object.keys(NADLAN_SETTINGS).some((key) => changes[key])) {
+    syncNadlanAlarm().catch((error) => console.error("[lightrail-ext] nadlan schedule", error));
+  }
+});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== NADLAN_ALARM) return;
+  startNadlanScan().catch((error) => console.error("[lightrail-ext] nadlan scan", error));
+});
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === "lightrail:nadlan-scan-now") {
+    startNadlanScan().then(sendResponse, (error) => sendResponse({ ok: false, error: error.message || "ההפעלה נכשלה" }));
+    return true;
+  }
+  if (msg && msg.type === "lightrail:nadlan-scan-done" && sender.tab) {
+    (async () => {
+      const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
+      if (runtime.tabId !== sender.tab.id) return;
+      await chrome.tabs.remove(sender.tab.id).catch(() => {});
+      // מרווח בין ערים, כדי לא לטעון את האתר ברצף
+      setTimeout(() => openNextNadlanCity().catch(() => {}), 20000);
+    })().catch((error) => console.error("[lightrail-ext] nadlan scan next", error));
+  }
+  return false;
+});
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== STREET_SCAN_ALARM) return;
   (async () => {

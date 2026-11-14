@@ -359,9 +359,42 @@
           <option value="5">5</option>
           <option value="20">20 (ברירת מחדל)</option>
           <option value="50">50</option>
-          <option value="500">כולם</option>
+          <option value="200">200</option>
+          <option value="1000">1,000</option>
+          <option value="10000">כולם (עיר שלמה יכולה לקחת שעות)</option>
         </select>
       </label>
+      <label class="field">
+        <span data-icon="🛑">מתי לעצור באמצע סריקה?</span>
+        <select id="nadlanStopAfterKnown">
+          <option value="0">אף פעם – לעבור על כל העמודים (עד המגבלה)</option>
+          <option value="1">אחרי עמוד אחד בלי עסקאות חדשות</option>
+          <option value="2">אחרי 2 עמודים בלי עסקאות חדשות (ברירת מחדל)</option>
+          <option value="3">אחרי 3 עמודים בלי עסקאות חדשות</option>
+          <option value="5">אחרי 5 עמודים בלי עסקאות חדשות</option>
+        </select>
+      </label>
+      <label class="row switch">
+        <input type="checkbox" id="nadlanSchedule">
+        <span data-icon="🗓️">סריקה מתוזמנת של ערים (ברקע)</span>
+      </label>
+      <label class="field">
+        <span data-icon="⏰">כל כמה זמן?</span>
+        <select id="nadlanEveryHours">
+          <option value="6">כל 6 שעות</option>
+          <option value="12">כל 12 שעות</option>
+          <option value="24">פעם ביום (ברירת מחדל)</option>
+          <option value="72">כל 3 ימים</option>
+          <option value="168">פעם בשבוע</option>
+        </select>
+      </label>
+      <label class="field">
+        <span data-icon="🏙️">ערים לסריקה (מספר היישוב מהכתובת באתר, שורה לכל עיר)</span>
+        <textarea id="nadlanCities" rows="3" placeholder="7900 פתח תקווה&#10;8600 רמת גן"></textarea>
+      </label>
+      <button id="nadlanScanNow" type="button">הרץ סריקה עכשיו</button>
+      <p class="small">מספר היישוב הוא ה-id שבכתובת של עמוד העיר, למשל nadlan.gov.il/?view=settlement&amp;id=7900. הסריקה המתוזמנת פותחת כל עיר בלשונית ברקע, סורקת לפי ההגדרות שלמעלה וסוגרת אותה. דורשת שהשמירה מהאתר הממשלתי מסומנת. אפשר גם להריץ ידנית בכל עמוד דרך הכפתור שבפינת האתר.</p>
+      <p class="small">הטבלה באתר ממוינת מהעסקה החדשה לישנה, ולכן בסריקה חוזרת של אותה עיר מספיקים העמודים הראשונים. אם הסדר לא יורד לפי תאריך, הסריקה לא נעצרת מוקדם.</p>
       <p class="small">כבוי כברירת מחדל. כשמסומן, בכניסה לעמוד כתובת באתר הממשלתי נשמרות העסקאות שבטבלאות, ויש כפתור "סרוק את כל עמודי הטבלאות" שלוחץ "הבא" כמו שהיית עושה. התוסף לא פונה ל-API של האתר; אם העמוד לא מתקדם (למשל אימות) הסריקה נעצרת.</p>
       <p class="small">הבחירה לא מוחקת מידע שכבר נשמר. פרויקטים יישמרו כרגיל; כיבוי השמירה עוצר שמירת מידע חדש.</p>
       <p class="small export-hint">אפשר לייצא את כל המידע ל־TXT, CSV או Excel. Excel כולל מסננים בכותרות, קישורים לחיצים וצביעה ירוקה/אדומה למאפיינים.</p>
