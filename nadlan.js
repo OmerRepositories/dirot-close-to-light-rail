@@ -4,7 +4,8 @@
 // נעצר מיד אם העמוד לא מתקדם (למשל אימות מול האתר) – את האימות פותר הגולש בעצמו.
 (() => {
   const DEFAULTS = { readNadlan: false, nadlanDelaySeconds: 3, nadlanMaxPages: 20, nadlanStopAfterKnown: 2 };
-  const SETTLE_MS = 800;
+  const SETTLE_MS = 400;
+  const IDLE_FLUSH_MS = 1500;
   const PAGE_WAIT_MS = 12000;
   let cfg = { ...DEFAULTS };
   let observer = null;
@@ -59,7 +60,7 @@
       totals.added += merged.added;
       for (const item of items) storedKeys.add(item.key);
       markRows();
-      if (!scanning) setStatus(`${pageLabel()}נשמר ✓ · ${fmt(items.length)} עסקאות (${fmt(merged.added)} חדשות). סה״כ בביקור הזה: ${fmt(totals.found)} (${fmt(totals.added)} חדשות)`);
+      if (!scanning) setStatus(`נשמרו בתוסף ✓ ${fmt(items.length)} עסקאות (${fmt(merged.added)} חדשות) · עד ${pageLabel().trim()} · סה״כ בביקור הזה: ${fmt(totals.found)} (${fmt(totals.added)} חדשות)`);
       else setStatus(`נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`);
     }, (error) => {
       console.warn("[lightrail-ext] failed to save nadlan deals", error);
@@ -98,26 +99,47 @@
       setStatus("לא זוהתה עיר בעמוד – לא נשמרו עסקאות (נתמכים עמודי כתובת ועמודי יישוב)");
       return;
     }
+    let fresh = 0;
     for (const table of dealTables()) {
       for (const row of table.querySelectorAll("tbody tr")) {
         const item = LRDeals.fromNadlan(rowCells(row), context);
-        if (item && !savedKeys.has(item.key)) {
+        if (!item) {
+          // עסקה בלי כתובת (רק גוש/חלקה, בדרך כלל פרויקט חדש) – אין לה מפתח, לא נשמרת
+          if (row.children.length > 8) noAddressRows.add(rowCells(row).slice(2, 6).join("|"));
+          continue;
+        }
+        if (!savedKeys.has(item.key)) {
           savedKeys.add(item.key);
           pending.push(item);
+          fresh++;
         }
       }
     }
     markRows();
-    if (!batch && !pending.length && dealTables().length) {
-      setStatus(`${pageLabel()}כבר נשמר בביקור הזה ✓ · סה״כ: ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות)`);
-      return;
-    }
     if (!batch || pending.length >= FLUSH_EVERY || (pending.length && Date.now() - lastFlushAt > FLUSH_MS)) flush();
+    else if (pending.length && !scanning) setStatus(`${pageLabel()}נקרא · ${fmt(pending.length)} עסקאות ממתינות לשמירה (נשמרות כשעוצרים לרגע)…`);
+    return fresh;
   }
+  const noAddressRows = new Set();
 
+  // דפדוף ידני יכול להיות מהיר מאוד (עשרות עמודים בשניות), ולכן קוראים מיד בכל שינוי בטבלה –
+  // קריאה של 10 שורות זולה. הכתיבה לאחסון (כבדה) מתבצעת בקבוצה, כשעוצרים לרגע (או כל 100 עסקאות).
+  let lastSignature = "";
+  let idleFlushTimer = null;
+  function tablesSignature() {
+    return dealTables().map((table) => firstRowText(table) + "#" + table.querySelectorAll("tbody tr").length).join("|");
+  }
+  function onTableChange() {
+    const signature = tablesSignature();
+    if (signature === lastSignature) return;
+    lastSignature = signature;
+    readTables({ batch: true });
+    clearTimeout(idleFlushTimer);
+    idleFlushTimer = setTimeout(() => flush(), IDLE_FLUSH_MS);
+  }
   function scheduleRead() {
     clearTimeout(readTimer);
-    readTimer = setTimeout(readTables, SETTLE_MS);
+    readTimer = setTimeout(onTableChange, SETTLE_MS);
   }
 
   // ---------- סריקה אוטומטית של עמודי הטבלאות ----------
@@ -263,8 +285,25 @@
 
   // ---------- חלון קטן בפינה ----------
   let statusEl = null;
+  let badgeEl = null;
   function setStatus(text) {
     if (statusEl) statusEl.textContent = text;
+    // אותו חיווי גם מעל הטבלה, איפה שהעין נמצאת בזמן דפדוף
+    const table = dealTables()[0];
+    if (!table || !cfg.readNadlan) return;
+    if (!badgeEl) {
+      badgeEl = document.createElement("div");
+      badgeEl.dir = "rtl";
+      badgeEl.style.cssText = "margin:6px 0;padding:6px 12px;border-radius:8px;font:600 13px/1.4 system-ui,Arial,sans-serif;border-inline-start:5px solid currentColor";
+    }
+    const root = tableRoot(table);
+    if (!badgeEl.isConnected || badgeEl.parentElement !== root) root.prepend(badgeEl);
+    const pendingState = /ממתינות|נקרא/.test(text);
+    const failed = /נכשל|לא זוהתה/.test(text);
+    badgeEl.style.color = failed ? "#9b1c2e" : pendingState ? "#8a4b00" : "#1d6b33";
+    badgeEl.style.background = failed ? "#fbe9ec" : pendingState ? "#fdeed6" : "#e4f3e8";
+    const skipped = noAddressRows.size ? ` · ${fmt(noAddressRows.size)} עסקאות בלי כתובת (רק גוש/חלקה) לא נשמרות` : "";
+    badgeEl.textContent = "קרבה לרכבת: " + text + skipped;
   }
   function renderPanel() {
     if (!panel) {
@@ -323,8 +362,12 @@
     renderPanel();
     observer = new MutationObserver(() => {
       // הסימון בשורות מתעדכן מיד (שורות שהתחלפו לעמוד חדש מאבדות את הפס עד שיישמרו)
-      try { markRows(); } catch {}
-      if (!scanning) scheduleRead();
+      if (scanning) return;
+      try {
+        onTableChange();
+      } catch {}
+      // ליתר ביטחון, קריאה נוספת כשהעמוד נרגע (למשל שורות שנטענו בהדרגה)
+      scheduleRead();
     });
     observer.observe(document.body, { childList: true, subtree: true });
     scheduleRead();
