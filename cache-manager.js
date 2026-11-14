@@ -4576,7 +4576,7 @@ function renderDeals() {
     cell(displayPrice(deal.price));
     cell(displayPrice(LRDeals.dealPpsm(deal)));
     cell(Number.isFinite(deal.buildYear) ? deal.buildYear : "");
-    cell((deal.sources || []).map((source) => (source === "yad2" ? "יד2" : source === "madlan" ? "מדלן" : source)).join(" + "), "deal-sources");
+    cell((deal.sources || []).map((source) => (source === "yad2" ? "יד2" : source === "madlan" ? "מדלן" : source === "nadlan" ? "נדל״ן ממשלתי" : source)).join(" + "), "deal-sources");
     const listingsCell = cell("", "deal-listings");
     const count = places.get(LRDeals.placeKey(deal.city, deal.street, deal.house)) || 0;
     if (count) {

@@ -648,7 +648,7 @@ var LRCacheExport = (() => {
       .replace(/'/g, "&apos;");
   }
 
-  const DEAL_SOURCE_LABELS = { yad2: "יד2", madlan: "מדלן" };
+  const DEAL_SOURCE_LABELS = { yad2: "יד2", madlan: "מדלן", nadlan: "נדל״ן ממשלתי" };
   const DEAL_COLUMNS = [
     { label: "תאריך עסקה", width: 13, value: (deal) => deal.date, text: true },
     { label: "עיר", width: 16, value: (deal) => deal.city, text: true },

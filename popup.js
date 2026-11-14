@@ -34,6 +34,9 @@ const DEFAULTS = {
   favoriteStreets: [],
   dealsPages: 10,
   dealsRefetchHours: 24,
+  readNadlan: false,
+  nadlanDelaySeconds: 3,
+  nadlanMaxPages: 20,
   showPurchaseTax: true,
   purchaseTaxTrack: "single",
   purchaseTaxTracks: null,
@@ -129,6 +132,7 @@ const boolKeys = [
   "saveListingData",
   "hideAds",
   "skipBlockedStreets",
+  "readNadlan",
   "hideIrrelevant",
   "showPriceChange",
   "showListingAge",
@@ -276,6 +280,8 @@ function fill(s) {
     s.listingIndexingMode === "opened" ? "opened" : "encountered";
   $("dealsPages").value = String(DEALS_PAGE_OPTIONS.includes(Number(s.dealsPages)) ? Number(s.dealsPages) : 10);
   $("dealsRefetchHours").value = String(DEALS_REFETCH_OPTIONS.includes(Number(s.dealsRefetchHours)) ? Number(s.dealsRefetchHours) : 24);
+  $("nadlanDelaySeconds").value = String([2, 3, 5, 10].includes(Number(s.nadlanDelaySeconds)) ? Number(s.nadlanDelaySeconds) : 3);
+  $("nadlanMaxPages").value = String([5, 20, 50, 500].includes(Number(s.nadlanMaxPages)) ? Number(s.nadlanMaxPages) : 20);
   const missingPct = String(Number.isFinite(Number(s.irrelevantMissingPct)) ? Number(s.irrelevantMissingPct) : 50);
   $("irrelevantMissingPct").value = [...$("irrelevantMissingPct").options].some((o) => o.value === missingPct)
     ? missingPct
@@ -386,6 +392,8 @@ function read() {
     $("listingIndexingMode").value === "opened" ? "opened" : "encountered";
   out.dealsPages = DEALS_PAGE_OPTIONS.includes(Number($("dealsPages").value)) ? Number($("dealsPages").value) : 10;
   out.dealsRefetchHours = DEALS_REFETCH_OPTIONS.includes(Number($("dealsRefetchHours").value)) ? Number($("dealsRefetchHours").value) : 24;
+  out.nadlanDelaySeconds = [2, 3, 5, 10].includes(Number($("nadlanDelaySeconds").value)) ? Number($("nadlanDelaySeconds").value) : 3;
+  out.nadlanMaxPages = [5, 20, 50, 500].includes(Number($("nadlanMaxPages").value)) ? Number($("nadlanMaxPages").value) : 20;
   out.irrelevantMissingPct = Number($("irrelevantMissingPct").value) || 0;
   out.requiredAmenities = [...document.querySelectorAll("[data-amenity]:checked")].map(
     (input) => input.dataset.amenity
@@ -430,6 +438,8 @@ for (const k of [...numberKeys, ...boolKeys]) {
 $("listingIndexingMode").addEventListener("change", save);
 $("dealsPages").addEventListener("change", save);
 $("dealsRefetchHours").addEventListener("change", save);
+$("nadlanDelaySeconds").addEventListener("change", save);
+$("nadlanMaxPages").addEventListener("change", save);
 $("irrelevantMissingPct").addEventListener("change", save);
 $("blockedStreets").addEventListener("input", save);
 $("favoriteStreets").addEventListener("input", save);

@@ -144,6 +144,44 @@ var LRDeals = (() => {
     }, "madlan");
   }
 
+  // קומה כפי שאתר הנדל"ן הממשלתי כותב אותה: "שמינית", "קרקע", או מספר
+  const NADLAN_FLOORS = new Map([
+    ["קרקע", 0], ["ראשונה", 1], ["ראשון", 1], ["שניה", 2], ["שנייה", 2], ["שני", 2], ["שלישית", 3], ["שלישי", 3],
+    ["רביעית", 4], ["רביעי", 4], ["חמישית", 5], ["חמישי", 5], ["שישית", 6], ["שישי", 6], ["שביעית", 7], ["שביעי", 7],
+    ["שמינית", 8], ["שמיני", 8], ["תשיעית", 9], ["תשיעי", 9], ["עשירית", 10], ["עשירי", 10],
+    ["אחת עשרה", 11], ["שתים עשרה", 12], ["שתיים עשרה", 12], ["שלוש עשרה", 13], ["ארבע עשרה", 14], ["חמש עשרה", 15],
+    ["מרתף", -1],
+  ]);
+  function nadlanFloor(text) {
+    const value = cleanText(text);
+    if (!value) return null;
+    if (/^-?\d{1,3}$/.test(value)) return Number(value);
+    return NADLAN_FLOORS.has(value) ? NADLAN_FLOORS.get(value) : null;
+  }
+
+  // שורה מטבלת העסקאות באתר הנדל"ן הממשלתי (nadlan.gov.il). העמודות: מספר סידורי, כתובת ("רחוב מספר"),
+  // שטח, תאריך (dd/mm/yyyy), מחיר, גוש/חלקה, סוג נכס, חדרים, קומה. העיר והשכונה באות מכותרות העמוד (ctx).
+  function fromNadlan(cells, ctx) {
+    if (!Array.isArray(cells) || cells.length < 9 || !ctx || !ctx.city) return null;
+    const address = String(cells[1] || "").replace(/\s+/g, " ").trim();
+    const match = address.match(/^(.*?)\s+(\d{1,4}\s*[א-ת]?)$/);
+    const date = String(cells[3] || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match || !date) return null;
+    const type = String(cells[6] || "").trim();
+    return build({
+      city: ctx.city,
+      street: match[1],
+      house: match[2],
+      neighborhood: ctx.neighborhood || null,
+      date: `${date[3]}-${date[2].padStart(2, "0")}-${date[1].padStart(2, "0")}`,
+      price: String(cells[4] || "").replace(/[^\d]/g, ""),
+      sqm: String(cells[2] || "").replace(/[^\d.]/g, ""),
+      rooms: String(cells[7] || "").replace(/[^\d.]/g, ""),
+      floor: nadlanFloor(cells[8]),
+      propertyType: type && type !== "לא ידוע" ? type : null,
+    }, "nadlan");
+  }
+
   // מיזוג עסקה קיימת עם חדשה: איחוד מקורות, השלמת שדות חסרים (לא דורסים ערך קיים)
   function mergeDeal(existing, incoming, now) {
     if (!existing) return { deal: { ...incoming, firstSeenAt: now, updatedAt: now }, changed: true };
@@ -994,6 +1032,8 @@ var LRDeals = (() => {
     dealKey,
     fromYad2,
     fromMadlan,
+    fromNadlan,
+    nadlanFloor,
     mergeDeal,
     mergeAll,
     listingPlace,

@@ -340,6 +340,29 @@
         </select>
       </label>
       <p class="small">בכל כניסה למודעה ביד2 נקראות עסקאות האמת הקרובות מ-4 השנים האחרונות, 1,000 בכל עמוד, עם שנייה וחצי בין עמוד לעמוד – לפי תדירות הרענון שבחרת לכל שכונה. פחות עמודים = פחות בקשות ליד2 ואזור מצומצם יותר. עסקאות ממדלן נשמרות מהטבלה שבעמוד המודעה בכל מקרה.</p>
+      <label class="row switch">
+        <input type="checkbox" id="readNadlan">
+        <span data-icon="🏛️">לשמור עסקאות מאתר הנדל״ן הממשלתי (nadlan.gov.il)</span>
+      </label>
+      <label class="field">
+        <span data-icon="⏱️">הפרש בין עמודים בסריקה אוטומטית</span>
+        <select id="nadlanDelaySeconds">
+          <option value="2">2 שניות</option>
+          <option value="3">3 שניות (ברירת מחדל)</option>
+          <option value="5">5 שניות</option>
+          <option value="10">10 שניות</option>
+        </select>
+      </label>
+      <label class="field">
+        <span data-icon="📄">עד כמה עמודים בכל טבלה בסריקה</span>
+        <select id="nadlanMaxPages">
+          <option value="5">5</option>
+          <option value="20">20 (ברירת מחדל)</option>
+          <option value="50">50</option>
+          <option value="500">כולם</option>
+        </select>
+      </label>
+      <p class="small">כבוי כברירת מחדל. כשמסומן, בכניסה לעמוד כתובת באתר הממשלתי נשמרות העסקאות שבטבלאות, ויש כפתור "סרוק את כל עמודי הטבלאות" שלוחץ "הבא" כמו שהיית עושה. התוסף לא פונה ל-API של האתר; אם העמוד לא מתקדם (למשל אימות) הסריקה נעצרת.</p>
       <p class="small">הבחירה לא מוחקת מידע שכבר נשמר. פרויקטים יישמרו כרגיל; כיבוי השמירה עוצר שמירת מידע חדש.</p>
       <p class="small export-hint">אפשר לייצא את כל המידע ל־TXT, CSV או Excel. Excel כולל מסננים בכותרות, קישורים לחיצים וצביעה ירוקה/אדומה למאפיינים.</p>
       <div class="cache-actions">
