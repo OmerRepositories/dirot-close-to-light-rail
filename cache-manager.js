@@ -7174,10 +7174,14 @@ async function loadNadlanState() {
   }
 }
 
-$("runNadlanScan").addEventListener("click", async () => {
-  const result = await chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-now" }).catch(() => null);
+async function runNadlanScanNow(full) {
+  const result = await chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-now", full }).catch(() => null);
   if (!result || !result.ok) setFeature("nadlan", "failed", (result && result.error) || "ההפעלה נכשלה");
   else loadNadlanState();
+}
+$("runNadlanScan").addEventListener("click", () => runNadlanScanNow(false));
+$("runNadlanScanFull").addEventListener("click", () => {
+  if (confirm("רענון מלא עובר על כל העמודים של כל עיר שנבחרה (בפתח תקווה כ-6,600 עמודים, כמה שעות). להמשיך?")) runNadlanScanNow(true);
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {

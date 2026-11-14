@@ -231,15 +231,15 @@ async function openNextNadlanCity() {
   }
   const [id, ...rest] = queue;
   const tab = await chrome.tabs.create({
-    url: `https://www.nadlan.gov.il/?view=settlement&id=${id}&page=deals&lrScan=1`,
+    url: `https://www.nadlan.gov.il/?view=settlement&id=${id}&page=deals&lrScan=1${runtime.full === true ? "&lrFull=1" : ""}`,
     active: false,
   });
   await chrome.storage.local.set({
-    [NADLAN_RUNTIME_KEY]: { running: true, queue: rest, tabId: tab.id, startedAt: Date.now(), results: Array.isArray(runtime.results) ? runtime.results : [], currentId: id, names: runtime.names || {} },
+    [NADLAN_RUNTIME_KEY]: { running: true, queue: rest, tabId: tab.id, startedAt: Date.now(), results: Array.isArray(runtime.results) ? runtime.results : [], currentId: id, names: runtime.names || {}, full: runtime.full === true },
   });
 }
 
-async function startNadlanScan() {
+async function startNadlanScan(full = false) {
   const settings = await chrome.storage.sync.get(NADLAN_SETTINGS);
   if (!settings.readNadlan) return { ok: false, error: "סמנו קודם את השמירה מהאתר הממשלתי." };
   const ids = nadlanCityIds(settings.nadlanCities);
@@ -250,7 +250,7 @@ async function startNadlanScan() {
     const tab = Number.isInteger(runtime.tabId) ? await chrome.tabs.get(runtime.tabId).catch(() => null) : true;
     if (tab) return { ok: false, error: "סריקה כבר רצה." };
   }
-  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids, results: [], startedAt: Date.now(), names: nadlanCityNames(settings.nadlanCities) } });
+  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids, results: [], startedAt: Date.now(), names: nadlanCityNames(settings.nadlanCities), full: full === true } });
   await openNextNadlanCity();
   return { ok: true };
 }
@@ -282,7 +282,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "lightrail:nadlan-scan-now") {
-    startNadlanScan().then(sendResponse, (error) => sendResponse({ ok: false, error: error.message || "ההפעלה נכשלה" }));
+    startNadlanScan(msg.full === true).then(sendResponse, (error) => sendResponse({ ok: false, error: error.message || "ההפעלה נכשלה" }));
     return true;
   }
   if (msg && msg.type === "lightrail:nadlan-scan-done" && sender.tab) {

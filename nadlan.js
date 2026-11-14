@@ -14,6 +14,8 @@
   let readTimer = null;
   const savedKeys = new Set();
   let totals = { found: 0, added: 0, pages: 0 };
+  // סריקה מלאה: כל העמודים, בלי מגבלה ובלי עצירה מוקדמת (נבחרת בכפתור, בנפרד מהגדרות הסריקה הרגילה)
+  let fullMode = false;
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const fmt = (value) => Number(value || 0).toLocaleString("he-IL");
@@ -128,9 +130,9 @@
 
   async function scanTable(table, index, count) {
     const root = tableRoot(table);
-    const maxPages = Math.max(1, Number(cfg.nadlanMaxPages) || 20);
+    const maxPages = fullMode ? 1000000 : Math.max(1, Number(cfg.nadlanMaxPages) || 20);
     // 0 = תמיד לעבור על כל העמודים; N = לעצור אחרי N עמודים רצופים בלי עסקאות חדשות (הטבלה ממוינת מהחדש לישן)
-    const stopAfter = Math.max(0, Number(cfg.nadlanStopAfterKnown) || 0);
+    const stopAfter = fullMode ? 0 : Math.max(0, Number(cfg.nadlanStopAfterKnown) || 0);
     const context = pageContext();
     let pages = 1;
     totals.pages++;
@@ -171,8 +173,9 @@
     return "stopped";
   }
 
-  async function scanAll() {
+  async function scanAll({ full = false } = {}) {
     if (scanning) return;
+    fullMode = full;
     const tables = dealTables();
     if (!tables.length) {
       setStatus("לא נמצאו טבלאות עסקאות בעמוד");
@@ -217,7 +220,7 @@
     (async () => {
       for (let i = 0; i < 40 && !dealTables().length; i++) await sleep(500);
       let outcome = "no-table";
-      if (dealTables().length) outcome = await scanAll();
+      if (dealTables().length) outcome = await scanAll({ full: /[?&]lrFull=1(&|$)/.test(location.search) });
       try {
         chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-done", outcome, found: totals.found, added: totals.added, pages: totals.pages });
       } catch {}
@@ -246,12 +249,21 @@
     const button = document.createElement("button");
     button.type = "button";
     button.style.cssText = "padding:5px 10px;border-radius:6px;border:0;cursor:pointer;font:inherit";
-    button.textContent = scanning ? "עצור" : "סרוק את כל עמודי הטבלאות";
+    button.textContent = scanning ? "עצור" : "סרוק לפי ההגדרות";
     button.addEventListener("click", () => {
       if (scanning) stopRequested = true;
       else scanAll();
     });
     panel.append(title, statusEl, button);
+    if (!scanning) {
+      const full = document.createElement("button");
+      full.type = "button";
+      full.style.cssText = button.style.cssText;
+      full.textContent = "רענון מלא – כל העמודים";
+      full.title = "עובר על כל עמודי הטבלה, בלי מגבלת עמודים ובלי לעצור כשמגיעים לעסקאות שכבר נאספו";
+      full.addEventListener("click", () => scanAll({ full: true }));
+      panel.append(full);
+    }
   }
 
   // רשימת היישובים הרשמית של האתר (id, שם, אוכלוסייה) – לבחירת ערים בעמוד הרענון. נטענת פעם בחודש
