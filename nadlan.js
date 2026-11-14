@@ -57,9 +57,38 @@
     writing = writing.then(() => LRDeals.saveItems(chrome.storage.local, items)).then((merged) => {
       totals.found += items.length;
       totals.added += merged.added;
-      setStatus(`נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`);
-    }, (error) => console.warn("[lightrail-ext] failed to save nadlan deals", error));
+      for (const item of items) storedKeys.add(item.key);
+      markRows();
+      if (!scanning) setStatus(`${pageLabel()}נשמר ✓ · ${fmt(items.length)} עסקאות (${fmt(merged.added)} חדשות). סה״כ בביקור הזה: ${fmt(totals.found)} (${fmt(totals.added)} חדשות)`);
+      else setStatus(`נשמרו ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות) ✓`);
+    }, (error) => {
+      console.warn("[lightrail-ext] failed to save nadlan deals", error);
+      setStatus(`השמירה נכשלה: ${error && error.message ? error.message : error}`);
+    });
     return writing;
+  }
+
+  // חיווי בטבלה עצמה: פס ירוק = השורה נשמרה בתוסף, פס כתום = נקראה וממתינה לשמירה
+  const storedKeys = new Set();
+  function markRows() {
+    const context = pageContext();
+    if (!context) return;
+    for (const table of dealTables()) {
+      for (const row of table.querySelectorAll("tbody tr")) {
+        const item = LRDeals.fromNadlan(rowCells(row), context);
+        const state = item && storedKeys.has(item.key) ? "saved" : item && savedKeys.has(item.key) ? "pending" : "";
+        if ((row.dataset.lrSaved || "") === state) continue;
+        if (state) row.dataset.lrSaved = state;
+        else delete row.dataset.lrSaved;
+        row.style.boxShadow = state === "saved" ? "inset -4px 0 0 #2e9e5b" : state === "pending" ? "inset -4px 0 0 #e08a00" : "";
+        row.title = state === "saved" ? "נשמרה בתוסף ✓" : state === "pending" ? "ממתינה לשמירה בתוסף" : "";
+      }
+    }
+  }
+  function pageLabel() {
+    const table = dealTables()[0];
+    const pager = table && pagerOf(tableRoot(table));
+    return pager ? `עמוד ${fmt(pager.page)} מתוך ${fmt(pager.total)} ` : "העמוד ";
   }
 
   function readTables({ batch = false } = {}) {
@@ -77,6 +106,11 @@
           pending.push(item);
         }
       }
+    }
+    markRows();
+    if (!batch && !pending.length && dealTables().length) {
+      setStatus(`${pageLabel()}כבר נשמר בביקור הזה ✓ · סה״כ: ${fmt(totals.found)} עסקאות (${fmt(totals.added)} חדשות)`);
+      return;
     }
     if (!batch || pending.length >= FLUSH_EVERY || (pending.length && Date.now() - lastFlushAt > FLUSH_MS)) flush();
   }
@@ -288,6 +322,8 @@
     ensureSettlementIndex();
     renderPanel();
     observer = new MutationObserver(() => {
+      // הסימון בשורות מתעדכן מיד (שורות שהתחלפו לעמוד חדש מאבדות את הפס עד שיישמרו)
+      try { markRows(); } catch {}
       if (!scanning) scheduleRead();
     });
     observer.observe(document.body, { childList: true, subtree: true });
