@@ -7156,12 +7156,14 @@ async function loadNadlanState() {
       chrome.alarms.get(NADLAN_ALARM),
     ]);
     const runtime = local[NADLAN_RUNTIME_KEY] || {};
-    const fresh = Date.now() - (runtime.startedAt || 0) < 6 * 3600 * 1000;
-    if (runtime.running === true && fresh) {
+    const fresh = Date.now() - (runtime.startedAt || 0) < 24 * 3600 * 1000;
+    const nextAlarm = await chrome.alarms.get("lightrail-nadlan-next");
+    const tabAlive = Number.isInteger(runtime.tabId) ? Boolean(await chrome.tabs.get(runtime.tabId).catch(() => null)) : Boolean(nextAlarm);
+    if (runtime.running === true && fresh && tabAlive) {
       const left = Array.isArray(runtime.queue) ? runtime.queue.length : 0;
       setFeature("nadlan", "running", `נסרקות ערים ברקע${left ? ` · עוד ${left} בתור` : ""}`);
     } else if (runtime.running === true) {
-      setFeature("nadlan", "failed", "הסריקה האחרונה לא הסתיימה (הלשונית נסגרה או נתקעה)");
+      setFeature("nadlan", "failed", "הסריקה האחרונה נקטעה באמצע (הלשונית נסגרה, נתקעה או שהדפדפן נסגר). אפשר להריץ שוב.");
     } else if (Number.isFinite(runtime.lastFinishedAt)) {
       setFeature("nadlan", runtime.lastFailed ? "failed" : "done", `${timeText(runtime.lastFinishedAt)} · ${runtime.lastResult || ""}`);
     } else if (sync.readNadlan && sync.nadlanSchedule && alarm) {
@@ -7180,6 +7182,11 @@ async function runNadlanScanNow(full) {
   else loadNadlanState();
 }
 $("runNadlanScan").addEventListener("click", () => runNadlanScanNow(false));
+$("stopNadlanScan").addEventListener("click", async () => {
+  const result = await chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-stop" }).catch(() => null);
+  if (!result || !result.ok) setFeature("nadlan", "failed", (result && result.error) || "העצירה נכשלה");
+  else loadNadlanState();
+});
 $("runNadlanScanFull").addEventListener("click", () => {
   if (confirm("רענון מלא עובר על כל העמודים של כל עיר שנבחרה (בפתח תקווה כ-6,600 עמודים, כמה שעות). להמשיך?")) runNadlanScanNow(true);
 });

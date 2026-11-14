@@ -168,7 +168,12 @@ chrome.runtime.onStartup.addListener(() => {
 const NADLAN_ALARM = "lightrail-nadlan-scan";
 const NADLAN_RUNTIME_KEY = "lightrailNadlanScanRuntime";
 const NADLAN_SETTINGS = { readNadlan: false, nadlanSchedule: false, nadlanEveryHours: 24, nadlanCities: "" };
-const NADLAN_TAB_MAX_MS = 6 * 3600 * 1000;
+const NADLAN_TAB_MAX_MS = 24 * 3600 * 1000;
+// המעבר לעיר הבאה דרך התראה (alarm) ולא setTimeout: עובד הרקע של Chrome נרדם, וטיימר רגיל היה הולך לאיבוד
+const NADLAN_NEXT_ALARM = "lightrail-nadlan-next";
+function scheduleNextNadlanCity() {
+  return chrome.alarms.create(NADLAN_NEXT_ALARM, { delayInMinutes: 0.5 });
+}
 
 function nadlanCityNames(text) {
   const names = {};
@@ -246,9 +251,11 @@ async function startNadlanScan(full = false) {
   if (!ids.length) return { ok: false, error: "לא הוגדרו ערים לסריקה." };
   const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
   if (runtime.running === true && Date.now() - (runtime.startedAt || 0) < NADLAN_TAB_MAX_MS) {
-    // בין עיר לעיר אין לשונית (מרווח של כמה שניות) – גם זה "רץ"
-    const tab = Number.isInteger(runtime.tabId) ? await chrome.tabs.get(runtime.tabId).catch(() => null) : true;
-    if (tab) return { ok: false, error: "סריקה כבר רצה." };
+    // רצה באמת = הלשונית שלה פתוחה, או שהמעבר לעיר הבאה מתוזמן. אחרת זו שארית של ריצה שנקטעה
+    const alive = Number.isInteger(runtime.tabId)
+      ? Boolean(await chrome.tabs.get(runtime.tabId).catch(() => null))
+      : Boolean(await chrome.alarms.get(NADLAN_NEXT_ALARM));
+    if (alive) return { ok: false, error: "סריקה כבר רצה – אפשר לעצור אותה בכפתור \"עצירה\" ולהתחיל מחדש." };
   }
   await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids, results: [], startedAt: Date.now(), names: nadlanCityNames(settings.nadlanCities), full: full === true } });
   await openNextNadlanCity();
@@ -273,14 +280,37 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     if (runtime.running !== true || runtime.tabId !== tabId) return;
     const results = [...(runtime.results || []), { id: runtime.currentId, name: (runtime.names || {})[runtime.currentId], outcome: "closed", found: 0, added: 0, pages: 0 }];
     await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results } });
-    setTimeout(() => openNextNadlanCity().catch(() => {}), 5000);
+    await scheduleNextNadlanCity();
   })().catch(() => {});
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === NADLAN_NEXT_ALARM) {
+    openNextNadlanCity().catch((error) => console.error("[lightrail-ext] nadlan scan next", error));
+    return;
+  }
   if (alarm.name !== NADLAN_ALARM) return;
   startNadlanScan().catch((error) => console.error("[lightrail-ext] nadlan scan", error));
 });
+
+// עצירה ידנית: סוגרים את הלשונית, מבטלים את המעבר לעיר הבאה ושומרים את מה שהספיק להיסרק
+async function stopNadlanScan() {
+  await chrome.alarms.clear(NADLAN_NEXT_ALARM);
+  const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
+  const results = [...(runtime.results || [])];
+  if (Number.isInteger(runtime.tabId)) {
+    results.push({ id: runtime.currentId, name: (runtime.names || {})[runtime.currentId], outcome: "stopped", found: 0, added: 0, pages: 0 });
+    await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results } });
+    await chrome.tabs.remove(runtime.tabId).catch(() => {});
+  }
+  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results, queue: [] } });
+  await openNextNadlanCity();
+  return { ok: true };
+}
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === "lightrail:nadlan-scan-stop") {
+    stopNadlanScan().then(sendResponse, (error) => sendResponse({ ok: false, error: error.message || "העצירה נכשלה" }));
+    return true;
+  }
   if (msg && msg.type === "lightrail:nadlan-scan-now") {
     startNadlanScan(msg.full === true).then(sendResponse, (error) => sendResponse({ ok: false, error: error.message || "ההפעלה נכשלה" }));
     return true;
@@ -294,7 +324,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results } });
       await chrome.tabs.remove(sender.tab.id).catch(() => {});
       // מרווח בין ערים, כדי לא לטעון את האתר ברצף
-      setTimeout(() => openNextNadlanCity().catch(() => {}), 20000);
+      await scheduleNextNadlanCity();
     })().catch((error) => console.error("[lightrail-ext] nadlan scan next", error));
   }
   return false;
