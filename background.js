@@ -195,7 +195,19 @@ async function openNextNadlanCity() {
   const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
   const queue = Array.isArray(runtime.queue) ? runtime.queue : [];
   if (!queue.length) {
-    await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: false, finishedAt: Date.now() } });
+    const results = Array.isArray(runtime.results) ? runtime.results : [];
+    const failed = results.filter((item) => item.outcome === "stuck" || item.outcome === "no-table" || item.outcome === "closed");
+    const found = results.reduce((sum, item) => sum + (item.found || 0), 0);
+    const added = results.reduce((sum, item) => sum + (item.added || 0), 0);
+    const failedText = failed.length ? ` · נכשלו: ${failed.map((item) => item.id).join(", ")}` : "";
+    await chrome.storage.local.set({
+      [NADLAN_RUNTIME_KEY]: {
+        running: false,
+        lastFinishedAt: Date.now(),
+        lastFailed: failed.length > 0,
+        lastResult: `נסרקו ${results.length - failed.length} מתוך ${results.length} ערים · ${found} עסקאות (${added} חדשות)${failedText}`,
+      },
+    });
     return;
   }
   const [id, ...rest] = queue;
@@ -203,7 +215,9 @@ async function openNextNadlanCity() {
     url: `https://www.nadlan.gov.il/?view=settlement&id=${id}&page=deals&lrScan=1`,
     active: false,
   });
-  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: rest, tabId: tab.id, startedAt: Date.now() } });
+  await chrome.storage.local.set({
+    [NADLAN_RUNTIME_KEY]: { running: true, queue: rest, tabId: tab.id, startedAt: Date.now(), results: Array.isArray(runtime.results) ? runtime.results : [], currentId: id },
+  });
 }
 
 async function startNadlanScan() {
@@ -212,11 +226,12 @@ async function startNadlanScan() {
   const ids = nadlanCityIds(settings.nadlanCities);
   if (!ids.length) return { ok: false, error: "לא הוגדרו ערים לסריקה." };
   const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
-  if (runtime.running === true && Number.isInteger(runtime.tabId) && Date.now() - (runtime.startedAt || 0) < NADLAN_TAB_MAX_MS) {
-    const tab = await chrome.tabs.get(runtime.tabId).catch(() => null);
+  if (runtime.running === true && Date.now() - (runtime.startedAt || 0) < NADLAN_TAB_MAX_MS) {
+    // בין עיר לעיר אין לשונית (מרווח של כמה שניות) – גם זה "רץ"
+    const tab = Number.isInteger(runtime.tabId) ? await chrome.tabs.get(runtime.tabId).catch(() => null) : true;
     if (tab) return { ok: false, error: "סריקה כבר רצה." };
   }
-  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids } });
+  await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { running: true, queue: ids, results: [], startedAt: Date.now() } });
   await openNextNadlanCity();
   return { ok: true };
 }
@@ -232,6 +247,16 @@ chrome.storage.sync.onChanged.addListener((changes) => {
     syncNadlanAlarm().catch((error) => console.error("[lightrail-ext] nadlan schedule", error));
   }
 });
+// המשתמש סגר את לשונית הסריקה לפני שהסתיימה – העיר נחשבת כושלת והסריקה ממשיכה לבאה
+chrome.tabs.onRemoved.addListener((tabId) => {
+  (async () => {
+    const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
+    if (runtime.running !== true || runtime.tabId !== tabId) return;
+    const results = [...(runtime.results || []), { id: runtime.currentId, outcome: "closed", found: 0, added: 0 }];
+    await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results } });
+    setTimeout(() => openNextNadlanCity().catch(() => {}), 5000);
+  })().catch(() => {});
+});
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== NADLAN_ALARM) return;
   startNadlanScan().catch((error) => console.error("[lightrail-ext] nadlan scan", error));
@@ -245,6 +270,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       const { [NADLAN_RUNTIME_KEY]: runtime = {} } = await chrome.storage.local.get(NADLAN_RUNTIME_KEY);
       if (runtime.tabId !== sender.tab.id) return;
+      const results = [...(runtime.results || []), { id: runtime.currentId, outcome: msg.outcome, found: msg.found || 0, added: msg.added || 0 }];
+      // מנקים את מזהה הלשונית לפני הסגירה, כדי שהסגירה לא תיחשב כסגירה ע"י המשתמש
+      await chrome.storage.local.set({ [NADLAN_RUNTIME_KEY]: { ...runtime, tabId: null, results } });
       await chrome.tabs.remove(sender.tab.id).catch(() => {});
       // מרווח בין ערים, כדי לא לטעון את האתר ברצף
       setTimeout(() => openNextNadlanCity().catch(() => {}), 20000);
@@ -661,6 +689,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             managerTabId: runtime.managerTabId,
             running: false,
             scheduled: false,
+            lastScheduled: runtime.scheduled === true,
             lastFinishedAt: Date.now(),
             lastResult: String(msg.result || "הסתיים"),
           },

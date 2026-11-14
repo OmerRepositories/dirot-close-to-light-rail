@@ -1295,3 +1295,48 @@ th.narrow-col { min-width: 58px; }
 .street-scan-sites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 0; padding: 0; border: 0; }
 .street-scan-sites legend { float: inline-start; margin-inline-end: 8px; padding: 0; color: var(--muted); font-size: 13px; }
 .street-scan-sites label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+
+/* ---------- חיווי מצב לפעולות בעמוד הרענון: כתום = רץ, ירוק = הסתיים, אדום = נכשל ---------- */
+[data-state] { --s: #5b6b7b; --s-soft: #eceff3; }
+[data-state="running"] { --s: #b45f06; --s-soft: #fdeed6; }
+[data-state="done"] { --s: #237a3b; --s-soft: #e4f3e8; }
+[data-state="failed"] { --s: #b03246; --s-soft: #fbe9ec; }
+[data-state="waiting"] { --s: #2160b8; --s-soft: #e5eefb; }
+:root[data-theme="dark"] [data-state] { --s: #a9bacb; --s-soft: rgba(169, 186, 203, .14); }
+:root[data-theme="dark"] [data-state="running"] { --s: #f0a04b; --s-soft: rgba(240, 160, 75, .16); }
+:root[data-theme="dark"] [data-state="done"] { --s: #77d18f; --s-soft: rgba(119, 209, 143, .14); }
+:root[data-theme="dark"] [data-state="failed"] { --s: #f08b9a; --s-soft: rgba(240, 139, 154, .14); }
+:root[data-theme="dark"] [data-state="waiting"] { --s: #7fb0f5; --s-soft: rgba(127, 176, 245, .14); }
+
+.tool-card[data-feature] { --tone: var(--s); }
+.state-badge, .chip-state, .state-legend span {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px; border-radius: 999px;
+  color: var(--s); background: var(--s-soft);
+  font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.state-badge { margin-inline-start: auto; }
+.state-badge::before, .chip-dot, .state-legend span::before {
+  content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--s); flex: none;
+}
+.state-line { margin: -6px 0 0; color: var(--muted); font-size: 12px; min-height: 1.2em; }
+.feature-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+.feature-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+  border: 1px solid var(--line); border-inline-start: 4px solid var(--s);
+  border-radius: var(--r-md); background: var(--surface); color: var(--text, inherit);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.feature-chip .chip-state { padding: 1px 8px; font-size: 11px; }
+.state-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.state-legend span { font-weight: 600; }
+.tool-group { grid-column: 1 / -1; margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.tool-group .group-title { margin: 0; font-size: 17px; }
+.tool-group p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+[data-state="running"] .state-badge::before, [data-state="running"] .chip-dot, .state-legend [data-state="running"]::before {
+  animation: state-pulse 1.4s ease-in-out infinite;
+}
+@keyframes state-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-state="running"] .state-badge::before, [data-state="running"] .chip-dot, .state-legend [data-state="running"]::before { animation: none; }
+}

@@ -83,6 +83,12 @@ let currentPageLoaded = false;
 let refreshAttemptId = 0;
 let refreshSkippedCount = 0;
 let refreshRunScheduled = false;
+// מצב הפעולות בעמוד הרענון (ראו "חיווי מצב" בסוף הקובץ) – מוגדר כאן כי כפתורים קוראים לו כבר בטעינה
+const FEATURE_STATE_LABELS = { off: "כבוי", idle: "לא רץ", waiting: "מתוזמן", running: "רץ עכשיו", done: "הסתיים ✓", failed: "נכשל ✗", stopped: "נעצר" };
+const FEATURE_DEFAULT = { refreshNow: "idle", refreshSchedule: "off", streetScan: "off", walker: "idle", nadlan: "off" };
+const NADLAN_RUNTIME_KEY = "lightrailNadlanScanRuntime";
+const NADLAN_ALARM = "lightrail-nadlan-scan";
+const featureLast = {};
 let deleteInProgress = false;
 let fontScale = 1;
 let showFullPriceHistory = false;
@@ -3248,6 +3254,7 @@ function setRefreshStatus(text, error = false) {
   const status = $("refreshStatus");
   status.textContent = text;
   status.dataset.error = String(error);
+  if (error) setFeature(refreshRunScheduled ? "refreshSchedule" : "refreshNow", "failed", text);
 }
 
 function reportRefreshRun(type, result) {
@@ -3295,6 +3302,15 @@ async function loadRefreshSchedule() {
     const nextRun = alarm && Number.isFinite(alarm.scheduledTime)
       ? new Date(alarm.scheduledTime).toLocaleString("he-IL")
       : "";
+    if (runtime && runtime.running === true && runtime.scheduled === true) {
+      setFeature("refreshSchedule", "running", "מחזור פעיל (בלשונית אחרת או בעמוד הזה)");
+    } else if (runtime && runtime.lastScheduled === true && Number.isFinite(runtime.lastFinishedAt)) {
+      setFeature("refreshSchedule", outcomeState(runtime.lastResult), `${new Date(runtime.lastFinishedAt).toLocaleString("he-IL")} · ${runtime.lastResult || "הסתיים"}`);
+    } else if (schedule && schedule.enabled) {
+      setFeature("refreshSchedule", "waiting", nextRun ? `הבא: ${nextRun}` : `כל ${$("refreshScheduleHours").value} שעות`);
+    } else {
+      setFeature("refreshSchedule", "off", "כבוי");
+    }
     if (runtime && runtime.running === true) {
       $("scheduleStatus").textContent = `מחזור רענון פעיל עכשיו · ${nextRun ? `הבא: ${nextRun}` : `כל ${$("refreshScheduleHours").value} שעות`}`;
     } else if (runtime && Number.isFinite(runtime.lastFinishedAt)) {
@@ -3542,6 +3558,7 @@ function updateRefreshButtons() {
   $("pauseRefresh").disabled = !active;
   $("stopRefresh").disabled = !active;
   $("pauseRefresh").textContent = refreshPaused ? "המשך" : "השהיה";
+  featureRefresh("refreshNow", "refreshSchedule");
 }
 
 function applyFontScale(value) {
@@ -3718,6 +3735,7 @@ function openNextListing() {
       : "הרענון הסתיים.";
     setRefreshStatus(result);
     reportRefreshRun("lightrail:refresh-run-finished", result);
+    setFeature(refreshRunScheduled ? "refreshSchedule" : "refreshNow", "done", `${new Date().toLocaleString("he-IL")} · ${result}`);
     refreshRunScheduled = false;
     return;
   }
@@ -3898,6 +3916,7 @@ function stopRefresh(showStatus = true) {
   updateRefreshButtons();
   if (showStatus) setRefreshStatus("הרענון נעצר. כרטיסיית המודעה נשארה פתוחה.");
   if (wasRunning) {
+    setFeature(refreshRunScheduled ? "refreshSchedule" : "refreshNow", "stopped", `${new Date().toLocaleString("he-IL")} · הרענון נעצר`);
     reportRefreshRun("lightrail:refresh-run-finished", "הרענון נעצר על ידי המשתמש");
   }
   refreshRunScheduled = false;
@@ -3944,6 +3963,7 @@ function setWalkerStatus(text, error = false) {
   const status = $("walkerStatus");
   status.textContent = text;
   status.dataset.error = error ? "true" : "false";
+  if (error && !walkerActive()) setFeature("walker", "failed", text);
 }
 
 function updateWalkerButtons() {
@@ -3953,6 +3973,7 @@ function updateWalkerButtons() {
   $("stopWalker").disabled = !active;
   $("pauseWalker").textContent = walker.paused ? "המשך" : "השהיה";
   for (const id of ["walkerUrl", "walkerFrom", "walkerTo"]) $(id).disabled = active;
+  featureRefresh("walker");
 }
 
 function walkerPageLabel() {
@@ -4024,6 +4045,8 @@ function startWalker() {
 }
 
 function finishWalker(message) {
+  const allSkipped = walker.urls.length > 0 && walker.skipped >= walker.urls.length;
+  setFeature("walker", allSkipped ? "failed" : "done", `${new Date().toLocaleString("he-IL")} · ${String(message).slice(0, 140)}`);
   walker.attempt++;
   clearTimeout(walker.timer);
   clearTimeout(walker.loadTimer);
@@ -4234,6 +4257,7 @@ function stopWalker(message = "הדפדוף נעצר. הכרטיסייה נשא�
     chrome.tabs.sendMessage(walker.tabId, { type: "lightrail:walker-stop-scroll" }, () => void chrome.runtime.lastError);
   }
   finishWalker(`${message} ${walkerSummary()}`);
+  setFeature("walker", "stopped", `${new Date().toLocaleString("he-IL")} · ${message}`);
   loadCache();
 }
 
@@ -6821,6 +6845,7 @@ function setStreetScanStatus(text, error = false) {
 function updateStreetScanButtons() {
   $("runStreetScan").disabled = streetScan.running;
   $("stopStreetScan").disabled = !streetScan.running;
+  featureRefresh("streetScan");
 }
 
 function streetScanFormSettings() {
@@ -6854,6 +6879,15 @@ async function loadStreetScanSettings() {
     const last = runtime && Number.isFinite(runtime.lastFinishedAt)
       ? ` · סריקה אחרונה: ${new Date(runtime.lastFinishedAt).toLocaleString("he-IL")} – ${runtime.lastResult || "הסתיימה"}`
       : "";
+    if (runtime && runtime.running === true && Date.now() - (runtime.startedAt || 0) < 3 * 3600 * 1000) {
+      setFeature("streetScan", "running", "רצה עכשיו בלשונית אחרת");
+    } else if (runtime && Number.isFinite(runtime.lastFinishedAt)) {
+      setFeature("streetScan", runtime.lastState || outcomeState(runtime.lastResult), `${new Date(runtime.lastFinishedAt).toLocaleString("he-IL")} · ${runtime.lastResult || ""}`);
+    } else if (settings.enabled) {
+      setFeature("streetScan", "waiting", alarm && Number.isFinite(alarm.scheduledTime) ? `הסריקה הבאה: ${new Date(alarm.scheduledTime).toLocaleString("he-IL")}` : `כל ${settings.everyHours} שעות`);
+    } else {
+      setFeature("streetScan", "off", "כבוי");
+    }
     setStreetScanStatus(`${settings.enabled ? `הסריקה האוטומטית פעילה · כל ${settings.everyHours} שעות` : "סריקה אוטומטית כבויה"}${next}${last}`);
   } catch (error) {
     setStreetScanStatus(error.message || "טעינת ההגדרות נכשלה.", true);
@@ -6955,7 +6989,7 @@ async function runStreetScan({ scheduled = false } = {}) {
   const sites = LRStreetScan.SITES.filter((site) => options.sites[site]);
   if (!sites.length) {
     setStreetScanStatus("לא נבחר אף אתר לסריקה (יד2 / מדלן).", true);
-    if (scheduled) await finishStreetScanRun("לא נבחר אף אתר לסריקה.", scheduled);
+    if (scheduled) await finishStreetScanRun("לא נבחר אף אתר לסריקה.", scheduled, true);
     return;
   }
   Object.assign(streetScan, { running: true, stopped: false, tabId: null });
@@ -7014,13 +7048,15 @@ async function runStreetScan({ scheduled = false } = {}) {
   updateStreetScanButtons();
   setStreetScanStatus(message, Boolean(failure));
   if (totals.added) loadCache();
-  await finishStreetScanRun(message, scheduled);
+  await finishStreetScanRun(message, scheduled, Boolean(failure));
 }
 
-async function finishStreetScanRun(message, scheduled) {
+async function finishStreetScanRun(message, scheduled, failed = false) {
   const runtime = (await storageGet(STREET_SCAN_RUNTIME_KEY).catch(() => null)) || {};
+  const state = outcomeState(message, failed);
+  setFeature("streetScan", state, `${new Date().toLocaleString("he-IL")} · ${message}`);
   await storageSet({
-    [STREET_SCAN_RUNTIME_KEY]: { ...runtime, running: false, lastFinishedAt: Date.now(), lastResult: message },
+    [STREET_SCAN_RUNTIME_KEY]: { ...runtime, running: false, lastFinishedAt: Date.now(), lastResult: message, lastState: state },
   }).catch(() => {});
   if (!scheduled) return;
   // עמוד שנפתח לסריקה המתוזמנת נסגר בסוף – אלא אם המשתמש עובד בו או שרענון רץ בו
@@ -7046,4 +7082,115 @@ if (new URLSearchParams(location.search).get("streetScan") === "1") {
     setFavoriteStreets(stored.favoriteStreets);
     runStreetScan({ scheduled: true });
   });
+}
+
+// ---------- חיווי מצב לכל פעולה בעמוד הרענון ----------
+// כתום = רץ עכשיו, ירוק = הסתיים, אדום = נכשל, כחול = מתוזמן, אפור = לא רץ / כבוי / נעצר.
+// "רץ" נקבע לפי המצב החי בעמוד; אחרת מוצגת התוצאה האחרונה (featureLast), שנשמרת גם מהרקע.
+
+function outcomeState(text, failed = false) {
+  if (failed || /נכשל|לא הצלחנו|ביקשה אימות|לא התקדם/.test(text || "")) return "failed";
+  if (/נעצר/.test(text || "")) return "stopped";
+  return "done";
+}
+
+function featureLive(feature) {
+  if (feature === "refreshNow") {
+    if (refreshQueue.length && !refreshRunScheduled) return `${refreshPaused ? "מושהה · " : ""}מודעה ${Math.min(refreshIndex + 1, refreshQueue.length)} מתוך ${refreshQueue.length}`;
+  } else if (feature === "refreshSchedule") {
+    if (refreshQueue.length && refreshRunScheduled) return `${refreshPaused ? "מושהה · " : ""}מודעה ${Math.min(refreshIndex + 1, refreshQueue.length)} מתוך ${refreshQueue.length}`;
+  } else if (feature === "streetScan") {
+    if (streetScan.running) return ($("streetScanStatus").textContent || "רץ").slice(0, 110);
+  } else if (feature === "walker") {
+    if (walkerActive()) return `${walker.paused ? "מושהה · " : ""}עמוד ${Math.min(walker.index + 1, walker.urls.length)} מתוך ${walker.urls.length}`;
+  }
+  return null;
+}
+
+function renderFeature(feature) {
+  const live = featureLive(feature);
+  const last = featureLast[feature] || { state: FEATURE_DEFAULT[feature], detail: "" };
+  const state = live !== null ? "running" : last.state;
+  const detail = live !== null ? live : last.detail || "";
+  const card = document.querySelector(`[data-feature="${feature}"]`);
+  const chip = document.querySelector(`[data-feature-chip="${feature}"]`);
+  if (card) {
+    card.dataset.state = state;
+    const badge = card.querySelector("[data-badge]");
+    if (badge) badge.textContent = FEATURE_STATE_LABELS[state];
+    const line = card.querySelector("[data-state-line]");
+    if (line) line.textContent = detail;
+  }
+  if (chip) {
+    chip.dataset.state = state;
+    chip.querySelector(".chip-state").textContent = FEATURE_STATE_LABELS[state];
+    chip.title = detail;
+  }
+}
+
+function setFeature(feature, state, detail = "") {
+  featureLast[feature] = { state, detail };
+  renderFeature(feature);
+}
+
+function renderAllFeatures() {
+  for (const feature of Object.keys(FEATURE_DEFAULT)) renderFeature(feature);
+}
+
+// לחיצה על כפתור בפס המצב מגללת לכרטיס של הפעולה
+for (const chip of document.querySelectorAll("[data-feature-chip]")) {
+  chip.addEventListener("click", () => {
+    const card = document.querySelector(`[data-feature="${chip.dataset.featureChip}"]`);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+const timeText = (value) => (Number.isFinite(value) ? new Date(value).toLocaleString("he-IL") : "");
+
+// סריקת נדל"ן ממשלתי: המצב נשמר ע"י הרקע
+async function loadNadlanState() {
+  try {
+    const [local, sync, alarm] = await Promise.all([
+      chrome.storage.local.get(NADLAN_RUNTIME_KEY),
+      chrome.storage.sync.get({ readNadlan: false, nadlanSchedule: false }),
+      chrome.alarms.get(NADLAN_ALARM),
+    ]);
+    const runtime = local[NADLAN_RUNTIME_KEY] || {};
+    const fresh = Date.now() - (runtime.startedAt || 0) < 6 * 3600 * 1000;
+    if (runtime.running === true && fresh) {
+      const left = Array.isArray(runtime.queue) ? runtime.queue.length : 0;
+      setFeature("nadlan", "running", `נסרקות ערים ברקע${left ? ` · עוד ${left} בתור` : ""}`);
+    } else if (runtime.running === true) {
+      setFeature("nadlan", "failed", "הסריקה האחרונה לא הסתיימה (הלשונית נסגרה או נתקעה)");
+    } else if (Number.isFinite(runtime.lastFinishedAt)) {
+      setFeature("nadlan", runtime.lastFailed ? "failed" : "done", `${timeText(runtime.lastFinishedAt)} · ${runtime.lastResult || ""}`);
+    } else if (sync.readNadlan && sync.nadlanSchedule && alarm) {
+      setFeature("nadlan", "waiting", `הסריקה הבאה: ${timeText(alarm.scheduledTime)}`);
+    } else {
+      setFeature("nadlan", sync.readNadlan ? "idle" : "off", sync.readNadlan ? "אין תזמון – אפשר להריץ עכשיו" : "כבוי – מפעילים בחלון התוסף");
+    }
+  } catch (error) {
+    setFeature("nadlan", "failed", error.message || "טעינת המצב נכשלה");
+  }
+}
+
+$("runNadlanScan").addEventListener("click", async () => {
+  const result = await chrome.runtime.sendMessage({ type: "lightrail:nadlan-scan-now" }).catch(() => null);
+  if (!result || !result.ok) setFeature("nadlan", "failed", (result && result.error) || "ההפעלה נכשלה");
+  else loadNadlanState();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (changes[NADLAN_RUNTIME_KEY] || (area === "sync" && (changes.readNadlan || changes.nadlanSchedule))) loadNadlanState();
+  if (changes[STREET_SCAN_RUNTIME_KEY] || changes[STREET_SCAN_KEY]) loadStreetScanSettings();
+});
+
+loadNadlanState();
+renderAllFeatures();
+setInterval(renderAllFeatures, 2000);
+
+function featureRefresh(...features) {
+  try {
+    for (const feature of features) renderFeature(feature);
+  } catch {}
 }
